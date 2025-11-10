@@ -1,0 +1,42 @@
+Package: canhrActi
+Title: CANHR ActiGraph Physical Activity Analysis with Validated Algorithms
+Version: 0.2.0
+Authors@R: c(
+    person("Raymond Dacosta", "Azadda",
+           email = "rdazadda@alaska.edu",
+           role = c("aut", "cre")),
+    person("Andrew", "Grogan-Kaylor",
+           email = "agrogan@umich.edu",
+           role = "aut"),
+    person("KyungSook", "Lee",
+           email = "klee98@alaska.edu",
+           role = "aut")
+    )
+Author: Raymond Dacosta Azadda [aut, cre],
+    Andrew Grogan-Kaylor [aut],
+    KyungSook Lee [aut]
+Maintainer: Raymond Dacosta Azadda <rdazadda@alaska.edu>
+Description: Comprehensive ActiGraph accelerometer data analysis suite developed
+    by the Center for Alaska Native Health Research (CANHR). Implements scientifically
+    validated algorithms including the official ActiGraph activity counts algorithm
+    (Neishabouri et al., 2022), Choi (2011) and Troiano (2007) wear time detection,
+    and Freedson (1998) intensity cut points. Produces results matching ActiLife
+    software. Designed for reproducible physical activity research with comprehensive
+    documentation and user-friendly functions for complete AGD file analysis.
+License: MIT + file LICENSE
+URL: https://github.com/rdazadda/canhrActi
+BugReports: https://github.com/rdazadda/canhrActi/issues
+Depends: R (>= 4.1)
+Imports:
+    gsignal,
+    stats,
+    utils,
+    DBI,
+    RSQLite
+Suggests:
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3

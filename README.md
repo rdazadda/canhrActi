@@ -1,6 +1,6 @@
 # canhrActi
 
-Comprehensive accelerometer data analysis for physical activity, sleep, and circadian rhythm research.
+Comprehensive ActiGraph accelerometer data analysis for physical activity, sleep, and circadian rhythm research.
 
 Developed by the **Center for Alaska Native Health Research (CANHR)**, University of Alaska Fairbanks.
 
@@ -9,7 +9,7 @@ Developed by the **Center for Alaska Native Health Research (CANHR)**, Universit
 - **Physical Activity**: Wear time detection, intensity classification, MVPA, energy expenditure
 - **Sleep Analysis**: Cole-Kripke & Sadeh algorithms with sleep period detection
 - **Circadian Rhythm**: L5, M10, IS, IV, RA, and cosinor analysis
-- **Multi-Device Support**: ActiGraph (.agd, .gt3x), GENEActiv, Axivity, CSV
+- **File Support**: ActiGraph .agd, .gt3x, and .csv files
 - **Interactive Dashboard**: Shiny-based GUI for easy analysis
 - **ActiLife Compatible**: Produces results compatible with ActiLife software
 

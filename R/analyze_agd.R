@@ -222,7 +222,6 @@ canhrActi <- function(agd_file_path,
                            calculate_mets = calculate_mets, mets_algorithm = mets_algorithm,
                            analysis_mode = analysis_mode, sleep_algorithm = sleep_algorithm,
                            apply_rescoring = apply_rescoring,
-                           calculate_fragmentation = calculate_fragmentation,
                            calculate_circadian = calculate_circadian))
   }
 

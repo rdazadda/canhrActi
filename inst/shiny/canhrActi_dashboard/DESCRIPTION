@@ -1,0 +1,12 @@
+Type: ShinyApp
+Title: canhrActi Dashboard
+Version: 0.3.0
+Imports:
+    shiny,
+    shinydashboard,
+    ggplot2,
+    DT,
+    shinyjs,
+    canhrActi
+Remotes:
+    rdazadda/canhrActi

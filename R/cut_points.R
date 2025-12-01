@@ -46,6 +46,13 @@ intensity <- function(intensity_levels, wear_time = NULL) {
 }
 
 #' Calculate MVPA Minutes
+#'
+#' @param intensity_levels Factor or character vector of intensity levels
+#' @param wear_time Logical vector indicating valid wear time (default: all TRUE)
+#' @param include_vigorous Logical. Include vigorous activity in MVPA? (default: TRUE)
+#'
+#' @return Numeric. Total MVPA minutes during wear time
+#'
 #' @export
 mvpa <- function(intensity_levels, wear_time = NULL, include_vigorous = TRUE) {
   if (is.null(wear_time)) wear_time <- rep(TRUE, length(intensity_levels))

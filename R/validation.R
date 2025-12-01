@@ -50,6 +50,10 @@ icc <- function(x, y) {
 }
 
 #' Print Method for Validation Metrics
+#'
+#' @param x Object of class 'canhrActi_validation'
+#' @param ... Additional arguments (unused)
+#'
 #' @export
 print.canhrActi_validation <- function(x, ...) {
   cat("\nValidation Metrics (n =", x$n, ")\n")
@@ -63,6 +67,12 @@ print.canhrActi_validation <- function(x, ...) {
 }
 
 #' Confusion Matrix Metrics (binary)
+#'
+#' @param reference Logical or numeric vector of true values
+#' @param predicted Logical or numeric vector of predicted values
+#'
+#' @return List with sensitivity, specificity, accuracy, precision, F1
+#'
 #' @export
 confusion.metrics <- function(reference, predicted) {
   if (length(reference) != length(predicted)) {

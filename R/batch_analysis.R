@@ -1,27 +1,41 @@
 #' Analyze Multiple AGD Files at Once (Batch Processing)
 #'
-#' Process multiple participants in one go - just provide a folder path
-#' or a vector of file paths. Results are automatically exported to CSV.
+#' Process multiple participants with parallel processing support.
+#' Includes memory optimization for large datasets and detailed progress tracking.
 #'
 #' @param files Character vector of file paths OR a folder path
+#' @param wear_time_algorithm Wear time detection algorithm (default: "choi")
+#' @param intensity_algorithm Intensity classification algorithm (default: "freedson1998")
+#' @param min_wear_hours Minimum hours for valid day (default: 10)
+#' @param axis_to_analyze Which axis to analyze (default: "axis1")
+#' @param calculate_mets Calculate METs and energy expenditure (default: TRUE)
+#' @param mets_algorithm METs prediction algorithm (default: "freedson.vm3")
+#' @param analysis_mode Type of analysis: "full.24h", "wake.only", or "sleep.only" (default: "full.24h")
+#' @param sleep_algorithm Sleep detection algorithm: "cole.kripke" or "sadeh" (default: "cole.kripke")
+#' @param apply_rescoring Apply Tudor-Locke rescoring rules (default: TRUE)
 #' @param export Logical. Export results to CSV? (default: TRUE)
 #' @param output_folder Where to save CSV files (default: current directory)
+#' @param lfe_mode Logical. Low frequency extension mode (default: FALSE)
+#' @param calculate_circadian Logical. Calculate circadian rhythm metrics? (default: TRUE)
+#' @param parallel Logical. Use parallel processing? (default: TRUE for >4 files)
+#' @param n_cores Number of CPU cores to use (default: auto-detect, max 8)
+#' @param verbose Logical. Show detailed progress? (default: TRUE)
+#' @param memory_efficient Logical. Optimize memory for large files? (default: TRUE)
 #' @return List with all results plus a combined summary table
 #'
 #' @examples
 #' \dontrun{
-#' # Option 1: Give it a folder
+#' # Basic usage - folder
 #' results <- canhrActi.batch("C:/My Data Folder")
 #'
-#' # Option 2: Give it files
-#' files <- list.files("C:/My Data", pattern = ".agd", full.names = TRUE)
-#' results <- canhrActi.batch(files)
+#' # Parallel processing with 4 cores
+#' results <- canhrActi.batch("C:/My Data", parallel = TRUE, n_cores = 4)
+#'
+#' # Memory-efficient mode for large datasets
+#' results <- canhrActi.batch("C:/Large Study", memory_efficient = TRUE)
 #'
 #' # View combined summary
 #' print(results$summary)
-#'
-#' # Access individual participant
-#' print(results$participants[[1]]$daily_summary)
 #' }
 #'
 #' @export
@@ -30,319 +44,287 @@ canhrActi.batch <- function(files,
                          intensity_algorithm = c("freedson1998", "CANHR"),
                          min_wear_hours = 10,
                          axis_to_analyze = c("axis1", "vector_magnitude"),
+                         calculate_mets = TRUE,
+                         mets_algorithm = c("freedson.vm3", "freedson.adult", "crouter",
+                                            "hendelman.adult", "hendelman.lifestyle", "swartz",
+                                            "leenders", "yngve.treadmill", "yngve.overground",
+                                            "brooks.overground", "brooks.bm", "freedson.children"),
+                         analysis_mode = c("full.24h", "wake.only", "sleep.only"),
+                         sleep_algorithm = c("cole.kripke", "sadeh"),
+                         apply_rescoring = TRUE,
                          export = TRUE,
                          output_folder = ".",
-                         lfe_mode = FALSE) {
+                         lfe_mode = FALSE,
+                         calculate_circadian = TRUE,
+                         parallel = NULL,
+                         n_cores = NULL,
+                         verbose = TRUE,
+                         memory_efficient = TRUE) {
 
   wear_time_algorithm <- match.arg(wear_time_algorithm)
   intensity_algorithm <- match.arg(intensity_algorithm)
   axis_to_analyze <- match.arg(axis_to_analyze)
+  mets_algorithm <- match.arg(mets_algorithm)
+  analysis_mode <- match.arg(analysis_mode)
+  sleep_algorithm <- match.arg(sleep_algorithm)
 
+  # Find files if folder provided
   if (length(files) == 1 && dir.exists(files)) {
     folder <- files
-    files <- list.files(folder, pattern = "\\.agd$", full.names = TRUE, ignore.case = TRUE)
+    agd_files <- list.files(folder, pattern = "\\.agd$", full.names = TRUE, ignore.case = TRUE)
+    gt3x_files <- list.files(folder, pattern = "\\.gt3x$", full.names = TRUE, ignore.case = TRUE)
+    bin_files <- list.files(folder, pattern = "\\.bin$", full.names = TRUE, ignore.case = TRUE)
+    cwa_files <- list.files(folder, pattern = "\\.cwa$", full.names = TRUE, ignore.case = TRUE)
+    csv_files <- list.files(folder, pattern = "\\.csv$", full.names = TRUE, ignore.case = TRUE)
+
+    files <- c(agd_files, gt3x_files, bin_files, cwa_files, csv_files)
+
     if (length(files) == 0) {
-      stop("No .agd files found in: ", folder)
+      stop("No supported accelerometer files found in: ", folder, "\n",
+           "Supported formats: .agd, .gt3x, .bin, .cwa, .csv")
     }
-    cat("Found", length(files), "AGD files in folder\n")
+
+    if (verbose) {
+      cat("\n", paste(rep("=", 60), collapse = ""), "\n", sep = "")
+      cat("canhrActi Batch Processing\n")
+      cat(paste(rep("=", 60), collapse = ""), "\n\n", sep = "")
+      cat("Found accelerometer files:\n")
+      if (length(agd_files) > 0) cat("  ", length(agd_files), " ActiGraph .agd files\n", sep = "")
+      if (length(gt3x_files) > 0) cat("  ", length(gt3x_files), " ActiGraph .gt3x files\n", sep = "")
+      if (length(bin_files) > 0) cat("  ", length(bin_files), " GENEActiv .bin files\n", sep = "")
+      if (length(cwa_files) > 0) cat("  ", length(cwa_files), " Axivity .cwa files\n", sep = "")
+      if (length(csv_files) > 0) cat("  ", length(csv_files), " CSV files\n", sep = "")
+    }
   }
 
-  if (length(files) == 0) {
-    stop("No files provided")
+  n_files <- length(files)
+  if (n_files == 0) stop("No files provided")
+
+  # Auto-detect parallel settings
+  if (is.null(parallel)) {
+    parallel <- n_files > 4
   }
 
-  cat("\nProcessing", length(files), "files...\n")
-  cat("[", sep = "")
+  if (is.null(n_cores)) {
+    available_cores <- parallel::detectCores(logical = FALSE)
+    n_cores <- min(available_cores - 1, 8, n_files)
+    n_cores <- max(n_cores, 1)
+  }
 
-  all.results <- list()
-  participant.ids <- character(length(files))
-  failed.files <- character(0)
+  if (verbose) {
+    cat("\nProcessing Configuration:\n")
+    cat("  Total files: ", n_files, "\n", sep = "")
+    cat("  Parallel: ", if (parallel && n_files > 1) paste0("Yes (", n_cores, " cores)") else "No", "\n", sep = "")
+    cat("  Memory efficient: ", if (memory_efficient) "Yes" else "No", "\n", sep = "")
+    cat("  Wear time: ", wear_time_algorithm, "\n", sep = "")
+    cat("  Intensity: ", intensity_algorithm, "\n", sep = "")
+    cat("  Analysis mode: ", analysis_mode, "\n", sep = "")
+    cat("\n")
+  }
 
-  for (i in seq_along(files)) {
-    file <- files[i]
+  start_time <- Sys.time()
 
-    subject.name <- tryCatch({
-      con <- DBI::dbConnect(RSQLite::SQLite(), file)
-      tables <- DBI::dbListTables(con)
+  # Process function for single file
+  process_single_file <- function(file_path, file_index, total_files) {
+    result <- list(
+      success = FALSE,
+      file = basename(file_path),
+      file_path = file_path,
+      subject_id = NULL,
+      analysis = NULL,
+      summary_row = NULL,
+      error = NULL
+    )
 
-      if (!"settings" %in% tables) {
-        DBI::dbDisconnect(con)
-        stop("No settings table found")
+    tryCatch({
+      # Extract subject ID
+      subject_id <- .extract_subject_id(file_path, file_index)
+      result$subject_id <- subject_id
+
+      # Run analysis
+      analysis <- .canhrActi.single.internal(
+        file_path, wear_time_algorithm, intensity_algorithm,
+        min_wear_hours, axis_to_analyze,
+        output_summary = FALSE, lfe_mode = lfe_mode,
+        calculate_mets = calculate_mets, mets_algorithm = mets_algorithm,
+        analysis_mode = analysis_mode, sleep_algorithm = sleep_algorithm,
+        apply_rescoring = apply_rescoring,
+        calculate_fragmentation = FALSE,
+        calculate_circadian = calculate_circadian
+      )
+
+      # Build summary row (memory efficient - only keep what we need)
+      summary_row <- .build_summary_row(file_path, subject_id, analysis,
+                                        intensity_algorithm, axis_to_analyze)
+
+      if (memory_efficient) {
+        # Only keep essential data, discard raw data
+        analysis$raw_data <- NULL
+        analysis$epoch_data <- NULL
       }
 
-      settings <- DBI::dbReadTable(con, "settings")
-      DBI::dbDisconnect(con)
+      result$analysis <- analysis
+      result$summary_row <- summary_row
+      result$success <- TRUE
 
-      subj <- settings$settingValue[settings$settingName == "subjectname"]
-      if (length(subj) > 0 && !is.na(subj) && subj != "" && subj != "0") {
-        subj  # Return subject name
-      } else {
-        stop("No valid subject name found")
-      }
     }, error = function(e) {
-      # More robust fallback ID extraction
-      id.fallback <- basename(file)
-      # Remove .agd extension
-      id.fallback <- sub("\\.[aA][gG][dD]$", "", id.fallback)
-      # Remove anything in parentheses (like dates)
-      id.fallback <- sub("\\s*\\(.*\\)\\s*", "", id.fallback)
-      # Trim whitespace
-      id.fallback <- trimws(id.fallback)
-      # If still empty, use filename
-      if (id.fallback == "" || is.na(id.fallback)) {
-        id.fallback <- paste0("subject_", i)
-      }
-      id.fallback  # Return fallback ID
+      result$error <- conditionMessage(e)
     })
 
-    result <- tryCatch({
-      .canhrActi.single.internal(file, wear_time_algorithm, intensity_algorithm,
-                                 min_wear_hours, axis_to_analyze,
-                                 output_summary = FALSE, lfe_mode = lfe_mode)
-    }, error = function(e) {
-      cat("x")
-      failed.files <<- c(failed.files, file)
-      return(NULL)
+    return(result)
+  }
+
+  # Process files
+  if (parallel && n_files > 1 && n_cores > 1) {
+    # Parallel processing
+    if (verbose) cat("Processing files in parallel...\n\n")
+
+    # Create cluster
+    cl <- parallel::makeCluster(n_cores)
+    on.exit(parallel::stopCluster(cl), add = TRUE)
+
+    # Export required functions and packages to cluster
+    parallel::clusterEvalQ(cl, {
+      library(canhrActi)
+      library(DBI)
+      library(RSQLite)
     })
 
-    if (!is.null(result)) {
-      all.results[[subject.name]] <- result
-      participant.ids[i] <- subject.name
-      cat(".")
-    }
-  }
+    # Export parameters
+    parallel::clusterExport(cl, c(
+      "wear_time_algorithm", "intensity_algorithm", "min_wear_hours",
+      "axis_to_analyze", "calculate_mets", "mets_algorithm", "analysis_mode",
+      "sleep_algorithm", "apply_rescoring", "lfe_mode", "calculate_circadian",
+      "memory_efficient"
+    ), envir = environment())
 
-  cat("]\n")
+    # Process with progress
+    results_list <- parallel::parLapply(cl, seq_along(files), function(i) {
+      process_single_file(files[i], i, n_files)
+    })
 
-  if (length(failed.files) > 0) {
-    cat("\n", length(failed.files), " file(s) failed\n\n", sep = "")
-  }
+    if (verbose) cat("\nParallel processing complete.\n")
 
-  summary.table <- data.frame(
-    Subject = character(),
-    Filename = character(),
-    Epoch = numeric(),
-    "Weight (lbs)" = numeric(),
-    Age = numeric(),
-    Gender = character(),
-    Sedentary = numeric(),
-    Light = numeric(),
-    Moderate = numeric(),
-    Vigorous = numeric(),
-    "Very Vigorous" = numeric(),
-    "% in Sedentary" = character(),
-    "% in Light" = character(),
-    "% in Moderate" = character(),
-    "% in Vigorous" = character(),
-    "% in Very Vigorous" = character(),
-    "Total MVPA" = numeric(),
-    "% in MVPA" = character(),
-    "Average MVPA Per day" = numeric(),
-    "Axis 1 Counts" = numeric(),
-    "Axis 2 Counts" = numeric(),
-    "Axis 3 Counts" = numeric(),
-    "Axis 1 Average Counts" = numeric(),
-    "Axis 2 Average Counts" = numeric(),
-    "Axis 3 Average Counts" = numeric(),
-    "Axis 1 Max Counts" = numeric(),
-    "Axis 2 Max Counts" = numeric(),
-    "Axis 3 Max Counts" = numeric(),
-    "Axis 1 CPM" = numeric(),
-    "Axis 2 CPM" = numeric(),
-    "Axis 3 CPM" = numeric(),
-    "Vector Magnitude Counts" = numeric(),
-    "Vector Magnitude Average Counts" = numeric(),
-    "Vector Magnitude Max Counts" = numeric(),
-    "Vector Magnitude CPM" = numeric(),
-    "Steps Counts" = numeric(),
-    "Steps Average Counts" = numeric(),
-    "Steps Max Counts" = numeric(),
-    "Steps Per Minute" = numeric(),
-    "Lux Average Counts" = numeric(),
-    "Lux Max Counts" = numeric(),
-    "Number of Epochs" = numeric(),
-    Time = numeric(),
-    "Calendar Days" = numeric(),
-    check.names = FALSE,
-    stringsAsFactors = FALSE
-  )
+  } else {
+    # Sequential processing with progress
+    results_list <- vector("list", n_files)
 
-  for (id in names(all.results)) {
-    res <- all.results[[id]]
-    file.path <- files[which(participant.ids == id)[1]]
+    for (i in seq_along(files)) {
+      if (verbose) {
+        elapsed <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
+        if (i > 1) {
+          avg_time <- elapsed / (i - 1)
+          remaining <- avg_time * (n_files - i + 1)
+          eta <- .format_time(remaining)
+        } else {
+          eta <- "calculating..."
+        }
 
-    con <- DBI::dbConnect(RSQLite::SQLite(), file.path)
+        pct <- round((i - 1) / n_files * 100)
+        bar_width <- 30
+        filled <- round(bar_width * (i - 1) / n_files)
+        bar <- paste0("[", paste(rep("=", filled), collapse = ""),
+                      paste(rep(" ", bar_width - filled), collapse = ""), "]")
 
-    tables <- DBI::dbListTables(con)
-    raw.data <- DBI::dbReadTable(con, "data")
-    settings <- DBI::dbReadTable(con, "settings")
-
-    if ("filters" %in% tables) {
-      filters <- DBI::dbReadTable(con, "filters")
-    } else {
-      filters <- data.frame()
-    }
-
-    DBI::dbDisconnect(con)
-
-    if (nrow(filters) > 0) {
-      filter.condition <- rep(FALSE, nrow(raw.data))
-      for (f in 1:nrow(filters)) {
-        filter.condition <- filter.condition |
-          (raw.data$dataTimestamp >= filters$filterStartTimestamp[f] &
-           raw.data$dataTimestamp <= filters$filterStopTimestamp[f])
+        cat("\r", bar, " ", pct, "% | File ", i, "/", n_files,
+            " | ETA: ", eta, "          ", sep = "")
+        flush.console()
       }
-      raw.data <- raw.data[filter.condition, ]
+
+      results_list[[i]] <- process_single_file(files[i], i, n_files)
     }
 
-    age <- settings$settingValue[settings$settingName == "age"]
-    sex <- settings$settingValue[settings$settingName == "sex"]
-    mass.kg <- settings$settingValue[settings$settingName == "mass"]
-    epoch.len <- as.numeric(settings$settingValue[settings$settingName == "epochlength"])
-
-    age.val <- if(length(age) > 0 && !is.na(age) && age != "") as.numeric(age) else 0
-    gender.val <- if(length(sex) > 0 && !is.na(sex) && sex != "") {
-      ifelse(substr(sex, 1, 1) == "F", "F", ifelse(substr(sex, 1, 1) == "M", "M", ""))
-    } else ""
-    weight.lbs <- if(length(mass.kg) > 0 && !is.na(mass.kg) && mass.kg != "") {
-      round(as.numeric(mass.kg) * 2.20462)
-    } else 0
-
-    axis1.total <- sum(raw.data$axis1, na.rm = TRUE)
-    axis2.total <- sum(raw.data$axis2, na.rm = TRUE)
-    axis3.total <- sum(raw.data$axis3, na.rm = TRUE)
-    axis1.avg <- mean(raw.data$axis1, na.rm = TRUE)
-    axis2.avg <- mean(raw.data$axis2, na.rm = TRUE)
-    axis3.avg <- mean(raw.data$axis3, na.rm = TRUE)
-    axis1.max <- max(raw.data$axis1, na.rm = TRUE)
-    axis2.max <- max(raw.data$axis2, na.rm = TRUE)
-    axis3.max <- max(raw.data$axis3, na.rm = TRUE)
-
-    raw.data$vm <- sqrt(raw.data$axis1^2 + raw.data$axis2^2 + raw.data$axis3^2)
-    vm.total <- sum(raw.data$vm, na.rm = TRUE)
-    vm.avg <- mean(raw.data$vm, na.rm = TRUE)
-    vm.max <- max(raw.data$vm, na.rm = TRUE)
-
-    steps.total <- sum(raw.data$steps, na.rm = TRUE)
-    steps.avg <- mean(raw.data$steps, na.rm = TRUE)
-    steps.max <- max(raw.data$steps, na.rm = TRUE)
-
-    if ("lux" %in% names(raw.data)) {
-      lux.avg <- mean(raw.data$lux, na.rm = TRUE)
-      lux.max <- max(raw.data$lux, na.rm = TRUE)
-    } else {
-      lux.avg <- NA
-      lux.max <- NA
+    if (verbose) {
+      cat("\r[", paste(rep("=", 30), collapse = ""), "] 100% | Complete!",
+          paste(rep(" ", 30), collapse = ""), "\n\n", sep = "")
     }
-
-    if (axis_to_analyze == "axis1") {
-      counts.for.analysis <- raw.data$axis1
-    } else {
-      counts.for.analysis <- raw.data$vm
-    }
-
-    if (intensity_algorithm == "freedson1998") {
-      raw.data$intensity <- freedson(counts.for.analysis)
-    } else if (intensity_algorithm == "CANHR") {
-      raw.data$intensity <- CANHR.Cutpoints(counts.for.analysis)
-    } else {
-      raw.data$intensity <- CANHR.Cutpoints(counts.for.analysis)
-    }
-
-    sedentary.min <- sum(raw.data$intensity == "sedentary") * (epoch.len / 60)
-    light.min <- sum(raw.data$intensity == "light") * (epoch.len / 60)
-    moderate.min <- sum(raw.data$intensity == "moderate") * (epoch.len / 60)
-    vigorous.min <- sum(raw.data$intensity == "vigorous") * (epoch.len / 60)
-    very.vigorous.min <- sum(raw.data$intensity == "very_vigorous") * (epoch.len / 60)
-    mvpa.min <- moderate.min + vigorous.min + very.vigorous.min
-
-    total.min <- nrow(raw.data) * (epoch.len / 60)
-    sed.pct <- (sedentary.min / total.min) * 100
-    light.pct <- (light.min / total.min) * 100
-    mod.pct <- (moderate.min / total.min) * 100
-    vig.pct <- (vigorous.min / total.min) * 100
-    vvig.pct <- (very.vigorous.min / total.min) * 100
-    mvpa.pct <- (mvpa.min / total.min) * 100
-
-    total.hours <- total.min / 60
-    axis1.cpm <- axis1.avg
-    axis2.cpm <- axis2.avg
-    axis3.cpm <- axis3.avg
-    vm.cpm <- vm.avg
-    steps.per.min <- steps.avg
-
-    calendar.days <- res$overall_summary$valid_days
-    avg.mvpa.per.day <- mvpa.min / calendar.days
-
-    summary.table <- rbind(summary.table, data.frame(
-      Subject = id,
-      Filename = basename(file.path),
-      Epoch = epoch.len,
-      "Weight (lbs)" = weight.lbs,
-      Age = age.val,
-      Gender = gender.val,
-      Sedentary = round(sedentary.min),
-      Light = round(light.min),
-      Moderate = round(moderate.min),
-      Vigorous = round(vigorous.min),
-      "Very Vigorous" = round(very.vigorous.min),
-      "% in Sedentary" = paste0(round(sed.pct, 2), "%"),
-      "% in Light" = paste0(round(light.pct, 2), "%"),
-      "% in Moderate" = paste0(round(mod.pct, 2), "%"),
-      "% in Vigorous" = paste0(round(vig.pct, 2), "%"),
-      "% in Very Vigorous" = paste0(round(vvig.pct, 2), "%"),
-      "Total MVPA" = round(mvpa.min),
-      "% in MVPA" = paste0(round(mvpa.pct, 2), "%"),
-      "Average MVPA Per day" = round(avg.mvpa.per.day, 1),
-      "Axis 1 Counts" = axis1.total,
-      "Axis 2 Counts" = axis2.total,
-      "Axis 3 Counts" = axis3.total,
-      "Axis 1 Average Counts" = round(axis1.avg, 1),
-      "Axis 2 Average Counts" = round(axis2.avg, 1),
-      "Axis 3 Average Counts" = round(axis3.avg, 1),
-      "Axis 1 Max Counts" = axis1.max,
-      "Axis 2 Max Counts" = axis2.max,
-      "Axis 3 Max Counts" = axis3.max,
-      "Axis 1 CPM" = round(axis1.cpm, 1),
-      "Axis 2 CPM" = round(axis2.cpm, 1),
-      "Axis 3 CPM" = round(axis3.cpm, 1),
-      "Vector Magnitude Counts" = round(vm.total, 1),
-      "Vector Magnitude Average Counts" = round(vm.avg, 1),
-      "Vector Magnitude Max Counts" = round(vm.max, 1),
-      "Vector Magnitude CPM" = round(vm.cpm, 1),
-      "Steps Counts" = steps.total,
-      "Steps Average Counts" = round(steps.avg, 1),
-      "Steps Max Counts" = steps.max,
-      "Steps Per Minute" = round(steps.per.min, 1),
-      "Lux Average Counts" = round(lux.avg, 1),
-      "Lux Max Counts" = round(lux.max, 1),
-      "Number of Epochs" = nrow(raw.data),
-      Time = round(total.hours, 1),
-      "Calendar Days" = calendar.days,
-      check.names = FALSE,
-      stringsAsFactors = FALSE
-    ))
   }
 
-  if (export) {
+  # Compile results
+  all_results <- list()
+  summary_rows <- list()
+  failed_files <- character(0)
+  success_count <- 0
+
+  for (res in results_list) {
+    if (res$success) {
+      all_results[[res$subject_id]] <- res$analysis
+      summary_rows[[length(summary_rows) + 1]] <- res$summary_row
+      success_count <- success_count + 1
+    } else {
+      failed_files <- c(failed_files, res$file)
+    }
+  }
+
+  # Build summary table
+  if (length(summary_rows) > 0) {
+    summary_table <- do.call(rbind, summary_rows)
+  } else {
+    summary_table <- data.frame()
+  }
+
+  # Calculate processing stats
+  total_time <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
+
+  if (verbose) {
+    cat(paste(rep("-", 60), collapse = ""), "\n", sep = "")
+    cat("Processing Complete\n")
+    cat(paste(rep("-", 60), collapse = ""), "\n", sep = "")
+    cat("  Successful: ", success_count, "/", n_files, " files\n", sep = "")
+    cat("  Failed: ", length(failed_files), " files\n", sep = "")
+    cat("  Total time: ", .format_time(total_time), "\n", sep = "")
+    cat("  Avg per file: ", round(total_time / n_files, 1), " seconds\n", sep = "")
+
+    if (length(failed_files) > 0) {
+      cat("\nFailed files:\n")
+      for (f in failed_files[1:min(5, length(failed_files))]) {
+        cat("  - ", f, "\n", sep = "")
+      }
+      if (length(failed_files) > 5) {
+        cat("  ... and ", length(failed_files) - 5, " more\n", sep = "")
+      }
+    }
+
+    if (nrow(summary_table) > 0) {
+      cat("\nGroup Statistics:\n")
+      cat("  Mean MVPA: ", round(mean(summary_table$`Total MVPA`, na.rm = TRUE), 1), " min/day\n", sep = "")
+      cat("  Mean Sedentary: ", round(mean(summary_table$Sedentary, na.rm = TRUE) / 60, 1), " hrs/day\n", sep = "")
+      cat("  Mean Valid Days: ", round(mean(summary_table$`Calendar Days`, na.rm = TRUE), 1), "\n", sep = "")
+    }
+    cat("\n")
+  }
+
+  # Export results
+  if (export && nrow(summary_table) > 0) {
     if (!dir.exists(output_folder)) dir.create(output_folder, recursive = TRUE)
-    summary.file <- file.path(output_folder, "batch_summary.csv")
-    utils::write.csv(summary.table, summary.file, row.names = FALSE)
-    cat("\nExported:", summary.file, "\n\n")
+
+    summary_file <- file.path(output_folder, paste0("canhrActi_batch_summary_",
+                                                     format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv"))
+    utils::write.csv(summary_table, summary_file, row.names = FALSE)
+
+    if (verbose) cat("Exported: ", summary_file, "\n\n", sep = "")
   }
 
-  cat("\nBatch Analysis Complete\n")
-  cat("Participants:", nrow(summary.table), "\n")
-  cat("Mean MVPA:", round(mean(summary.table$`Total MVPA`), 1), "min\n\n")
-
+  # Build result object
   result <- list(
-    summary = summary.table,
-    participants = all.results,
-    n_participants = length(all.results),
+    summary = summary_table,
+    participants = all_results,
+    n_participants = length(all_results),
+    n_failed = length(failed_files),
+    failed_files = failed_files,
+    processing_time = total_time,
     group_stats = list(
-      mean_valid_days = mean(summary.table$`Calendar Days`),
-      mean_wear_hours = mean(summary.table$Time),
-      mean_mvpa_minutes = mean(summary.table$`Total MVPA`)
+      mean_valid_days = if (nrow(summary_table) > 0) mean(summary_table$`Calendar Days`, na.rm = TRUE) else NA,
+      mean_wear_hours = if (nrow(summary_table) > 0) mean(summary_table$Time, na.rm = TRUE) else NA,
+      mean_mvpa_minutes = if (nrow(summary_table) > 0) mean(summary_table$`Total MVPA`, na.rm = TRUE) else NA,
+      mean_sedentary_hours = if (nrow(summary_table) > 0) mean(summary_table$Sedentary, na.rm = TRUE) / 60 else NA
+    ),
+    settings = list(
+      wear_time_algorithm = wear_time_algorithm,
+      intensity_algorithm = intensity_algorithm,
+      analysis_mode = analysis_mode,
+      parallel = parallel,
+      n_cores = n_cores
     )
   )
 
@@ -351,16 +333,269 @@ canhrActi.batch <- function(files,
 }
 
 
+# Helper: Extract subject ID from file
+.extract_subject_id <- function(file_path, fallback_index) {
+  tryCatch({
+    ext <- tolower(tools::file_ext(file_path))
+
+    if (ext == "agd") {
+      con <- DBI::dbConnect(RSQLite::SQLite(), file_path)
+      on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+      tables <- DBI::dbListTables(con)
+      if ("settings" %in% tables) {
+        settings <- DBI::dbReadTable(con, "settings")
+        subj <- settings$settingValue[settings$settingName == "subjectname"]
+        if (length(subj) > 0 && !is.na(subj) && subj != "" && subj != "0") {
+          return(subj)
+        }
+      }
+    }
+
+    # Fallback: use filename
+    id <- basename(file_path)
+    id <- sub("\\.[^.]*$", "", id)  # Remove extension
+    id <- sub("\\s*\\(.*\\)\\s*", "", id)  # Remove dates in parentheses
+    id <- trimws(id)
+    if (id == "" || is.na(id)) id <- paste0("subject_", fallback_index)
+    return(id)
+
+  }, error = function(e) {
+    paste0("subject_", fallback_index)
+  })
+}
+
+
+# Helper: Build summary row for a single file
+.build_summary_row <- function(file_path, subject_id, analysis, intensity_algorithm, axis_to_analyze) {
+  tryCatch({
+    ext <- tolower(tools::file_ext(file_path))
+
+    # Default values
+    age_val <- 0
+    gender_val <- ""
+    weight_lbs <- 0
+    epoch_len <- 60
+
+    # Try to get metadata
+    if (ext == "agd") {
+      con <- DBI::dbConnect(RSQLite::SQLite(), file_path)
+      on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+      tables <- DBI::dbListTables(con)
+      raw_data <- DBI::dbReadTable(con, "data")
+      settings <- DBI::dbReadTable(con, "settings")
+
+      # Apply filters if present
+      if ("filters" %in% tables) {
+        filters <- DBI::dbReadTable(con, "filters")
+        if (nrow(filters) > 0) {
+          filter_cond <- rep(FALSE, nrow(raw_data))
+          for (f in 1:nrow(filters)) {
+            filter_cond <- filter_cond |
+              (raw_data$dataTimestamp >= filters$filterStartTimestamp[f] &
+               raw_data$dataTimestamp <= filters$filterStopTimestamp[f])
+          }
+          raw_data <- raw_data[filter_cond, ]
+        }
+      }
+
+      # Get settings
+      age <- settings$settingValue[settings$settingName == "age"]
+      sex <- settings$settingValue[settings$settingName == "sex"]
+      mass_kg <- settings$settingValue[settings$settingName == "mass"]
+      epoch_len <- as.numeric(settings$settingValue[settings$settingName == "epochlength"])
+
+      age_val <- if (length(age) > 0 && !is.na(age) && age != "") as.numeric(age) else 0
+      gender_val <- if (length(sex) > 0 && !is.na(sex) && sex != "") {
+        ifelse(substr(sex, 1, 1) == "F", "F", ifelse(substr(sex, 1, 1) == "M", "M", ""))
+      } else ""
+      weight_lbs <- if (length(mass_kg) > 0 && !is.na(mass_kg) && mass_kg != "") {
+        round(as.numeric(mass_kg) * 2.20462)
+      } else 0
+
+    } else {
+      # For other file types, use analysis data
+      raw_data <- if (!is.null(analysis$data)) analysis$data else data.frame(axis1 = 0)
+      epoch_len <- if (!is.null(analysis$epoch_length)) analysis$epoch_length else 60
+    }
+
+    # Calculate axis statistics
+    axis1_total <- sum(raw_data$axis1, na.rm = TRUE)
+    axis2_total <- if ("axis2" %in% names(raw_data)) sum(raw_data$axis2, na.rm = TRUE) else 0
+    axis3_total <- if ("axis3" %in% names(raw_data)) sum(raw_data$axis3, na.rm = TRUE) else 0
+    axis1_avg <- mean(raw_data$axis1, na.rm = TRUE)
+    axis2_avg <- if ("axis2" %in% names(raw_data)) mean(raw_data$axis2, na.rm = TRUE) else 0
+    axis3_avg <- if ("axis3" %in% names(raw_data)) mean(raw_data$axis3, na.rm = TRUE) else 0
+    axis1_max <- max(raw_data$axis1, na.rm = TRUE)
+    axis2_max <- if ("axis2" %in% names(raw_data)) max(raw_data$axis2, na.rm = TRUE) else 0
+    axis3_max <- if ("axis3" %in% names(raw_data)) max(raw_data$axis3, na.rm = TRUE) else 0
+
+    # Vector magnitude
+    if (all(c("axis1", "axis2", "axis3") %in% names(raw_data))) {
+      vm <- sqrt(raw_data$axis1^2 + raw_data$axis2^2 + raw_data$axis3^2)
+    } else {
+      vm <- raw_data$axis1
+    }
+    vm_total <- sum(vm, na.rm = TRUE)
+    vm_avg <- mean(vm, na.rm = TRUE)
+    vm_max <- max(vm, na.rm = TRUE)
+
+    # Steps
+    steps_total <- if ("steps" %in% names(raw_data)) sum(raw_data$steps, na.rm = TRUE) else 0
+    steps_avg <- if ("steps" %in% names(raw_data)) mean(raw_data$steps, na.rm = TRUE) else 0
+    steps_max <- if ("steps" %in% names(raw_data)) max(raw_data$steps, na.rm = TRUE) else 0
+
+    # Lux
+    lux_avg <- if ("lux" %in% names(raw_data)) mean(raw_data$lux, na.rm = TRUE) else NA
+    lux_max <- if ("lux" %in% names(raw_data)) max(raw_data$lux, na.rm = TRUE) else NA
+
+    # Intensity classification
+    counts <- if (axis_to_analyze == "axis1") raw_data$axis1 else vm
+    intensity <- if (intensity_algorithm == "freedson1998") {
+      freedson(counts)
+    } else {
+      CANHR.Cutpoints(counts)
+    }
+
+    # Calculate time in each intensity
+    sedentary_min <- sum(intensity == "sedentary") * (epoch_len / 60)
+    light_min <- sum(intensity == "light") * (epoch_len / 60)
+    moderate_min <- sum(intensity == "moderate") * (epoch_len / 60)
+    vigorous_min <- sum(intensity == "vigorous") * (epoch_len / 60)
+    very_vigorous_min <- sum(intensity == "very_vigorous") * (epoch_len / 60)
+    mvpa_min <- moderate_min + vigorous_min + very_vigorous_min
+
+    total_min <- nrow(raw_data) * (epoch_len / 60)
+    total_hours <- total_min / 60
+
+    # Percentages
+    sed_pct <- if (total_min > 0) (sedentary_min / total_min) * 100 else 0
+    light_pct <- if (total_min > 0) (light_min / total_min) * 100 else 0
+    mod_pct <- if (total_min > 0) (moderate_min / total_min) * 100 else 0
+    vig_pct <- if (total_min > 0) (vigorous_min / total_min) * 100 else 0
+    vvig_pct <- if (total_min > 0) (very_vigorous_min / total_min) * 100 else 0
+    mvpa_pct <- if (total_min > 0) (mvpa_min / total_min) * 100 else 0
+
+    calendar_days <- if (!is.null(analysis$overall_summary$valid_days)) {
+      analysis$overall_summary$valid_days
+    } else 1
+    avg_mvpa_per_day <- mvpa_min / max(calendar_days, 1)
+
+    # Build row
+    data.frame(
+      Subject = subject_id,
+      Filename = basename(file_path),
+      Epoch = epoch_len,
+      "Weight (lbs)" = weight_lbs,
+      Age = age_val,
+      Gender = gender_val,
+      Sedentary = round(sedentary_min),
+      Light = round(light_min),
+      Moderate = round(moderate_min),
+      Vigorous = round(vigorous_min),
+      "Very Vigorous" = round(very_vigorous_min),
+      "% in Sedentary" = paste0(round(sed_pct, 2), "%"),
+      "% in Light" = paste0(round(light_pct, 2), "%"),
+      "% in Moderate" = paste0(round(mod_pct, 2), "%"),
+      "% in Vigorous" = paste0(round(vig_pct, 2), "%"),
+      "% in Very Vigorous" = paste0(round(vvig_pct, 2), "%"),
+      "Total MVPA" = round(mvpa_min),
+      "% in MVPA" = paste0(round(mvpa_pct, 2), "%"),
+      "Average MVPA Per day" = round(avg_mvpa_per_day, 1),
+      "Axis 1 Counts" = axis1_total,
+      "Axis 2 Counts" = axis2_total,
+      "Axis 3 Counts" = axis3_total,
+      "Axis 1 Average Counts" = round(axis1_avg, 1),
+      "Axis 2 Average Counts" = round(axis2_avg, 1),
+      "Axis 3 Average Counts" = round(axis3_avg, 1),
+      "Axis 1 Max Counts" = axis1_max,
+      "Axis 2 Max Counts" = axis2_max,
+      "Axis 3 Max Counts" = axis3_max,
+      "Axis 1 CPM" = round(axis1_avg, 1),
+      "Axis 2 CPM" = round(axis2_avg, 1),
+      "Axis 3 CPM" = round(axis3_avg, 1),
+      "Vector Magnitude Counts" = round(vm_total, 1),
+      "Vector Magnitude Average Counts" = round(vm_avg, 1),
+      "Vector Magnitude Max Counts" = round(vm_max, 1),
+      "Vector Magnitude CPM" = round(vm_avg, 1),
+      "Steps Counts" = steps_total,
+      "Steps Average Counts" = round(steps_avg, 1),
+      "Steps Max Counts" = steps_max,
+      "Steps Per Minute" = round(steps_avg, 1),
+      "Lux Average Counts" = if (is.na(lux_avg)) NA else round(lux_avg, 1),
+      "Lux Max Counts" = if (is.na(lux_max)) NA else round(lux_max, 1),
+      "Number of Epochs" = nrow(raw_data),
+      Time = round(total_hours, 1),
+      "Calendar Days" = calendar_days,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+  }, error = function(e) {
+    # Return minimal row on error
+    data.frame(
+      Subject = subject_id,
+      Filename = basename(file_path),
+      Epoch = NA, "Weight (lbs)" = NA, Age = NA, Gender = NA,
+      Sedentary = NA, Light = NA, Moderate = NA, Vigorous = NA, "Very Vigorous" = NA,
+      "% in Sedentary" = NA, "% in Light" = NA, "% in Moderate" = NA,
+      "% in Vigorous" = NA, "% in Very Vigorous" = NA, "Total MVPA" = NA,
+      "% in MVPA" = NA, "Average MVPA Per day" = NA,
+      "Axis 1 Counts" = NA, "Axis 2 Counts" = NA, "Axis 3 Counts" = NA,
+      "Axis 1 Average Counts" = NA, "Axis 2 Average Counts" = NA, "Axis 3 Average Counts" = NA,
+      "Axis 1 Max Counts" = NA, "Axis 2 Max Counts" = NA, "Axis 3 Max Counts" = NA,
+      "Axis 1 CPM" = NA, "Axis 2 CPM" = NA, "Axis 3 CPM" = NA,
+      "Vector Magnitude Counts" = NA, "Vector Magnitude Average Counts" = NA,
+      "Vector Magnitude Max Counts" = NA, "Vector Magnitude CPM" = NA,
+      "Steps Counts" = NA, "Steps Average Counts" = NA, "Steps Max Counts" = NA,
+      "Steps Per Minute" = NA, "Lux Average Counts" = NA, "Lux Max Counts" = NA,
+      "Number of Epochs" = NA, Time = NA, "Calendar Days" = NA,
+      check.names = FALSE, stringsAsFactors = FALSE
+    )
+  })
+}
+
+
+# Helper: Format time duration
+.format_time <- function(seconds) {
+  if (is.na(seconds) || seconds < 0) return("--")
+  if (seconds < 60) return(paste0(round(seconds), "s"))
+  if (seconds < 3600) return(paste0(round(seconds / 60, 1), "m"))
+  return(paste0(round(seconds / 3600, 1), "h"))
+}
+
+
 #' Print Method for Batch Results
 #' @param x An object of class canhrActi_batch
 #' @param ... Additional arguments
 #' @export
 print.canhrActi_batch <- function(x, ...) {
-  cat("\ncanhrActi Batch Analysis\n")
-  cat("Participants:", x$n_participants, "\n")
-  cat("Mean MVPA:", round(x$group_stats$mean_mvpa_minutes, 1), "min\n\n")
-  print(x$summary)
+  cat("\n")
+  cat(paste(rep("=", 50), collapse = ""), "\n")
+  cat("canhrActi Batch Analysis Results\n")
+  cat(paste(rep("=", 50), collapse = ""), "\n\n")
+
+  cat("Participants: ", x$n_participants, "\n", sep = "")
+  cat("Failed: ", x$n_failed, "\n", sep = "")
+  cat("Processing time: ", .format_time(x$processing_time), "\n\n", sep = "")
+
+  cat("Group Statistics:\n")
+  cat("  Mean Valid Days: ", round(x$group_stats$mean_valid_days, 1), "\n", sep = "")
+  cat("  Mean Wear Time: ", round(x$group_stats$mean_wear_hours, 1), " hours\n", sep = "")
+  cat("  Mean MVPA: ", round(x$group_stats$mean_mvpa_minutes, 1), " min/day\n", sep = "")
+  cat("  Mean Sedentary: ", round(x$group_stats$mean_sedentary_hours, 1), " hours/day\n\n", sep = "")
+
+  cat("Settings:\n")
+  cat("  Wear time algorithm: ", x$settings$wear_time_algorithm, "\n", sep = "")
+  cat("  Intensity algorithm: ", x$settings$intensity_algorithm, "\n", sep = "")
+  cat("  Analysis mode: ", x$settings$analysis_mode, "\n", sep = "")
+  cat("  Parallel processing: ", if (x$settings$parallel) paste0("Yes (", x$settings$n_cores, " cores)") else "No", "\n", sep = "")
+
+  cat("\n")
+  if (nrow(x$summary) > 0) {
+    cat("Summary table preview (first 5 rows):\n")
+    print(head(x$summary[, c("Subject", "Calendar Days", "Total MVPA", "Sedentary")], 5))
+  }
+
   invisible(x)
 }
-
-

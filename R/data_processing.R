@@ -94,6 +94,10 @@ process <- function(accel_data,
 }
 
 #' Print Method for canhrActi Results
+#'
+#' @param x Object of class 'canhrActi_results'
+#' @param ... Additional arguments (unused)
+#'
 #' @export
 print.canhrActi_results <- function(x, ...) {
   cat("\ncanhrActi Processing Results\n")

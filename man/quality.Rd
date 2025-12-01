@@ -6,6 +6,12 @@
 \usage{
 quality(accel.data)
 }
+\arguments{
+\item{accel.data}{Data frame with x, y, z columns}
+}
+\value{
+List with quality metrics (n.samples, missing counts, outliers)
+}
 \description{
 Calculate Data Quality Metrics
 }

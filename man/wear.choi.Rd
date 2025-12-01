@@ -2,7 +2,7 @@
 % Please edit documentation in R/wear_time.R
 \name{wear.choi}
 \alias{wear.choi}
-\title{Detect Wear Time Using Choi Algorithm}
+\title{Wear Time Detection Using Choi Algorithm}
 \usage{
 wear.choi(
   counts_per_minute,
@@ -14,23 +14,28 @@ wear.choi(
 )
 }
 \arguments{
-\item{counts_per_minute}{Numeric vector of counts per minute}
+\item{counts_per_minute}{Numeric vector of activity counts (one value per epoch)}
 
-\item{non_wear_window}{Integer. Window length in minutes (default: 90)}
+\item{non_wear_window}{Integer. Window length in minutes for initial non-wear detection (default: 90)}
 
 \item{spike_tolerance}{Integer. Maximum consecutive minutes with activity allowed (default: 2)}
 
-\item{min_spike_length}{Integer. Minimum length of spike (default: 1, not used in current implementation)}
+\item{min_spike_length}{Integer. Minimum length of spike (default: 1, reserved for future use)}
 
 \item{spike_stoplevel}{Integer. Maximum count value for spike (default: 100)}
 
-\item{min_window_len}{Integer. Upstream/downstream window length in minutes (default: 30)}
+\item{min_window_len}{Integer. Required consecutive zeros before/after spike (default: 30)}
 }
 \value{
-Logical vector where TRUE indicates wear time
+Logical vector where TRUE indicates wear time, FALSE indicates non-wear
 }
 \description{
 Choi et al. (2011) algorithm with upstream/downstream window validation.
 The Choi algorithm extends Troiano by requiring that any spike of activity
-within a non-wear period must be surrounded by consecutive zero-count windows.
+within a non-wear period must be surrounded by consecutive zero-count windows
+of at least 30 minutes on at least one side.
+}
+\references{
+Choi L, et al. (2011). Validation of accelerometer wear and nonwear time
+classification algorithm. Medicine and Science in Sports and Exercise, 43(2), 357-364.
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/analyze_agd.R
 \name{canhrActi}
 \alias{canhrActi}
-\title{canhrActi: Analyze ActiGraph AGD Files}
+\title{canhrActi: Analyze ActiGraph Files (AGD or GT3X)}
 \usage{
 canhrActi(
   agd_file_path,
@@ -10,16 +10,25 @@ canhrActi(
   intensity_algorithm = c("freedson1998", "CANHR"),
   min_wear_hours = 10,
   axis_to_analyze = c("axis1", "vector_magnitude"),
+  calculate_mets = TRUE,
+  mets_algorithm = c("freedson.vm3", "freedson.adult", "crouter", "hendelman.adult",
+    "hendelman.lifestyle", "swartz", "leenders", "yngve.treadmill", "yngve.overground",
+    "brooks.overground", "brooks.bm", "freedson.children"),
+  analysis_mode = c("full.24h", "wake.only", "sleep.only"),
+  sleep_algorithm = c("cole.kripke", "sadeh"),
+  apply_rescoring = TRUE,
   output_summary = TRUE,
-  lfe_mode = FALSE
+  lfe_mode = FALSE,
+  calculate_fragmentation = TRUE,
+  calculate_circadian = TRUE
 )
 }
 \arguments{
 \item{agd_file_path}{Character. Can be:
 \itemize{
-\item Single file path (e.g., "path/to/file.agd")
-\item Vector of file paths (e.g., c("file1.agd", "file2.agd"))
-\item Folder path (will analyze all .agd files in folder)
+\item Single file path (e.g., "path/to/file.agd" or "path/to/file.gt3x")
+\item Vector of file paths (e.g., c("file1.agd", "file2.gt3x"))
+\item Folder path (will analyze all .agd and .gt3x files in folder)
 }}
 
 \item{wear_time_algorithm}{Character. Which wear time detection algorithm to use:
@@ -47,7 +56,46 @@ using vertical axis (axis1) only. Using vector magnitude with axis1-validated
 cut points may produce results that differ from published literature. Use axis1
 (default) for standard research comparability.}
 
+\item{calculate_mets}{Logical. Calculate METs and energy expenditure? (default: TRUE)}
+
+\item{mets_algorithm}{Character. METs prediction algorithm:
+\itemize{
+\item \code{"freedson.vm3"} - Freedson VM3 (Sasaki 2011, default)
+\item \code{"freedson.adult"} - Freedson Adult (1998)
+\item \code{"crouter"} - Crouter 2-regression (2010)
+\item \code{"hendelman.adult"} - Hendelman Adult Overground (2000)
+\item \code{"hendelman.lifestyle"} - Hendelman Adult Lifestyle (2000)
+\item \code{"swartz"} - Swartz Adult (2000)
+\item \code{"leenders"} - Leenders Adult Treadmill (2003)
+\item \code{"yngve.treadmill"} - Yngve Adult Treadmill (2003)
+\item \code{"yngve.overground"} - Yngve Adult Overground (2003)
+\item \code{"brooks.overground"} - Brooks Adult Overground (2005)
+\item \code{"brooks.bm"} - Brooks Adult with Body Mass (2005)
+\item \code{"freedson.children"} - Freedson Children (2005)
+}}
+
+\item{analysis_mode}{Character. Type of analysis to perform:
+\itemize{
+\item \code{"full.24h"} - Traditional 24-hour analysis (default, backward compatible)
+\item \code{"wake.only"} - Analyze only wake periods (removes sleep inflation)
+\item \code{"sleep.only"} - Analyze only sleep periods
+}}
+
+\item{sleep_algorithm}{Character. Sleep detection algorithm (used when analysis_mode != "full.24h"):
+\itemize{
+\item \code{"cole.kripke"} - Cole-Kripke algorithm for adults (default)
+\item \code{"sadeh"} - Sadeh algorithm for youth/children
+}}
+
+\item{apply_rescoring}{Logical. Apply Tudor-Locke rescoring rules? (default: TRUE)}
+
 \item{output_summary}{Logical. Print detailed summary to console? (default: TRUE)}
+
+\item{lfe_mode}{Logical. Enable Low Frequency Extension mode for GT3X files? (default: FALSE)}
+
+\item{calculate_fragmentation}{Logical. Calculate sedentary fragmentation metrics? (default: TRUE)}
+
+\item{calculate_circadian}{Logical. Calculate circadian rhythm metrics (L5, M10, IS, IV)? (default: TRUE)}
 }
 \value{
 A list of class \code{"canhrActi_analysis"} containing:
@@ -59,11 +107,18 @@ A list of class \code{"canhrActi_analysis"} containing:
 \item \code{intensity_summary} - Data frame with intensity distribution
 \item \code{valid_days} - Character vector of valid dates (YYYY-MM-DD)
 \item \code{wear_time_periods} - Data frame with continuous wear periods
+\item \code{mets_summary} - Data frame with METs statistics (if calculate_mets = TRUE)
+\item \code{energy_expenditure_summary} - Data frame with kcal statistics (if calculate_mets = TRUE)
+\item \code{sleep_periods} - Data frame with detected sleep periods (if analysis_mode != "full.24h")
+\item \code{wake_periods} - Data frame with inverted wake periods (if analysis_mode != "full.24h")
+\item \code{fragmentation} - Sedentary fragmentation metrics (if calculate_fragmentation = TRUE)
+\item \code{circadian} - Circadian rhythm metrics L5, M10, IS, IV, RA, cosinor (if calculate_circadian = TRUE)
 \item \code{parameters} - List of analysis parameters used
 }
 }
 \description{
-Main function for analyzing ActiGraph .agd files. Automatically handles
+Main function for analyzing ActiGraph accelerometer files. Supports both
+pre-processed .agd files and raw .gt3x files. Automatically handles
 single files, multiple files, or entire folders.
 }
 \details{
@@ -104,19 +159,32 @@ and 45-minute upstream/downstream validation. Custom algorithm.
 }
 }
 
+\strong{Sleep/Wake Analysis Modes:}
+\itemize{
+\item \strong{full.24h:} Traditional 24-hour analysis (backward compatible)
+\item \strong{wake.only:} Removes sleep periods before analysis, eliminating
+sedentary time inflation caused by sleep being classified as sedentary behavior.
+Uses Cole-Kripke or Sadeh algorithms to detect sleep, then inverts to wake periods
+using the n-1 rule (n sleep periods create n-1 wake periods).
+\item \strong{sleep.only:} Analyzes only sleep periods
+}
+
 \strong{Valid Day Criteria:}
 Days with >=10 hours (default) of wear time are considered valid for analysis.
 This threshold can be adjusted via the \code{min_wear_hours} parameter.
 }
 \examples{
 \dontrun{
-# Single file
+# Single .agd file
 results <- canhrActi("path/to/file.agd")
 
-# Multiple files (batch)
-results <- canhrActi(c("file1.agd", "file2.agd"))
+# Single .gt3x file (raw data)
+results <- canhrActi("path/to/file.gt3x")
 
-# Entire folder
+# Multiple files (batch) - can mix .agd and .gt3x
+results <- canhrActi(c("file1.agd", "file2.gt3x"))
+
+# Entire folder (analyzes all .agd and .gt3x files)
 results <- canhrActi("C:/My Data Folder")
 
 # View overall summary
@@ -142,6 +210,16 @@ results <- canhrActi("file.agd",
 
 # Require 8 hours for valid day (instead of 10)
 results <- canhrActi("file.agd", min_wear_hours = 8)
+
+# Wake-only analysis (removes sleep inflation)
+results <- canhrActi("file.agd", analysis_mode = "wake.only")
+
+# Sleep-only analysis
+results <- canhrActi("file.agd", analysis_mode = "sleep.only")
+
+# Use Sadeh algorithm for youth/children
+results <- canhrActi("file.agd", analysis_mode = "wake.only",
+                     sleep_algorithm = "sadeh")
 }
 
 }

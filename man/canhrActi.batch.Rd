@@ -10,39 +10,80 @@ canhrActi.batch(
   intensity_algorithm = c("freedson1998", "CANHR"),
   min_wear_hours = 10,
   axis_to_analyze = c("axis1", "vector_magnitude"),
+  calculate_mets = TRUE,
+  mets_algorithm = c("freedson.vm3", "freedson.adult", "crouter", "hendelman.adult",
+    "hendelman.lifestyle", "swartz", "leenders", "yngve.treadmill", "yngve.overground",
+    "brooks.overground", "brooks.bm", "freedson.children"),
+  analysis_mode = c("full.24h", "wake.only", "sleep.only"),
+  sleep_algorithm = c("cole.kripke", "sadeh"),
+  apply_rescoring = TRUE,
   export = TRUE,
   output_folder = ".",
-  lfe_mode = FALSE
+  lfe_mode = FALSE,
+  calculate_circadian = TRUE,
+  parallel = NULL,
+  n_cores = NULL,
+  verbose = TRUE,
+  memory_efficient = TRUE
 )
 }
 \arguments{
 \item{files}{Character vector of file paths OR a folder path}
 
+\item{wear_time_algorithm}{Wear time detection algorithm (default: "choi")}
+
+\item{intensity_algorithm}{Intensity classification algorithm (default: "freedson1998")}
+
+\item{min_wear_hours}{Minimum hours for valid day (default: 10)}
+
+\item{axis_to_analyze}{Which axis to analyze (default: "axis1")}
+
+\item{calculate_mets}{Calculate METs and energy expenditure (default: TRUE)}
+
+\item{mets_algorithm}{METs prediction algorithm (default: "freedson.vm3")}
+
+\item{analysis_mode}{Type of analysis: "full.24h", "wake.only", or "sleep.only" (default: "full.24h")}
+
+\item{sleep_algorithm}{Sleep detection algorithm: "cole.kripke" or "sadeh" (default: "cole.kripke")}
+
+\item{apply_rescoring}{Apply Tudor-Locke rescoring rules (default: TRUE)}
+
 \item{export}{Logical. Export results to CSV? (default: TRUE)}
 
 \item{output_folder}{Where to save CSV files (default: current directory)}
+
+\item{lfe_mode}{Logical. Low frequency extension mode (default: FALSE)}
+
+\item{calculate_circadian}{Logical. Calculate circadian rhythm metrics? (default: TRUE)}
+
+\item{parallel}{Logical. Use parallel processing? (default: TRUE for >4 files)}
+
+\item{n_cores}{Number of CPU cores to use (default: auto-detect, max 8)}
+
+\item{verbose}{Logical. Show detailed progress? (default: TRUE)}
+
+\item{memory_efficient}{Logical. Optimize memory for large files? (default: TRUE)}
 }
 \value{
 List with all results plus a combined summary table
 }
 \description{
-Process multiple participants in one go - just provide a folder path
-or a vector of file paths. Results are automatically exported to CSV.
+Process multiple participants with parallel processing support.
+Includes memory optimization for large datasets and detailed progress tracking.
 }
 \examples{
 \dontrun{
-# Option 1: Give it a folder
+# Basic usage - folder
 results <- canhrActi.batch("C:/My Data Folder")
 
-# Option 2: Give it files
-files <- list.files("C:/My Data", pattern = ".agd", full.names = TRUE)
-results <- canhrActi.batch(files)
+# Parallel processing with 4 cores
+results <- canhrActi.batch("C:/My Data", parallel = TRUE, n_cores = 4)
+
+# Memory-efficient mode for large datasets
+results <- canhrActi.batch("C:/Large Study", memory_efficient = TRUE)
 
 # View combined summary
 print(results$summary)
-
-# Access individual participant
-print(results$participants[[1]]$daily_summary)
 }
 
 }

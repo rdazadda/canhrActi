@@ -6,6 +6,14 @@
 \usage{
 load.actigraph.csv(filepath, skip.lines = 10)
 }
+\arguments{
+\item{filepath}{Character. Path to the CSV file}
+
+\item{skip.lines}{Numeric. Number of header lines to skip (default: 10)}
+}
+\value{
+Data frame with timestamp, x, y, z columns
+}
 \description{
 Load ActiGraph CSV Data
 }

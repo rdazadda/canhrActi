@@ -1,6 +1,6 @@
 Package: canhrActi
-Title: CANHR ActiGraph Physical Activity Analysis with Validated Algorithms
-Version: 0.2.0
+Title: CANHR Accelerometer Physical Activity and Sleep Analysis
+Version: 0.3.0
 Authors@R: c(
     person("Raymond Dacosta", "Azadda",
            email = "rdazadda@alaska.edu",
@@ -16,13 +16,16 @@ Author: Raymond Dacosta Azadda [aut, cre],
     Andrew Grogan-Kaylor [aut],
     KyungSook Lee [aut]
 Maintainer: Raymond Dacosta Azadda <rdazadda@alaska.edu>
-Description: Comprehensive ActiGraph accelerometer data analysis suite developed
-    by the Center for Alaska Native Health Research (CANHR). Implements scientifically
-    validated algorithms including the official ActiGraph activity counts algorithm
-    (Neishabouri et al., 2022), Choi (2011) and Troiano (2007) wear time detection,
-    and Freedson (1998) intensity cut points. Produces results matching ActiLife
-    software. Designed for reproducible physical activity research with comprehensive
-    documentation and user-friendly functions for complete AGD file analysis.
+Description: Comprehensive accelerometer data analysis suite developed by the Center
+    for Alaska Native Health Research (CANHR). Implements scientifically validated
+    algorithms including the official ActiGraph activity counts algorithm (Neishabouri
+    et al., 2022), Choi (2011) and Troiano (2007) wear time detection, Freedson (1998)
+    intensity cut points, Cole-Kripke and Sadeh sleep scoring, and 12 METs prediction
+    algorithms. Features unique wake period inversion (sleepwaker methodology) for
+    separating sleep from waking sedentary behavior. Includes circadian rhythm analysis
+    (L5, M10, IS, IV, cosinor), sedentary fragmentation metrics, and auto-calibration
+    for raw data. Supports ActiGraph (.agd, .gt3x), GENEActiv (.bin), Axivity (.cwa),
+    and generic CSV files. Produces results compatible with ActiLife software.
 License: MIT + file LICENSE
 URL: https://github.com/rdazadda/canhrActi
 BugReports: https://github.com/rdazadda/canhrActi/issues
@@ -31,12 +34,28 @@ Imports:
     gsignal,
     stats,
     utils,
+    tools,
     DBI,
-    RSQLite
+    RSQLite,
+    read.gt3x,
+    agcounts,
+    ggplot2
 Suggests:
     knitr,
     rmarkdown,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    patchwork,
+    plotly,
+    gridExtra,
+    GENEAread,
+    GGIRread,
+    read.cwa,
+    shiny (>= 1.7.0),
+    bslib (>= 0.5.0),
+    bsicons,
+    DT,
+    shinyjs,
+    shinycssloaders
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3

@@ -41,3 +41,6 @@ po/*~
 *_exports/
 exports/
 test_exports/
+
+# Claude Code
+.claude/

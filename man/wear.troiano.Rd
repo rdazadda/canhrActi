@@ -2,7 +2,7 @@
 % Please edit documentation in R/wear_time.R
 \name{wear.troiano}
 \alias{wear.troiano}
-\title{Wear Time (Troiano)}
+\title{Wear Time Detection Using Troiano Algorithm}
 \usage{
 wear.troiano(
   counts_per_minute,
@@ -12,17 +12,23 @@ wear.troiano(
 )
 }
 \arguments{
-\item{counts_per_minute}{Counts per minute}
+\item{counts_per_minute}{Numeric vector of activity counts (one value per epoch)}
 
-\item{non_wear_window}{Consecutive zero minutes for non-wear (default: 60)}
+\item{non_wear_window}{Integer. Consecutive zero minutes for non-wear detection (default: 60)}
 
-\item{spike_tolerance}{Allowed spike minutes in non-wear (default: 2)}
+\item{spike_tolerance}{Integer. Maximum consecutive minutes with activity allowed within non-wear (default: 2)}
 
-\item{spike_stoplevel}{Maximum CPM for spikes (default: 100)}
+\item{spike_stoplevel}{Integer. Maximum count value considered as spike (default: 100)}
 }
 \value{
-Logical vector (TRUE = wear time)
+Logical vector where TRUE indicates wear time, FALSE indicates non-wear
 }
 \description{
-Wear Time (Troiano)
+Troiano et al. (2008) algorithm for detecting non-wear time in accelerometer data.
+Non-wear is defined as 60+ consecutive minutes of zero counts, allowing for up to
+2 consecutive minutes of counts between 1-100 (spikes).
+}
+\references{
+Troiano RP, et al. (2008). Physical activity in the United States measured
+by accelerometer. Medicine and Science in Sports and Exercise, 40(1), 181-188.
 }

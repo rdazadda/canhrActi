@@ -12,6 +12,20 @@ synthetic(
   step.freq = 2
 )
 }
+\arguments{
+\item{duration.hours}{Numeric. Duration of data in hours (default: 24)}
+
+\item{sampling.freq}{Numeric. Sampling frequency in Hz (default: 60)}
+
+\item{add.activity}{Logical. Add activity bouts? (default: TRUE)}
+
+\item{n.bouts}{Numeric. Number of activity bouts (default: 10)}
+
+\item{step.freq}{Numeric. Stepping frequency in Hz (default: 2)}
+}
+\value{
+Data frame with timestamp, x, y, z columns
+}
 \description{
 Generate Synthetic Accelerometer Data
 }

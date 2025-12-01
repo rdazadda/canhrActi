@@ -1,85 +1,85 @@
-
-
-detach("package:canhrActi", unload=TRUE)
-library(canhrActi)
-
+if ("package:canhrActi" %in% search()) detach("package:canhrActi", unload = TRUE)
+library(devtools)
+load_all()
 
 data.dir <- "agd.files"
-agd.files <- list.files(data.dir, pattern = ".agd$", full.names = TRUE)
+agd.files <- list.files(data.dir, pattern = "\\.agd$", full.names = TRUE)
+export.dir <- "test_exports"
 
-agd.data <- read.agd(agd.files[1])
+# Basic AGD Reading
+test.file <- agd.files[1]
+agd.data <- read.agd(test.file)
 counts.data <- agd.counts(agd.data)
-print(head(counts.data, 20))
+print(head(counts.data, 5))
 
-r1 <- canhrActi(agd.files[1],
-                wear_time_algorithm = "choi",
-                intensity_algorithm = "freedson1998")
+# Single File - Full 24h
+r1 <- canhrActi(test.file, wear_time_algorithm = "choi", intensity_algorithm = "freedson1998",
+                calculate_mets = TRUE, calculate_fragmentation = TRUE, calculate_circadian = TRUE)
 print(r1$overall_summary)
-print(r1$intensity_summary)
-print(r1$daily_summary)
+print(r1$fragmentation)
+print(r1$circadian)
 
-export_canhrActi(r1, output_dir = "r1_exports", prefix = "r1")
-print(read.csv("r1_exports/r1_Summary.csv"))
-print(read.csv("r1_exports/r1_DailyDetailed.csv"))
-print(head(read.csv("r1_exports/r1_HourlyDetailed.csv")))
-
-r2 <- canhrActi(agd.files[1],
-                wear_time_algorithm = "troiano",
-                intensity_algorithm = "freedson1998")
+# Single File - Wake Only
+r2 <- canhrActi(test.file, wear_time_algorithm = "choi", intensity_algorithm = "freedson1998",
+                analysis_mode = "wake.only", sleep_algorithm = "cole.kripke",
+                calculate_mets = TRUE, calculate_fragmentation = TRUE, calculate_circadian = TRUE)
 print(r2$overall_summary)
-print(r2$intensity_summary)
-print(r2$daily_summary)
 
-export_canhrActi(r2, output_dir = "r2_exports", prefix = "r2")
-print(read.csv("r2_exports/r2_Summary.csv"))
-print(read.csv("r2_exports/r2_DailyDetailed.csv"))
-print(head(read.csv("r2_exports/r2_HourlyDetailed.csv")))
+# Batch - 24h
+batch1 <- canhrActi.batch(data.dir, wear_time_algorithm = "choi", intensity_algorithm = "freedson1998",
+                          calculate_fragmentation = TRUE, calculate_circadian = TRUE, export = FALSE)
+print(batch1$summary)
 
-r3 <- canhrActi(agd.files[1],
-                wear_time_algorithm = "CANHR2025",
-                intensity_algorithm = "CANHR")
-print(r3$overall_summary)
-print(r3$intensity_summary)
-print(r3$daily_summary)
+# Batch - Wake Only
+batch2 <- canhrActi.batch(data.dir, wear_time_algorithm = "choi", intensity_algorithm = "freedson1998",
+                          analysis_mode = "wake.only", sleep_algorithm = "cole.kripke",
+                          calculate_fragmentation = TRUE, calculate_circadian = TRUE, export = FALSE)
+print(batch2$summary)
 
-export_canhrActi(r3, output_dir = "r3_exports", prefix = "r3")
-print(read.csv("r3_exports/r3_Summary.csv"))
-print(read.csv("r3_exports/r3_DailyDetailed.csv"))
-print(head(read.csv("r3_exports/r3_HourlyDetailed.csv")))
+# METs Algorithms
+test.counts <- data.frame(axis1 = c(500, 1000, 2000, 3000, 5000),
+                          axis2 = c(400, 800, 1600, 2400, 4000),
+                          axis3 = c(300, 600, 1200, 1800, 3000))
+for (alg in c("freedson.vm3", "freedson.adult", "hendelman.adult", "swartz", "yngve.overground")) {
+  print(paste(alg, ":", paste(round(calculate.mets(test.counts, algorithm = alg), 2), collapse = ", ")))
+}
 
-r4 <- canhrActi(agd.files[1],
-                wear_time_algorithm = "choi",
-                intensity_algorithm = "freedson1998",
-                axis_to_analyze = "vector_magnitude")
-print(r4$overall_summary)
-print(r4$intensity_summary)
+# Plots
+plot_activity_profile(r1)
+plot_daily_summary(r1)
+plot_intensity(r1)
+plot_intensity_distribution(r1)
+plot_mvpa_bouts(r1)
+plot_wear_time(r1)
+if (!is.null(r1$circadian)) plot(r1$circadian)
 
-r5 <- canhrActi(agd.files[1],
-                wear_time_algorithm = "choi",
-                intensity_algorithm = "freedson1998",
-                min_wear_hours = 8)
-print(r5$overall_summary)
-print(r5$valid_days)
+# Standalone Functions
 
-r6 <- canhrActi(agd.files[1],
-                wear_time_algorithm = "choi",
-                intensity_algorithm = "CANHR")
-print(r6$overall_summary)
-print(r6$intensity_summary)
+circ <- circadian.rhythm(counts = r1$epoch_data$axis1,
+                         timestamps = r1$epoch_data$timestamp,
+                         wear_time = r1$epoch_data$wear_time)
+print(circ)
 
-r7 <- canhrActi(agd.files[1],
-                wear_time_algorithm = "troiano",
-                intensity_algorithm = "CANHR")
-print(r7$overall_summary)
-print(r7$intensity_summary)
+# Cut Points Comparison
+sample.cpm <- c(50, 100, 500, 1000, 2000, 3000, 5000, 7000, 10000)
+print(data.frame(CPM = sample.cpm, Freedson = as.character(freedson(sample.cpm)),
+                 CANHR = as.character(CANHR.Cutpoints(sample.cpm))))
 
-r8 <- canhrActi(agd.files[1],
-                wear_time_algorithm = "CANHR2025",
-                intensity_algorithm = "freedson1998")
-print(r8$overall_summary)
-print(r8$intensity_summary)
+# Export
+if (!dir.exists(export.dir)) dir.create(export.dir, recursive = TRUE)
+export_canhrActi(r1, output_dir = export.dir, prefix = "test_24h")
+export_canhrActi(batch1, output_dir = export.dir, prefix = "test_batch")
 
-batch <- canhrActi(data.dir,
-                   wear_time_algorithm = "choi",
-                   intensity_algorithm = "freedson1998")
-print(batch$summary)
+# Utility Functions
+sr <- sample.rate(counts.data$timestamp)
+filtered <- filter.time.range(counts.data, start.time = counts.data$timestamp[100],
+                              end.time = counts.data$timestamp[200])
+vd <- valid.days(counts.data$timestamp, wear.choi(counts.data$axis1), min.wear.hours = 10)
+print(vd)
+
+# Sleep Detection
+sleep <- canhrActi.sleep(test.file, sleep_algorithm = "cole.kripke")
+print(sleep)
+print(sleep$summary)
+print(sleep$results[[1]]$sleep_periods)
+plot_sleep(sleep)

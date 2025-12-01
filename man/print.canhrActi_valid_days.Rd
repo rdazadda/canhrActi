@@ -6,6 +6,11 @@
 \usage{
 \method{print}{canhrActi_valid_days}(x, ...)
 }
+\arguments{
+\item{x}{Object of class 'canhrActi_valid_days'}
+
+\item{...}{Additional arguments (unused)}
+}
 \description{
 Print Method for Valid Days Results
 }

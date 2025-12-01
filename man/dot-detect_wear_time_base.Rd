@@ -16,7 +16,7 @@
 \arguments{
 \item{counts_per_minute}{Numeric vector of counts per minute}
 
-\item{non_wear_window}{Window length in minutes}
+\item{non_wear_window}{Window length in minutes (epochs)}
 
 \item{spike_tolerance}{Maximum consecutive minutes with activity allowed}
 

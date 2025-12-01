@@ -6,6 +6,14 @@
 \usage{
 confusion.metrics(reference, predicted)
 }
+\arguments{
+\item{reference}{Logical or numeric vector of true values}
+
+\item{predicted}{Logical or numeric vector of predicted values}
+}
+\value{
+List with sensitivity, specificity, accuracy, precision, F1
+}
 \description{
 Confusion Matrix Metrics (binary)
 }

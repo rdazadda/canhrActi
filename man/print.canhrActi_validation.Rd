@@ -6,6 +6,11 @@
 \usage{
 \method{print}{canhrActi_validation}(x, ...)
 }
+\arguments{
+\item{x}{Object of class 'canhrActi_validation'}
+
+\item{...}{Additional arguments (unused)}
+}
 \description{
 Print Method for Validation Metrics
 }

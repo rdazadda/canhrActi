@@ -6,6 +6,11 @@
 \usage{
 \method{print}{canhrActi_results}(x, ...)
 }
+\arguments{
+\item{x}{Object of class 'canhrActi_results'}
+
+\item{...}{Additional arguments (unused)}
+}
 \description{
 Print Method for canhrActi Results
 }

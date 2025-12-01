@@ -1,4 +1,13 @@
 #' Generate Synthetic Accelerometer Data
+#'
+#' @param duration.hours Numeric. Duration of data in hours (default: 24)
+#' @param sampling.freq Numeric. Sampling frequency in Hz (default: 60)
+#' @param add.activity Logical. Add activity bouts? (default: TRUE)
+#' @param n.bouts Numeric. Number of activity bouts (default: 10)
+#' @param step.freq Numeric. Stepping frequency in Hz (default: 2)
+#'
+#' @return Data frame with timestamp, x, y, z columns
+#'
 #' @export
 synthetic <- function(duration.hours = 24,
                                     sampling.freq = 60,
@@ -24,6 +33,12 @@ synthetic <- function(duration.hours = 24,
 }
 
 #' Load ActiGraph CSV Data
+#'
+#' @param filepath Character. Path to the CSV file
+#' @param skip.lines Numeric. Number of header lines to skip (default: 10)
+#'
+#' @return Data frame with timestamp, x, y, z columns
+#'
 #' @export
 load.actigraph.csv <- function(filepath, skip.lines = 10) {
   if (!file.exists(filepath)) stop(sprintf("File not found: %s", filepath))
@@ -54,6 +69,11 @@ load.actigraph.csv <- function(filepath, skip.lines = 10) {
 }
 
 #' Detect Sampling Frequency from timestamps
+#'
+#' @param timestamps POSIXct vector of timestamps
+#'
+#' @return Numeric. Detected sampling frequency in Hz
+#'
 #' @export
 sample.rate <- function(timestamps) {
   if (length(timestamps) < 2) stop("Need at least 2 timestamps")
@@ -61,9 +81,16 @@ sample.rate <- function(timestamps) {
   round(1 / median(intervals))
 }
 
-#' Subset Accelerometer Data by Time
+#' Filter Accelerometer Data by Time Range
+#'
+#' @param accel.data Data frame with timestamp column
+#' @param start.time POSIXct or character. Start time for filter
+#' @param end.time POSIXct or character. End time for filter
+#'
+#' @return Data frame filtered to the specified time range
+#'
 #' @export
-subset.time <- function(accel.data, start.time, end.time) {
+filter.time.range <- function(accel.data, start.time, end.time) {
   if (!"timestamp" %in% names(accel.data)) stop("Data must have a 'timestamp' column")
   if (is.character(start.time)) start.time <- as.POSIXct(start.time)
   if (is.character(end.time)) end.time <- as.POSIXct(end.time)
@@ -71,6 +98,11 @@ subset.time <- function(accel.data, start.time, end.time) {
 }
 
 #' Calculate Data Quality Metrics
+#'
+#' @param accel.data Data frame with x, y, z columns
+#'
+#' @return List with quality metrics (n.samples, missing counts, outliers)
+#'
 #' @export
 quality <- function(accel.data) {
   required <- c("x","y","z")
@@ -156,6 +188,10 @@ valid.days <- function(timestamps, wear_time, min.wear.hours = 10) {
 }
 
 #' Print Method for Valid Days Results
+#'
+#' @param x Object of class 'canhrActi_valid_days'
+#' @param ... Additional arguments (unused)
+#'
 #' @export
 print.canhrActi_valid_days <- function(x, ...) {
   cat("\nValid Day Detection\n")

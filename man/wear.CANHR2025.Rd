@@ -2,7 +2,7 @@
 % Please edit documentation in R/wear_time.R
 \name{wear.CANHR2025}
 \alias{wear.CANHR2025}
-\title{Detect Wear Time Using CANHR 2025 Algorithm}
+\title{Wear Time Detection Using CANHR 2025 Algorithm}
 \usage{
 wear.CANHR2025(
   counts_per_minute,
@@ -14,23 +14,23 @@ wear.CANHR2025(
 )
 }
 \arguments{
-\item{counts_per_minute}{Numeric vector of counts per minute}
+\item{counts_per_minute}{Numeric vector of activity counts (one value per epoch)}
 
 \item{non_wear_window}{Integer. Window length in minutes (default: 120)}
 
 \item{spike_tolerance}{Integer. Maximum consecutive minutes with activity allowed (default: 3)}
 
-\item{min_spike_length}{Integer. Minimum length of spike (default: 1, not used in current implementation)}
+\item{min_spike_length}{Integer. Minimum length of spike (default: 1, reserved for future use)}
 
 \item{spike_stoplevel}{Integer. Maximum count value for spike (default: 150)}
 
 \item{min_window_len}{Integer. Upstream/downstream window length in minutes (default: 45)}
 }
 \value{
-Logical vector where TRUE indicates wear time
+Logical vector where TRUE indicates wear time, FALSE indicates non-wear
 }
 \description{
 CANHR 2025 algorithm with upstream/downstream window validation.
-The CANHR 2025 algorithm extends Choi by using custom parameters
-optimized for specific study populations.
+Based on Choi algorithm with parameters optimized for Alaska Native populations
+and cold climate activity patterns.
 }

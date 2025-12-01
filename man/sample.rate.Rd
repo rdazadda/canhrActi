@@ -6,6 +6,12 @@
 \usage{
 sample.rate(timestamps)
 }
+\arguments{
+\item{timestamps}{POSIXct vector of timestamps}
+}
+\value{
+Numeric. Detected sampling frequency in Hz
+}
 \description{
 Detect Sampling Frequency from timestamps
 }

@@ -5,6 +5,6 @@ account: rdazadda
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 16209925
-bundleId:
+bundleId: 11259374
 url: https://rdazadda.shinyapps.io/canhrActi/
 version: 1

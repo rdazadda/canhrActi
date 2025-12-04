@@ -1,11 +1,48 @@
+# Tests for to_cpm function
+test_that("to_cpm converts 60-second epochs correctly (no change)", {
+  counts <- c(100, 500, 1000)
+  result <- to_cpm(counts, epoch_length = 60)
+  expect_equal(result, counts)
+})
+
+test_that("to_cpm converts 30-second epochs correctly", {
+  counts <- c(50, 250, 500)  # Counts per 30-sec epoch
+  result <- to_cpm(counts, epoch_length = 30)
+  expect_equal(result, c(100, 500, 1000))  # Should double
+})
+
+test_that("to_cpm converts 15-second epochs correctly", {
+  counts <- c(25, 125, 250)  # Counts per 15-sec epoch
+  result <- to_cpm(counts, epoch_length = 15)
+  expect_equal(result, c(100, 500, 1000))  # Should quadruple
+})
+
+test_that("to_cpm converts 10-second epochs correctly", {
+  counts <- c(100, 500, 1000)  # Counts per 10-sec epoch
+  result <- to_cpm(counts, epoch_length = 10)
+  expect_equal(result, c(600, 3000, 6000))  # Should multiply by 6
+})
+
+test_that("to_cpm validates input", {
+  expect_error(to_cpm("not numeric", 60), "numeric")
+  expect_error(to_cpm(c(100, 200), 0), "positive")
+  expect_error(to_cpm(c(100, 200), -10), "positive")
+})
+
+test_that("to_cpm handles empty input", {
+  result <- to_cpm(numeric(0), epoch_length = 60)
+  expect_equal(length(result), 0)
+})
+
+# Tests for freedson cutpoints (using ActiLife-standard thresholds)
 test_that("freedson classifies sedentary correctly", {
-  counts <- c(0, 50, 99)
+  counts <- c(0, 50, 100)  # 0-100 CPM is sedentary
   result <- freedson(counts)
   expect_true(all(result == "sedentary"))
 })
 
 test_that("freedson classifies light correctly", {
-  counts <- c(100, 1000, 1951)
+  counts <- c(101, 1000, 1951)  # 101-1951 CPM is light
   result <- freedson(counts)
   expect_true(all(result == "light"))
 })
@@ -28,11 +65,11 @@ test_that("freedson classifies very vigorous correctly", {
   expect_true(all(result == "very_vigorous"))
 })
 
-test_that("freedson handles boundary values at 99-100", {
-  counts <- c(99, 100)
+test_that("freedson handles boundary values at 100-101", {
+  counts <- c(100, 101)
   result <- freedson(counts)
-  expect_equal(as.character(result[1]), "sedentary")
-  expect_equal(as.character(result[2]), "light")
+  expect_equal(as.character(result[1]), "sedentary")  # 100 CPM = sedentary
+  expect_equal(as.character(result[2]), "light")       # 101 CPM = light
 })
 
 test_that("freedson handles boundary values at 1951-1952", {

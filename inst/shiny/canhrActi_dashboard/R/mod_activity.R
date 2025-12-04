@@ -351,6 +351,11 @@ mod_activity_server <- function(id, shared) {
           setProgress(value = i / n_files, detail = detail_msg)
 
           counts <- data$axis1
+          epoch_length <- f$epoch_length
+
+          # Convert counts to CPM (counts per minute) for cutpoint analysis
+          # Freedson and other cutpoints are calibrated for 60-second epochs
+          cpm <- canhrActi::to_cpm(counts, epoch_length)
 
           # Start with wear time mask if available and enabled
           analysis_mask <- rep(TRUE, length(counts))
@@ -358,13 +363,13 @@ mod_activity_server <- function(id, shared) {
             analysis_mask <- wt_results[[fid]]$wear
           }
 
-          # Apply mask to get valid counts
-          valid_counts <- counts[analysis_mask]
+          # Apply mask to get valid CPM values
+          valid_cpm <- cpm[analysis_mask]
           intensity <- tryCatch({
             if (input$cut_points == "freedson") {
-              canhrActi::freedson(valid_counts)
+              canhrActi::freedson(valid_cpm)
             } else {
-              canhrActi::CANHR.Cutpoints(valid_counts)
+              canhrActi::CANHR.Cutpoints(valid_cpm)
             }
           }, error = function(e) {
             showNotification(paste("Error in", f$name, ":", e$message), type = "error")
@@ -754,13 +759,13 @@ mod_activity_server <- function(id, shared) {
             `Axis 1 Max Counts` = max(axis1, na.rm = TRUE),
             `Axis 2 Max Counts` = max(axis2, na.rm = TRUE),
             `Axis 3 Max Counts` = max(axis3, na.rm = TRUE),
-            `Axis 1 CPM` = round(mean(axis1, na.rm = TRUE), 1),
-            `Axis 2 CPM` = round(mean(axis2, na.rm = TRUE), 1),
-            `Axis 3 CPM` = round(mean(axis3, na.rm = TRUE), 1),
+            `Axis 1 CPM` = round(mean(axis1, na.rm = TRUE) * (60 / epoch_sec), 1),
+            `Axis 2 CPM` = round(mean(axis2, na.rm = TRUE) * (60 / epoch_sec), 1),
+            `Axis 3 CPM` = round(mean(axis3, na.rm = TRUE) * (60 / epoch_sec), 1),
             `Vector Magnitude Counts` = round(sum(vm, na.rm = TRUE), 1),
             `Vector Magnitude Average Counts` = round(mean(vm, na.rm = TRUE), 1),
             `Vector Magnitude Max Counts` = round(max(vm, na.rm = TRUE), 1),
-            `Vector Magnitude CPM` = round(mean(vm, na.rm = TRUE), 1),
+            `Vector Magnitude CPM` = round(mean(vm, na.rm = TRUE) * (60 / epoch_sec), 1),
             `Steps Counts` = sum(steps, na.rm = TRUE),
             `Steps Average Counts` = round(mean(steps, na.rm = TRUE), 1),
             `Steps Max Counts` = max(steps, na.rm = TRUE),
@@ -820,12 +825,13 @@ mod_activity_server <- function(id, shared) {
               steps <- if ("steps" %in% names(day_data)) day_data$steps else rep(0, n_epochs)
               vm <- sqrt(axis1^2 + axis2^2 + axis3^2)
 
-              # Get intensity for this day from the result
+              # Convert to CPM and get intensity for this day
+              day_cpm <- canhrActi::to_cpm(axis1, epoch_sec)
               day_intensity <- tryCatch({
                 if (input$cut_points == "freedson") {
-                  canhrActi::freedson(axis1)
+                  canhrActi::freedson(day_cpm)
                 } else {
-                  canhrActi::CANHR.Cutpoints(axis1)
+                  canhrActi::CANHR.Cutpoints(day_cpm)
                 }
               }, error = function(e) rep("sedentary", n_epochs))
 
@@ -875,13 +881,13 @@ mod_activity_server <- function(id, shared) {
                 `Axis 1 Max Counts` = max(axis1, na.rm = TRUE),
                 `Axis 2 Max Counts` = max(axis2, na.rm = TRUE),
                 `Axis 3 Max Counts` = max(axis3, na.rm = TRUE),
-                `Axis 1 CPM` = round(mean(axis1, na.rm = TRUE), 1),
-                `Axis 2 CPM` = round(mean(axis2, na.rm = TRUE), 1),
-                `Axis 3 CPM` = round(mean(axis3, na.rm = TRUE), 1),
+                `Axis 1 CPM` = round(mean(axis1, na.rm = TRUE) * (60 / epoch_sec), 1),
+                `Axis 2 CPM` = round(mean(axis2, na.rm = TRUE) * (60 / epoch_sec), 1),
+                `Axis 3 CPM` = round(mean(axis3, na.rm = TRUE) * (60 / epoch_sec), 1),
                 `Vector Magnitude Counts` = round(sum(vm, na.rm = TRUE), 1),
                 `Vector Magnitude Average Counts` = round(mean(vm, na.rm = TRUE), 1),
                 `Vector Magnitude Max Counts` = round(max(vm, na.rm = TRUE), 1),
-                `Vector Magnitude CPM` = round(mean(vm, na.rm = TRUE), 1),
+                `Vector Magnitude CPM` = round(mean(vm, na.rm = TRUE) * (60 / epoch_sec), 1),
                 `Steps Counts` = sum(steps, na.rm = TRUE),
                 `Steps Average Counts` = round(mean(steps, na.rm = TRUE), 1),
                 `Steps Max Counts` = max(steps, na.rm = TRUE),
@@ -953,11 +959,13 @@ mod_activity_server <- function(id, shared) {
                 steps <- if ("steps" %in% names(hour_data)) hour_data$steps else rep(0, n_epochs)
                 vm <- sqrt(axis1^2 + axis2^2 + axis3^2)
 
+                # Convert to CPM for intensity classification
+                hour_cpm <- canhrActi::to_cpm(axis1, epoch_sec)
                 hour_intensity <- tryCatch({
                   if (input$cut_points == "freedson") {
-                    canhrActi::freedson(axis1)
+                    canhrActi::freedson(hour_cpm)
                   } else {
-                    canhrActi::CANHR.Cutpoints(axis1)
+                    canhrActi::CANHR.Cutpoints(hour_cpm)
                   }
                 }, error = function(e) rep("sedentary", n_epochs))
 
@@ -1007,13 +1015,13 @@ mod_activity_server <- function(id, shared) {
                   `Axis 1 Max Counts` = max(axis1, na.rm = TRUE),
                   `Axis 2 Max Counts` = max(axis2, na.rm = TRUE),
                   `Axis 3 Max Counts` = max(axis3, na.rm = TRUE),
-                  `Axis 1 CPM` = round(mean(axis1, na.rm = TRUE), 1),
-                  `Axis 2 CPM` = round(mean(axis2, na.rm = TRUE), 1),
-                  `Axis 3 CPM` = round(mean(axis3, na.rm = TRUE), 1),
+                  `Axis 1 CPM` = round(mean(axis1, na.rm = TRUE) * (60 / epoch_sec), 1),
+                  `Axis 2 CPM` = round(mean(axis2, na.rm = TRUE) * (60 / epoch_sec), 1),
+                  `Axis 3 CPM` = round(mean(axis3, na.rm = TRUE) * (60 / epoch_sec), 1),
                   `Vector Magnitude Counts` = round(sum(vm, na.rm = TRUE), 1),
                   `Vector Magnitude Average Counts` = round(mean(vm, na.rm = TRUE), 1),
                   `Vector Magnitude Max Counts` = round(max(vm, na.rm = TRUE), 1),
-                  `Vector Magnitude CPM` = round(mean(vm, na.rm = TRUE), 1),
+                  `Vector Magnitude CPM` = round(mean(vm, na.rm = TRUE) * (60 / epoch_sec), 1),
                   `Steps Counts` = sum(steps, na.rm = TRUE),
                   `Steps Average Counts` = round(mean(steps, na.rm = TRUE), 1),
                   `Steps Max Counts` = max(steps, na.rm = TRUE),

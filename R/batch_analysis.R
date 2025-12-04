@@ -450,12 +450,13 @@ canhrActi.batch <- function(files,
     lux_avg <- if ("lux" %in% names(raw_data)) mean(raw_data$lux, na.rm = TRUE) else NA
     lux_max <- if ("lux" %in% names(raw_data)) max(raw_data$lux, na.rm = TRUE) else NA
 
-    # Intensity classification
+    # Intensity classification - convert counts to CPM first
     counts <- if (axis_to_analyze == "axis1") raw_data$axis1 else vm
+    cpm <- to_cpm(counts, epoch_len)
     intensity <- if (intensity_algorithm == "freedson1998") {
-      freedson(counts)
+      freedson(cpm)
     } else {
-      CANHR.Cutpoints(counts)
+      CANHR.Cutpoints(cpm)
     }
 
     # Calculate time in each intensity
@@ -512,13 +513,13 @@ canhrActi.batch <- function(files,
       "Axis 1 Max Counts" = axis1_max,
       "Axis 2 Max Counts" = axis2_max,
       "Axis 3 Max Counts" = axis3_max,
-      "Axis 1 CPM" = round(axis1_avg, 1),
-      "Axis 2 CPM" = round(axis2_avg, 1),
-      "Axis 3 CPM" = round(axis3_avg, 1),
+      "Axis 1 CPM" = round(axis1_avg * (60 / epoch_len), 1),
+      "Axis 2 CPM" = round(axis2_avg * (60 / epoch_len), 1),
+      "Axis 3 CPM" = round(axis3_avg * (60 / epoch_len), 1),
       "Vector Magnitude Counts" = round(vm_total, 1),
       "Vector Magnitude Average Counts" = round(vm_avg, 1),
       "Vector Magnitude Max Counts" = round(vm_max, 1),
-      "Vector Magnitude CPM" = round(vm_avg, 1),
+      "Vector Magnitude CPM" = round(vm_avg * (60 / epoch_len), 1),
       "Steps Counts" = steps_total,
       "Steps Average Counts" = round(steps_avg, 1),
       "Steps Max Counts" = steps_max,

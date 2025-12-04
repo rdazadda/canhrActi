@@ -104,8 +104,8 @@
 #' \itemize{
 #'   \item \strong{Freedson (1998):} Validated cut points for adults worn at hip
 #'     \itemize{
-#'       \item Sedentary: 0-99 CPM
-#'       \item Light: 100-1951 CPM
+#'       \item Sedentary: 0-100 CPM
+#'       \item Light: 101-1951 CPM
 #'       \item Moderate: 1952-5724 CPM
 #'       \item Vigorous: 5725-9498 CPM
 #'       \item Very Vigorous: >=9499 CPM
@@ -341,6 +341,23 @@ canhrActi <- function(agd_file_path,
   counts.data <- agd.counts(agd.data)
   subject_info <- extract.subject.info(agd.data)
 
+  # Determine epoch length from settings or data
+  epoch_length <- 60  # default
+  if (!is.null(agd.data$settings) && is.data.frame(agd.data$settings)) {
+    epoch_val <- agd.data$settings$settingValue[tolower(agd.data$settings$settingName) == "epochlength"]
+    if (length(epoch_val) > 0 && !is.na(epoch_val[1])) {
+      epoch_length <- as.numeric(epoch_val[1])
+    }
+  }
+  # Fallback: calculate from timestamps if we have at least 2 rows
+  if (epoch_length <= 0 && nrow(counts.data) > 1) {
+    time_diff <- as.numeric(difftime(counts.data$timestamp[2], counts.data$timestamp[1], units = "secs"))
+    if (!is.na(time_diff) && time_diff > 0) {
+      epoch_length <- round(time_diff)
+    }
+  }
+  if (is.na(epoch_length) || epoch_length <= 0) epoch_length <- 60
+
   if (axis_to_analyze == "axis1") {
     counts.for.analysis <- counts.data$axis1
   } else {
@@ -360,14 +377,18 @@ canhrActi <- function(agd_file_path,
   wear.percent <- 100 * wear.minutes / length(wear.time)
 
   # Extract wear time periods (start/end timestamps for continuous wear)
-  wear.time.periods <- get.wear.periods(wear.time, counts.data$timestamp, epoch_length = 60)
+  wear.time.periods <- get.wear.periods(wear.time, counts.data$timestamp, epoch_length = epoch_length)
+
+  # Convert counts to CPM for cutpoint analysis
+  # Freedson and other cutpoints are calibrated for 60-second epochs
+  cpm.for.analysis <- to_cpm(counts.for.analysis, epoch_length)
 
   if (intensity_algorithm == "freedson1998") {
-    intensity <- freedson(counts.for.analysis)
+    intensity <- freedson(cpm.for.analysis)
   } else if (intensity_algorithm == "CANHR") {
-    intensity <- CANHR.Cutpoints(counts.for.analysis)
+    intensity <- CANHR.Cutpoints(cpm.for.analysis)
   } else {
-    intensity <- CANHR.Cutpoints(counts.for.analysis)
+    intensity <- CANHR.Cutpoints(cpm.for.analysis)
   }
 
   # Sleep/Wake Analysis (Phase 2 Integration)
@@ -476,7 +497,7 @@ canhrActi <- function(agd_file_path,
                           subject_info = subject_info, verbose = FALSE)
 
     body_mass <- extract.body.mass(subject_info)
-    ee <- calculate.energy.expenditure(mets, body_mass, epoch_length = 60)
+    ee <- calculate.energy.expenditure(mets, body_mass, epoch_length = epoch_length)
     kcal_per_epoch <- ee$kcal_per_epoch
 
     mets_avg <- calculate.average.mets(mets, wear.time, counts.data$timestamp)
@@ -662,7 +683,7 @@ canhrActi <- function(agd_file_path,
         counts = epoch.data$axis1,
         timestamps = epoch.data$timestamp,
         wear_time = epoch.data$wear_time,
-        epoch_length = 60
+        epoch_length = epoch_length
       )
     }, error = function(e) {
       if (output_summary) warning("Circadian calculation failed: ", e$message)
@@ -686,6 +707,7 @@ canhrActi <- function(agd_file_path,
     circadian = circadian_results,
     parameters = list(
       file_path = agd_file_path,
+      epoch_length = epoch_length,
       wear_time_algorithm = wear_time_algorithm,
       intensity_algorithm = intensity_algorithm,
       axis_analyzed = axis_to_analyze,

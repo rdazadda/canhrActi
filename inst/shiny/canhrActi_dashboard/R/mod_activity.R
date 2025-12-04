@@ -826,8 +826,13 @@ mod_activity_server <- function(id, shared) {
       }
 
       if (nrow(all_dist) == 0) {
-        return(NULL)
-      }
+        # Show message when no fragmentation data
+        ggplot2::ggplot() +
+          ggplot2::annotate("text", x = 0.5, y = 0.5,
+                           label = "No sedentary fragmentation data available.\nRun 'Score Physical Activity' first.",
+                           size = 5, hjust = 0.5) +
+          ggplot2::theme_void()
+      } else {
 
       # Aggregate across subjects
       agg_dist <- aggregate(count ~ category, all_dist, sum)
@@ -849,6 +854,7 @@ mod_activity_server <- function(id, shared) {
           plot.title = ggplot2::element_text(face = "bold"),
           axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
         )
+      }
     })
 
     # Sedentary accumulation curve
@@ -867,9 +873,13 @@ mod_activity_server <- function(id, shared) {
       }
 
       if (nrow(all_bouts) == 0) {
-        return(NULL)
-      }
-
+        # Show message when no fragmentation data
+        ggplot2::ggplot() +
+          ggplot2::annotate("text", x = 0.5, y = 0.5,
+                           label = "No sedentary bout data available.\nRun 'Score Physical Activity' first.",
+                           size = 5, hjust = 0.5) +
+          ggplot2::theme_void()
+      } else {
       # Sort by duration descending
       all_bouts <- all_bouts[order(all_bouts$duration_min, decreasing = TRUE), ]
       total_sed_time <- sum(all_bouts$duration_min)
@@ -896,6 +906,7 @@ mod_activity_server <- function(id, shared) {
         ggplot2::scale_y_continuous(limits = c(0, 100)) +
         ggplot2::theme_minimal(base_size = 11) +
         ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"))
+      }
     })
 
     # Fragmentation summary table

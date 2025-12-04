@@ -212,9 +212,9 @@ mod_circadian_server <- function(id, shared) {
 
           if (is.null(res)) next
 
-          # Extract cosinor results
+          # Extract cosinor results (note: MESOR is uppercase in circadian.rhythm output)
           cosinor <- res$cosinor
-          mesor <- if (!is.null(cosinor)) cosinor$mesor else NA
+          mesor <- if (!is.null(cosinor)) cosinor$MESOR else NA
           amplitude <- if (!is.null(cosinor)) cosinor$amplitude else NA
           acrophase <- if (!is.null(cosinor)) cosinor$acrophase else NA
 

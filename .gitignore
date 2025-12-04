@@ -42,5 +42,3 @@ po/*~
 exports/
 test_exports/
 
-# Claude Code local settings
-.claude/

@@ -55,6 +55,7 @@ ui <- dashboardPage(
                badgeLabel = "Start", badgeColor = "yellow"),
       menuItem("Wear Time Validation", tabName = "wear_time", icon = icon("clock")),
       menuItem("Physical Activity", tabName = "activity", icon = icon("running")),
+      menuItem("Sedentary Fragmentation", tabName = "sedentary", icon = icon("couch")),
       menuItem("Sleep Analysis", tabName = "sleep", icon = icon("moon")),
       menuItem("Circadian Rhythm", tabName = "circadian", icon = icon("sun"))
     ),
@@ -100,6 +101,7 @@ ui <- dashboardPage(
       tabItem(tabName = "upload", mod_upload_ui("upload")),
       tabItem(tabName = "wear_time", mod_wear_time_ui("wear_time")),
       tabItem(tabName = "activity", mod_activity_ui("activity")),
+      tabItem(tabName = "sedentary", mod_sedentary_ui("sedentary")),
       tabItem(tabName = "sleep", mod_sleep_ui("sleep")),
       tabItem(tabName = "circadian", mod_circadian_ui("circadian"))
     )
@@ -118,6 +120,7 @@ server <- function(input, output, session) {
       wear_time = list(),
       sleep = list(),
       activity = list(),
+      sedentary = list(),
       circadian = list(),
       energy = list()
     )
@@ -127,6 +130,7 @@ server <- function(input, output, session) {
   mod_wear_time_server("wear_time", shared)
   mod_sleep_server("sleep", shared)
   mod_activity_server("activity", shared)
+  mod_sedentary_server("sedentary", shared)
   mod_circadian_server("circadian", shared)
 }
 

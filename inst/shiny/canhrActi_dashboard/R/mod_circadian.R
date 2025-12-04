@@ -31,13 +31,29 @@ mod_circadian_ui <- function(id) {
       )
     ),
 
-    # Key metrics at top - 5 value boxes
+    # Key metrics at top - Non-parametric metrics
     fluidRow(
       valueBoxOutput(ns("vb_l5"), width = 2),
       valueBoxOutput(ns("vb_m10"), width = 3),
       valueBoxOutput(ns("vb_ra"), width = 3),
       valueBoxOutput(ns("vb_is"), width = 2),
       valueBoxOutput(ns("vb_iv"), width = 2)
+    ),
+
+    # Cosinor metrics row
+    fluidRow(
+      column(
+        width = 12,
+        div(
+          style = "background: linear-gradient(135deg, #6f42c1 0%, #4a2c7a 100%); color: white; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px;",
+          span(icon("wave-square"), " ", strong("Cosinor Analysis"), " - Parametric rhythm fitting")
+        )
+      )
+    ),
+    fluidRow(
+      valueBoxOutput(ns("vb_mesor"), width = 4),
+      valueBoxOutput(ns("vb_amplitude"), width = 4),
+      valueBoxOutput(ns("vb_acrophase"), width = 4)
     ),
 
     fluidRow(
@@ -79,6 +95,7 @@ mod_circadian_ui <- function(id) {
           status = "info", width = NULL, collapsible = TRUE, collapsed = TRUE,
           div(
             style = "font-size: 11px; line-height: 1.8;",
+            tags$p(tags$strong("Non-Parametric Metrics:")),
             tags$p(tags$span(style = "color: #236192; font-weight: 600;", "L5:"),
                   " Avg activity during least active 5 hours"),
             tags$p(tags$span(style = "color: #236192; font-weight: 600;", "M10:"),
@@ -88,7 +105,15 @@ mod_circadian_ui <- function(id) {
             tags$p(tags$span(style = "color: #28a745; font-weight: 600;", "IS:"),
                   " Interdaily stability (0-1, higher = consistent)"),
             tags$p(tags$span(style = "color: #dc3545; font-weight: 600;", "IV:"),
-                  " Intradaily variability (lower = smoother)")
+                  " Intradaily variability (lower = smoother)"),
+            tags$hr(style = "margin: 8px 0;"),
+            tags$p(tags$strong("Cosinor Parameters:")),
+            tags$p(tags$span(style = "color: #6f42c1; font-weight: 600;", "MESOR:"),
+                  " Midline estimating statistic of rhythm (mean level)"),
+            tags$p(tags$span(style = "color: #6f42c1; font-weight: 600;", "Amplitude:"),
+                  " Half peak-to-trough difference (rhythm strength)"),
+            tags$p(tags$span(style = "color: #6f42c1; font-weight: 600;", "Acrophase:"),
+                  " Time of peak activity (hours from midnight)")
           )
         )
       ),
@@ -187,6 +212,12 @@ mod_circadian_server <- function(id, shared) {
 
           if (is.null(res)) next
 
+          # Extract cosinor results
+          cosinor <- res$cosinor
+          mesor <- if (!is.null(cosinor)) cosinor$mesor else NA
+          amplitude <- if (!is.null(cosinor)) cosinor$amplitude else NA
+          acrophase <- if (!is.null(cosinor)) cosinor$acrophase else NA
+
           all_results[[fid]] <- list(
             file_id = fid,
             name = f$name,
@@ -198,6 +229,9 @@ mod_circadian_server <- function(id, shared) {
             RA = res$RA,
             IS = res$IS,
             IV = res$IV,
+            mesor = mesor,
+            amplitude = amplitude,
+            acrophase = acrophase,
             hourly_profile = res$hourly_profile
           )
         }
@@ -229,7 +263,10 @@ mod_circadian_server <- function(id, shared) {
           M10 = mean(sapply(res, function(r) r$M10), na.rm = TRUE),
           RA = mean(sapply(res, function(r) r$RA), na.rm = TRUE),
           IS = mean(sapply(res, function(r) r$IS), na.rm = TRUE),
-          IV = mean(sapply(res, function(r) r$IV), na.rm = TRUE)
+          IV = mean(sapply(res, function(r) r$IV), na.rm = TRUE),
+          mesor = mean(sapply(res, function(r) r$mesor), na.rm = TRUE),
+          amplitude = mean(sapply(res, function(r) r$amplitude), na.rm = TRUE),
+          acrophase = mean(sapply(res, function(r) r$acrophase), na.rm = TRUE)
         )
       } else if (sel %in% names(res)) {
         r <- res[[sel]]
@@ -242,7 +279,10 @@ mod_circadian_server <- function(id, shared) {
           M10_start = r$M10_start,
           RA = r$RA,
           IS = r$IS,
-          IV = r$IV
+          IV = r$IV,
+          mesor = r$mesor,
+          amplitude = r$amplitude,
+          acrophase = r$acrophase
         )
       } else {
         NULL
@@ -278,6 +318,34 @@ mod_circadian_server <- function(id, shared) {
       cd <- current_data()
       val <- if (is.null(cd) || is.na(cd$IV)) "--" else sprintf("%.2f", cd$IV)
       valueBox(val, "IV", icon = icon("chart-line"), color = "purple")
+    })
+
+    # Cosinor value boxes
+    output$vb_mesor <- renderValueBox({
+      cd <- current_data()
+      val <- if (is.null(cd) || is.na(cd$mesor)) "--" else round(cd$mesor)
+      valueBox(val, "MESOR (Mean Level)", icon = icon("minus"), color = "purple")
+    })
+
+    output$vb_amplitude <- renderValueBox({
+      cd <- current_data()
+      val <- if (is.null(cd) || is.na(cd$amplitude)) "--" else round(cd$amplitude)
+      valueBox(val, "Amplitude (Rhythm Strength)", icon = icon("arrows-alt-v"), color = "purple")
+    })
+
+    output$vb_acrophase <- renderValueBox({
+      cd <- current_data()
+      if (is.null(cd) || is.na(cd$acrophase)) {
+        val <- "--"
+        subtitle <- "Acrophase (Peak Time)"
+      } else {
+        # Convert decimal hours to HH:MM format
+        hours <- floor(cd$acrophase)
+        minutes <- round((cd$acrophase - hours) * 60)
+        val <- sprintf("%02d:%02d", hours, minutes)
+        subtitle <- "Acrophase (Peak Time)"
+      }
+      valueBox(val, subtitle, icon = icon("clock"), color = "purple")
     })
 
     # Profile plot
@@ -343,6 +411,14 @@ mod_circadian_server <- function(id, shared) {
         return(DT::datatable(data.frame(Message = "Run analysis to see results"), rownames = FALSE))
       }
 
+      # Format acrophase as HH:MM
+      format_acrophase <- function(acro) {
+        if (is.na(acro)) return("--")
+        hours <- floor(acro)
+        minutes <- round((acro - hours) * 60)
+        sprintf("%02d:%02d", hours, minutes)
+      }
+
       df <- data.frame(
         Subject = sapply(res, function(r) r$subject_id),
         File = sapply(res, function(r) r$name),
@@ -353,6 +429,9 @@ mod_circadian_server <- function(id, shared) {
         RA = sapply(res, function(r) round(r$RA, 3)),
         IS = sapply(res, function(r) round(r$IS, 3)),
         IV = sapply(res, function(r) round(r$IV, 3)),
+        MESOR = sapply(res, function(r) if (is.na(r$mesor)) NA else round(r$mesor)),
+        Amplitude = sapply(res, function(r) if (is.na(r$amplitude)) NA else round(r$amplitude)),
+        Acrophase = sapply(res, function(r) format_acrophase(r$acrophase)),
         stringsAsFactors = FALSE
       )
 
@@ -360,6 +439,9 @@ mod_circadian_server <- function(id, shared) {
         df,
         options = list(pageLength = 10, scrollX = TRUE, dom = 'tip'),
         rownames = FALSE
+      ) |> DT::formatStyle(
+        columns = c("MESOR", "Amplitude", "Acrophase"),
+        backgroundColor = "#f3e8ff"
       )
     })
 
@@ -382,6 +464,9 @@ mod_circadian_server <- function(id, shared) {
           RA = sapply(res, function(r) r$RA),
           IS = sapply(res, function(r) r$IS),
           IV = sapply(res, function(r) r$IV),
+          mesor = sapply(res, function(r) r$mesor),
+          amplitude = sapply(res, function(r) r$amplitude),
+          acrophase_hours = sapply(res, function(r) r$acrophase),
           stringsAsFactors = FALSE
         )
 

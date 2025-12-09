@@ -185,7 +185,7 @@ canhrActi.batch <- function(files,
     parallel::clusterExport(cl, c(
       "wear_time_algorithm", "intensity_algorithm", "min_wear_hours",
       "axis_to_analyze", "calculate_mets", "mets_algorithm", "lfe_mode",
-      "calculate_circadian", "memory_efficient"
+      "calculate_fragmentation", "calculate_circadian", "memory_efficient"
     ), envir = environment())
 
     # Process with progress

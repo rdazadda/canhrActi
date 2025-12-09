@@ -68,7 +68,8 @@ export_summary <- function(analysis_results,
   valid_dates <- as.Date(valid_daily$date)
   all_valid_epochs <- epoch_data[epoch_data$date %in% valid_dates, ]
 
-  sedentary <- sum(all_valid_epochs$intensity == "sedentary" | !all_valid_epochs$wear_time)
+  # Only count wear time epochs for intensity calculations (non-wear excluded)
+  sedentary <- sum(all_valid_epochs$intensity == "sedentary" & all_valid_epochs$wear_time)
   light <- sum(all_valid_epochs$intensity == "light" & all_valid_epochs$wear_time)
   moderate <- sum(all_valid_epochs$intensity == "moderate" & all_valid_epochs$wear_time)
   vigorous <- sum(all_valid_epochs$intensity == "vigorous" & all_valid_epochs$wear_time)
@@ -84,7 +85,7 @@ export_summary <- function(analysis_results,
     vm_counts <- numeric(0)
   }
 
-  avg_mvpa_per_day <- total_mvpa / nrow(valid_daily)
+  avg_mvpa_per_day <- if (nrow(valid_daily) > 0) total_mvpa / nrow(valid_daily) else 0
 
   summary_data <- data.frame(
     "Subject" = subject_id,
@@ -734,7 +735,8 @@ export_summary_internal <- function(analysis_results) {
   valid_dates <- as.Date(valid_daily$date)
   all_valid_epochs <- epoch_data[epoch_data$date %in% valid_dates, ]
 
-  sedentary <- sum(all_valid_epochs$intensity == "sedentary" | !all_valid_epochs$wear_time)
+  # Only count wear time epochs for intensity calculations (non-wear excluded)
+  sedentary <- sum(all_valid_epochs$intensity == "sedentary" & all_valid_epochs$wear_time)
   light <- sum(all_valid_epochs$intensity == "light" & all_valid_epochs$wear_time)
   moderate <- sum(all_valid_epochs$intensity == "moderate" & all_valid_epochs$wear_time)
   vigorous <- sum(all_valid_epochs$intensity == "vigorous" & all_valid_epochs$wear_time)
@@ -750,7 +752,7 @@ export_summary_internal <- function(analysis_results) {
     vm_counts <- numeric(0)
   }
 
-  avg_mvpa_per_day <- total_mvpa / nrow(valid_daily)
+  avg_mvpa_per_day <- if (nrow(valid_daily) > 0) total_mvpa / nrow(valid_daily) else 0
 
   summary_data <- data.frame(
     "Subject" = subject_id,

@@ -463,7 +463,7 @@ canhrActi <- function(agd_file_path,
     valid_days = valid.days.results$n_valid_days,
     total_wear_minutes = wear.minutes,
     total_wear_hours = round(wear.hours, 2),
-    average_wear_per_day = round(wear.hours / nrow(daily.stats), 2),
+    average_wear_per_day = if (nrow(daily.stats) > 0) round(wear.hours / nrow(daily.stats), 2) else NA_real_,
     sedentary_minutes = intensity.summary$minutes[intensity.summary$intensity == "sedentary"],
     light_minutes = intensity.summary$minutes[intensity.summary$intensity == "light"],
     moderate_minutes = intensity.summary$minutes[intensity.summary$intensity == "moderate"],
@@ -475,7 +475,7 @@ canhrActi <- function(agd_file_path,
     moderate_percent = round(intensity.summary$percentage[intensity.summary$intensity == "moderate"], 2),
     vigorous_percent = round(intensity.summary$percentage[intensity.summary$intensity == "vigorous"], 2),
     very_vigorous_percent = round(intensity.summary$percentage[intensity.summary$intensity == "very_vigorous"], 2),
-    mvpa_percent = round(100 * mvpa.minutes / wear.minutes, 2),
+    mvpa_percent = if (wear.minutes > 0) round(100 * mvpa.minutes / wear.minutes, 2) else 0,
     stringsAsFactors = FALSE
   )
 

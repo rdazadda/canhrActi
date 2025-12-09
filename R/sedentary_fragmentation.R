@@ -296,7 +296,12 @@ calculate_alpha <- function(durations, xmin = 1) {
   if (n < 2) return(NA_real_)
 
   # Hill estimator (MLE for power-law)
-  alpha <- 1 + n / sum(log(x / xmin))
+  log_sum <- sum(log(x / xmin))
+
+  # Guard against division by zero (can occur if all durations equal xmin)
+  if (log_sum == 0 || is.na(log_sum) || is.nan(log_sum)) return(NA_real_)
+
+  alpha <- 1 + n / log_sum
 
   alpha
 }

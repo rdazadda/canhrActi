@@ -14,9 +14,6 @@ canhrActi(
   mets_algorithm = c("freedson.vm3", "freedson.adult", "crouter", "hendelman.adult",
     "hendelman.lifestyle", "swartz", "leenders", "yngve.treadmill", "yngve.overground",
     "brooks.overground", "brooks.bm", "freedson.children"),
-  analysis_mode = c("full.24h", "wake.only", "sleep.only"),
-  sleep_algorithm = c("cole.kripke", "sadeh"),
-  apply_rescoring = TRUE,
   output_summary = TRUE,
   lfe_mode = FALSE,
   calculate_fragmentation = TRUE,
@@ -74,21 +71,6 @@ cut points may produce results that differ from published literature. Use axis1
 \item \code{"freedson.children"} - Freedson Children (2005)
 }}
 
-\item{analysis_mode}{Character. Type of analysis to perform:
-\itemize{
-\item \code{"full.24h"} - Traditional 24-hour analysis (default, backward compatible)
-\item \code{"wake.only"} - Analyze only wake periods (removes sleep inflation)
-\item \code{"sleep.only"} - Analyze only sleep periods
-}}
-
-\item{sleep_algorithm}{Character. Sleep detection algorithm (used when analysis_mode != "full.24h"):
-\itemize{
-\item \code{"cole.kripke"} - Cole-Kripke algorithm for adults (default)
-\item \code{"sadeh"} - Sadeh algorithm for youth/children
-}}
-
-\item{apply_rescoring}{Logical. Apply Tudor-Locke rescoring rules? (default: TRUE)}
-
 \item{output_summary}{Logical. Print detailed summary to console? (default: TRUE)}
 
 \item{lfe_mode}{Logical. Enable Low Frequency Extension mode for GT3X files? (default: FALSE)}
@@ -109,8 +91,6 @@ A list of class \code{"canhrActi_analysis"} containing:
 \item \code{wear_time_periods} - Data frame with continuous wear periods
 \item \code{mets_summary} - Data frame with METs statistics (if calculate_mets = TRUE)
 \item \code{energy_expenditure_summary} - Data frame with kcal statistics (if calculate_mets = TRUE)
-\item \code{sleep_periods} - Data frame with detected sleep periods (if analysis_mode != "full.24h")
-\item \code{wake_periods} - Data frame with inverted wake periods (if analysis_mode != "full.24h")
 \item \code{fragmentation} - Sedentary fragmentation metrics (if calculate_fragmentation = TRUE)
 \item \code{circadian} - Circadian rhythm metrics L5, M10, IS, IV, RA, cosinor (if calculate_circadian = TRUE)
 \item \code{parameters} - List of analysis parameters used
@@ -143,8 +123,8 @@ and 45-minute upstream/downstream validation. Custom algorithm.
 \itemize{
 \item \strong{Freedson (1998):} Validated cut points for adults worn at hip
 \itemize{
-\item Sedentary: 0-99 CPM
-\item Light: 100-1951 CPM
+\item Sedentary: 0-100 CPM
+\item Light: 101-1951 CPM
 \item Moderate: 1952-5724 CPM
 \item Vigorous: 5725-9498 CPM
 \item Very Vigorous: >=9499 CPM
@@ -157,16 +137,6 @@ and 45-minute upstream/downstream validation. Custom algorithm.
 \item Vigorous: 6001-10000 CPM
 \item Very Vigorous: >=10001 CPM
 }
-}
-
-\strong{Sleep/Wake Analysis Modes:}
-\itemize{
-\item \strong{full.24h:} Traditional 24-hour analysis (backward compatible)
-\item \strong{wake.only:} Removes sleep periods before analysis, eliminating
-sedentary time inflation caused by sleep being classified as sedentary behavior.
-Uses Cole-Kripke or Sadeh algorithms to detect sleep, then inverts to wake periods
-using the n-1 rule (n sleep periods create n-1 wake periods).
-\item \strong{sleep.only:} Analyzes only sleep periods
 }
 
 \strong{Valid Day Criteria:}
@@ -211,15 +181,6 @@ results <- canhrActi("file.agd",
 # Require 8 hours for valid day (instead of 10)
 results <- canhrActi("file.agd", min_wear_hours = 8)
 
-# Wake-only analysis (removes sleep inflation)
-results <- canhrActi("file.agd", analysis_mode = "wake.only")
-
-# Sleep-only analysis
-results <- canhrActi("file.agd", analysis_mode = "sleep.only")
-
-# Use Sadeh algorithm for youth/children
-results <- canhrActi("file.agd", analysis_mode = "wake.only",
-                     sleep_algorithm = "sadeh")
 }
 
 }

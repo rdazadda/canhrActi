@@ -25,14 +25,14 @@
 }
 
 
-#' Read AGD Metadata (Internal Helper)
+#' Read AGD Participant Metadata (Internal Helper)
 #'
 #' Extracts participant metadata from AGD database file.
 #'
 #' @param file_path Path to AGD file
 #' @return List with metadata fields
 #' @keywords internal
-.read.agd.metadata <- function(file_path) {
+.read.agd.participant.metadata <- function(file_path) {
   tryCatch({
     con <- DBI::dbConnect(RSQLite::SQLite(), file_path)
     settings <- DBI::dbReadTable(con, "settings")
@@ -128,7 +128,7 @@
     file.path <- params$file_path
 
     # Extract info from AGD file
-    metadata <- .read.agd.metadata(file.path)
+    metadata <- .read.agd.participant.metadata(file.path)
     subject.name <- metadata$subject_name
     serial.number <- metadata$serial_number
     epoch.length <- metadata$epoch_length
@@ -228,7 +228,7 @@
     file.path <- params$file_path
 
     # Extract info from AGD file
-    metadata <- .read.agd.metadata(file.path)
+    metadata <- .read.agd.participant.metadata(file.path)
     subject.name <- metadata$subject_name
     serial.number <- metadata$serial_number
     epoch.length <- metadata$epoch_length

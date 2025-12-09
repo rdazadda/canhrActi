@@ -10,12 +10,10 @@
 #' @param axis_to_analyze Which axis to analyze (default: "axis1")
 #' @param calculate_mets Calculate METs and energy expenditure (default: TRUE)
 #' @param mets_algorithm METs prediction algorithm (default: "freedson.vm3")
-#' @param analysis_mode Type of analysis: "full.24h", "wake.only", or "sleep.only" (default: "full.24h")
-#' @param sleep_algorithm Sleep detection algorithm: "cole.kripke" or "sadeh" (default: "cole.kripke")
-#' @param apply_rescoring Apply Tudor-Locke rescoring rules (default: TRUE)
 #' @param export Logical. Export results to CSV? (default: TRUE)
 #' @param output_folder Where to save CSV files (default: current directory)
 #' @param lfe_mode Logical. Low frequency extension mode (default: FALSE)
+#' @param calculate_fragmentation Logical. Calculate sedentary fragmentation metrics? (default: TRUE)
 #' @param calculate_circadian Logical. Calculate circadian rhythm metrics? (default: TRUE)
 #' @param parallel Logical. Use parallel processing? (default: TRUE for >4 files)
 #' @param n_cores Number of CPU cores to use (default: auto-detect, max 8)
@@ -49,12 +47,10 @@ canhrActi.batch <- function(files,
                                             "hendelman.adult", "hendelman.lifestyle", "swartz",
                                             "leenders", "yngve.treadmill", "yngve.overground",
                                             "brooks.overground", "brooks.bm", "freedson.children"),
-                         analysis_mode = c("full.24h", "wake.only", "sleep.only"),
-                         sleep_algorithm = c("cole.kripke", "sadeh"),
-                         apply_rescoring = TRUE,
                          export = TRUE,
                          output_folder = ".",
                          lfe_mode = FALSE,
+                         calculate_fragmentation = TRUE,
                          calculate_circadian = TRUE,
                          parallel = NULL,
                          n_cores = NULL,
@@ -65,8 +61,6 @@ canhrActi.batch <- function(files,
   intensity_algorithm <- match.arg(intensity_algorithm)
   axis_to_analyze <- match.arg(axis_to_analyze)
   mets_algorithm <- match.arg(mets_algorithm)
-  analysis_mode <- match.arg(analysis_mode)
-  sleep_algorithm <- match.arg(sleep_algorithm)
 
   # Find files if folder provided
   if (length(files) == 1 && dir.exists(files)) {
@@ -118,7 +112,6 @@ canhrActi.batch <- function(files,
     cat("  Memory efficient: ", if (memory_efficient) "Yes" else "No", "\n", sep = "")
     cat("  Wear time: ", wear_time_algorithm, "\n", sep = "")
     cat("  Intensity: ", intensity_algorithm, "\n", sep = "")
-    cat("  Analysis mode: ", analysis_mode, "\n", sep = "")
     cat("\n")
   }
 
@@ -147,9 +140,7 @@ canhrActi.batch <- function(files,
         min_wear_hours, axis_to_analyze,
         output_summary = FALSE, lfe_mode = lfe_mode,
         calculate_mets = calculate_mets, mets_algorithm = mets_algorithm,
-        analysis_mode = analysis_mode, sleep_algorithm = sleep_algorithm,
-        apply_rescoring = apply_rescoring,
-        calculate_fragmentation = FALSE,
+        calculate_fragmentation = calculate_fragmentation,
         calculate_circadian = calculate_circadian
       )
 
@@ -193,9 +184,8 @@ canhrActi.batch <- function(files,
     # Export parameters
     parallel::clusterExport(cl, c(
       "wear_time_algorithm", "intensity_algorithm", "min_wear_hours",
-      "axis_to_analyze", "calculate_mets", "mets_algorithm", "analysis_mode",
-      "sleep_algorithm", "apply_rescoring", "lfe_mode", "calculate_circadian",
-      "memory_efficient"
+      "axis_to_analyze", "calculate_mets", "mets_algorithm", "lfe_mode",
+      "calculate_circadian", "memory_efficient"
     ), envir = environment())
 
     # Process with progress
@@ -322,7 +312,6 @@ canhrActi.batch <- function(files,
     settings = list(
       wear_time_algorithm = wear_time_algorithm,
       intensity_algorithm = intensity_algorithm,
-      analysis_mode = analysis_mode,
       parallel = parallel,
       n_cores = n_cores
     )
@@ -589,7 +578,6 @@ print.canhrActi_batch <- function(x, ...) {
   cat("Settings:\n")
   cat("  Wear time algorithm: ", x$settings$wear_time_algorithm, "\n", sep = "")
   cat("  Intensity algorithm: ", x$settings$intensity_algorithm, "\n", sep = "")
-  cat("  Analysis mode: ", x$settings$analysis_mode, "\n", sep = "")
   cat("  Parallel processing: ", if (x$settings$parallel) paste0("Yes (", x$settings$n_cores, " cores)") else "No", "\n", sep = "")
 
   cat("\n")

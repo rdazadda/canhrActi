@@ -12,29 +12,17 @@ agd.data <- read.agd(test.file)
 counts.data <- agd.counts(agd.data)
 print(head(counts.data, 5))
 
-# Single File - Full 24h
+# Single File Analysis
 r1 <- canhrActi(test.file, wear_time_algorithm = "choi", intensity_algorithm = "freedson1998",
                 calculate_mets = TRUE, calculate_fragmentation = TRUE, calculate_circadian = TRUE)
 print(r1$overall_summary)
 print(r1$fragmentation)
 print(r1$circadian)
 
-# Single File - Wake Only
-r2 <- canhrActi(test.file, wear_time_algorithm = "choi", intensity_algorithm = "freedson1998",
-                analysis_mode = "wake.only", sleep_algorithm = "cole.kripke",
-                calculate_mets = TRUE, calculate_fragmentation = TRUE, calculate_circadian = TRUE)
-print(r2$overall_summary)
-
-# Batch - 24h
+# Batch Analysis
 batch1 <- canhrActi.batch(data.dir, wear_time_algorithm = "choi", intensity_algorithm = "freedson1998",
-                          calculate_fragmentation = TRUE, calculate_circadian = TRUE, export = FALSE)
+                          calculate_circadian = TRUE, export = FALSE)
 print(batch1$summary)
-
-# Batch - Wake Only
-batch2 <- canhrActi.batch(data.dir, wear_time_algorithm = "choi", intensity_algorithm = "freedson1998",
-                          analysis_mode = "wake.only", sleep_algorithm = "cole.kripke",
-                          calculate_fragmentation = TRUE, calculate_circadian = TRUE, export = FALSE)
-print(batch2$summary)
 
 # METs Algorithms
 test.counts <- data.frame(axis1 = c(500, 1000, 2000, 3000, 5000),

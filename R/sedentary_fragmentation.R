@@ -247,8 +247,15 @@ sedentary.fragmentation <- function(intensity, timestamps, wear_time = NULL,
     percent = round(as.numeric(bout_table) / n_bouts * 100, 1)
   )
 
+  # Calculate number of unique days in the data
+  n_days_analyzed <- length(unique(as.Date(timestamps)))
+
   result <- list(
     total_sedentary_min = total_sedentary_min,
+    total_sedentary_hours = round(total_sedentary_min / 60, 2),
+    total_wear_min = total_wear_min,
+    total_wear_hours = round(total_wear_min / 60, 2),
+    n_days_analyzed = n_days_analyzed,
     total_bouts = n_bouts,
     mean_bout_duration = round(mean_bout, 1),
     median_bout_duration = round(median_bout, 1),
@@ -328,8 +335,11 @@ print.canhrActi_fragmentation <- function(x, ...) {
   cat("   SEDENTARY FRAGMENTATION ANALYSIS\n")
   cat("========================================\n\n")
 
-  cat(sprintf("Total Sedentary Time:    %s min (%.1f%%)\n",
-              round(x$total_sedentary_min), x$sedentary_percent))
+  cat(sprintf("Days Analyzed:           %d\n", x$n_days_analyzed))
+  cat(sprintf("Total Wear Time:         %.1f hours\n", x$total_wear_hours))
+  cat(sprintf("Total Sedentary Time:    %.1f hours (%.1f%%)\n",
+              x$total_sedentary_hours, x$sedentary_percent))
+  cat("\n")
   cat(sprintf("Number of Bouts:         %d\n", x$total_bouts))
   cat(sprintf("Mean Bout Duration:      %.1f min\n", x$mean_bout_duration))
   cat(sprintf("Median Bout Duration:    %.1f min\n", x$median_bout_duration))

@@ -7,11 +7,40 @@
 freedson(counts_per_minute)
 }
 \arguments{
-\item{counts_per_minute}{Numeric vector of counts per minute}
+\item{counts_per_minute}{Numeric vector of counts per minute (CPM).
+If your data is not in 60-second epochs, use \code{\link{to_cpm}} to convert first.}
 }
 \value{
 Ordered factor with levels: sedentary, light, moderate, vigorous, very_vigorous
 }
 \description{
-Apply Freedson Adult (1998) Cut Points
+Classifies activity counts into intensity categories using the Freedson Adult (1998) cutpoints.
+}
+\details{
+The Freedson Adult (1998) cutpoints are based on treadmill validation studies:
+\itemize{
+\item Sedentary: 0-100 CPM (< 1.5 METs)
+\item Light: 101-1951 CPM (1.5-2.99 METs)
+\item Moderate: 1952-5724 CPM (3.0-5.99 METs)
+\item Vigorous: 5725-9498 CPM (6.0-8.99 METs)
+\item Very Vigorous: >= 9499 CPM (>= 9.0 METs)
+}
+}
+\examples{
+# 60-second epoch data (counts = CPM)
+counts <- c(50, 500, 2000, 6000, 10000)
+intensity <- freedson(counts)
+
+# 30-second epoch data (must convert first)
+counts_30sec <- c(25, 250, 1000, 3000, 5000)
+cpm <- to_cpm(counts_30sec, epoch_length = 30)
+intensity <- freedson(cpm)
+
+}
+\references{
+Freedson PS, Melanson E, Sirard J. Calibration of the Computer Science and
+Applications, Inc. accelerometer. Med Sci Sports Exerc. 1998;30(5):777-781.
+}
+\seealso{
+\code{\link{to_cpm}} for epoch conversion
 }

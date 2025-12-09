@@ -14,12 +14,10 @@ canhrActi.batch(
   mets_algorithm = c("freedson.vm3", "freedson.adult", "crouter", "hendelman.adult",
     "hendelman.lifestyle", "swartz", "leenders", "yngve.treadmill", "yngve.overground",
     "brooks.overground", "brooks.bm", "freedson.children"),
-  analysis_mode = c("full.24h", "wake.only", "sleep.only"),
-  sleep_algorithm = c("cole.kripke", "sadeh"),
-  apply_rescoring = TRUE,
   export = TRUE,
   output_folder = ".",
   lfe_mode = FALSE,
+  calculate_fragmentation = TRUE,
   calculate_circadian = TRUE,
   parallel = NULL,
   n_cores = NULL,
@@ -42,17 +40,13 @@ canhrActi.batch(
 
 \item{mets_algorithm}{METs prediction algorithm (default: "freedson.vm3")}
 
-\item{analysis_mode}{Type of analysis: "full.24h", "wake.only", or "sleep.only" (default: "full.24h")}
-
-\item{sleep_algorithm}{Sleep detection algorithm: "cole.kripke" or "sadeh" (default: "cole.kripke")}
-
-\item{apply_rescoring}{Apply Tudor-Locke rescoring rules (default: TRUE)}
-
 \item{export}{Logical. Export results to CSV? (default: TRUE)}
 
 \item{output_folder}{Where to save CSV files (default: current directory)}
 
 \item{lfe_mode}{Logical. Low frequency extension mode (default: FALSE)}
+
+\item{calculate_fragmentation}{Logical. Calculate sedentary fragmentation metrics? (default: TRUE)}
 
 \item{calculate_circadian}{Logical. Calculate circadian rhythm metrics? (default: TRUE)}
 

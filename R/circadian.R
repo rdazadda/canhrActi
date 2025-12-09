@@ -110,6 +110,10 @@ circadian.rhythm <- function(counts,
   # Daily metrics
   daily_metrics <- .calculate.daily.circadian(counts, timestamps, epoch_length)
 
+  # Count days with valid circadian data (non-NA L5/M10)
+  n_days_analyzed <- length(unique(as.Date(timestamps)))
+  n_valid_circadian_days <- sum(!is.na(daily_metrics$L5))
+
   result <- list(
     L5 = round(l5_result$value, 2),
     L5_start = l5_result$start_time,
@@ -120,7 +124,9 @@ circadian.rhythm <- function(counts,
     IV = round(is_iv$IV, 3),
     cosinor = cosinor,
     hourly_profile = hourly_profile,
-    daily_metrics = daily_metrics
+    daily_metrics = daily_metrics,
+    n_days_analyzed = n_days_analyzed,
+    n_valid_days = n_valid_circadian_days
   )
 
   class(result) <- c("canhrActi_circadian", "list")
@@ -145,10 +151,15 @@ circadian.rhythm <- function(counts,
   dates <- as.Date(timestamps)
 
   # Create hourly means across all days
+  # Handle case where no data exists for a particular hour
   hourly_means <- numeric(24)
   for (h in 0:23) {
     idx <- hours == h
-    hourly_means[h + 1] <- mean(counts[idx], na.rm = TRUE)
+    if (sum(idx) > 0 && sum(!is.na(counts[idx])) > 0) {
+      hourly_means[h + 1] <- mean(counts[idx], na.rm = TRUE)
+    } else {
+      hourly_means[h + 1] <- NA_real_
+    }
   }
 
   # Find X consecutive hours with min/max average
@@ -171,6 +182,11 @@ circadian.rhythm <- function(counts,
       best_value <- window_mean
       best_start <- start
     }
+  }
+
+  # Handle case where no valid window was found (best_value still Inf/-Inf)
+  if (is.infinite(best_value)) {
+    return(list(value = NA_real_, start_time = NA_character_))
   }
 
   # Format start time
@@ -406,15 +422,17 @@ circadian.rhythm <- function(counts,
 
   for (h in 0:23) {
     idx <- hours == h
-    if (sum(idx) > 0) {
+    n_valid <- sum(!is.na(counts[idx]))
+    if (sum(idx) > 0 && n_valid > 0) {
       profile$mean_counts[h + 1] <- mean(counts[idx], na.rm = TRUE)
-      profile$sd_counts[h + 1] <- sd(counts[idx], na.rm = TRUE)
-      profile$n[h + 1] <- sum(!is.na(counts[idx]))
+      profile$sd_counts[h + 1] <- if (n_valid > 1) sd(counts[idx], na.rm = TRUE) else NA_real_
+      profile$n[h + 1] <- n_valid
     }
   }
 
-  profile$mean_counts <- round(profile$mean_counts, 1)
-  profile$sd_counts <- round(profile$sd_counts, 1)
+  # Replace any NaN with NA for cleaner output
+  profile$mean_counts <- ifelse(is.nan(profile$mean_counts), NA_real_, round(profile$mean_counts, 1))
+  profile$sd_counts <- ifelse(is.nan(profile$sd_counts), NA_real_, round(profile$sd_counts, 1))
 
   return(profile)
 }
@@ -442,12 +460,16 @@ circadian.rhythm <- function(counts,
     stringsAsFactors = FALSE
   )
 
+  # Calculate minimum epochs needed for 12 hours based on actual epoch length
+  epochs_per_hour <- 3600 / epoch_length
+  min_epochs_12h <- 12 * epochs_per_hour
+
   for (d in unique_dates) {
     day_idx <- dates == d
     day_counts <- counts[day_idx]
     day_timestamps <- timestamps[day_idx]
 
-    if (sum(!is.na(day_counts)) < 12 * 60) {  # Need at least 12 hours
+    if (sum(!is.na(day_counts)) < min_epochs_12h) {  # Need at least 12 hours
       daily_stats <- rbind(daily_stats, data.frame(
         date = as.character(d),
         L5 = NA, L5_start = NA,
@@ -486,6 +508,11 @@ circadian.rhythm <- function(counts,
 print.canhrActi_circadian <- function(x, ...) {
   cat("\nCircadian Rhythm Analysis\n")
   cat(paste(rep("=", 45), collapse = ""), "\n")
+
+  cat("\nData Summary:\n")
+  cat(paste(rep("-", 25), collapse = ""), "\n")
+  cat("Days analyzed:", x$n_days_analyzed, "\n")
+  cat("Valid circadian days:", x$n_valid_days, "\n")
 
   cat("\nNon-Parametric Metrics:\n")
   cat(paste(rep("-", 25), collapse = ""), "\n")

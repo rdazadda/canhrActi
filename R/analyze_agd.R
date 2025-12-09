@@ -47,18 +47,6 @@
 #'     \item \code{"brooks.bm"} - Brooks Adult with Body Mass (2005)
 #'     \item \code{"freedson.children"} - Freedson Children (2005)
 #'   }
-#' @param analysis_mode Character. Type of analysis to perform:
-#'   \itemize{
-#'     \item \code{"full.24h"} - Traditional 24-hour analysis (default, backward compatible)
-#'     \item \code{"wake.only"} - Analyze only wake periods (removes sleep inflation)
-#'     \item \code{"sleep.only"} - Analyze only sleep periods
-#'   }
-#' @param sleep_algorithm Character. Sleep detection algorithm (used when analysis_mode != "full.24h"):
-#'   \itemize{
-#'     \item \code{"cole.kripke"} - Cole-Kripke algorithm for adults (default)
-#'     \item \code{"sadeh"} - Sadeh algorithm for youth/children
-#'   }
-#' @param apply_rescoring Logical. Apply Tudor-Locke rescoring rules? (default: TRUE)
 #' @param output_summary Logical. Print detailed summary to console? (default: TRUE)
 #' @param lfe_mode Logical. Enable Low Frequency Extension mode for GT3X files? (default: FALSE)
 #' @param calculate_fragmentation Logical. Calculate sedentary fragmentation metrics? (default: TRUE)
@@ -75,8 +63,6 @@
 #'     \item \code{wear_time_periods} - Data frame with continuous wear periods
 #'     \item \code{mets_summary} - Data frame with METs statistics (if calculate_mets = TRUE)
 #'     \item \code{energy_expenditure_summary} - Data frame with kcal statistics (if calculate_mets = TRUE)
-#'     \item \code{sleep_periods} - Data frame with detected sleep periods (if analysis_mode != "full.24h")
-#'     \item \code{wake_periods} - Data frame with inverted wake periods (if analysis_mode != "full.24h")
 #'     \item \code{fragmentation} - Sedentary fragmentation metrics (if calculate_fragmentation = TRUE)
 #'     \item \code{circadian} - Circadian rhythm metrics L5, M10, IS, IV, RA, cosinor (if calculate_circadian = TRUE)
 #'     \item \code{parameters} - List of analysis parameters used
@@ -120,15 +106,6 @@
 #'     }
 #' }
 #'
-#' \strong{Sleep/Wake Analysis Modes:}
-#' \itemize{
-#'   \item \strong{full.24h:} Traditional 24-hour analysis (backward compatible)
-#'   \item \strong{wake.only:} Removes sleep periods before analysis, eliminating
-#'     sedentary time inflation caused by sleep being classified as sedentary behavior.
-#'     Uses Cole-Kripke or Sadeh algorithms to detect sleep, then inverts to wake periods
-#'     using the n-1 rule (n sleep periods create n-1 wake periods).
-#'   \item \strong{sleep.only:} Analyzes only sleep periods
-#' }
 #'
 #' \strong{Valid Day Criteria:}
 #' Days with >=10 hours (default) of wear time are considered valid for analysis.
@@ -185,15 +162,6 @@
 #' # Require 8 hours for valid day (instead of 10)
 #' results <- canhrActi("file.agd", min_wear_hours = 8)
 #'
-#' # Wake-only analysis (removes sleep inflation)
-#' results <- canhrActi("file.agd", analysis_mode = "wake.only")
-#'
-#' # Sleep-only analysis
-#' results <- canhrActi("file.agd", analysis_mode = "sleep.only")
-#'
-#' # Use Sadeh algorithm for youth/children
-#' results <- canhrActi("file.agd", analysis_mode = "wake.only",
-#'                      sleep_algorithm = "sadeh")
 #' }
 #'
 #' @export
@@ -207,9 +175,6 @@ canhrActi <- function(agd_file_path,
                                                  "hendelman.adult", "hendelman.lifestyle", "swartz",
                                                  "leenders", "yngve.treadmill", "yngve.overground",
                                                  "brooks.overground", "brooks.bm", "freedson.children"),
-                              analysis_mode = c("full.24h", "wake.only", "sleep.only"),
-                              sleep_algorithm = c("cole.kripke", "sadeh"),
-                              apply_rescoring = TRUE,
                               output_summary = TRUE,
                               lfe_mode = FALSE,
                               calculate_fragmentation = TRUE,
@@ -220,8 +185,7 @@ canhrActi <- function(agd_file_path,
                            min_wear_hours, axis_to_analyze,
                            export = !output_summary, lfe_mode = lfe_mode,
                            calculate_mets = calculate_mets, mets_algorithm = mets_algorithm,
-                           analysis_mode = analysis_mode, sleep_algorithm = sleep_algorithm,
-                           apply_rescoring = apply_rescoring,
+                           calculate_fragmentation = calculate_fragmentation,
                            calculate_circadian = calculate_circadian))
   }
 
@@ -229,7 +193,6 @@ canhrActi <- function(agd_file_path,
                                     min_wear_hours, axis_to_analyze,
                                     output_summary, lfe_mode,
                                     calculate_mets, mets_algorithm,
-                                    analysis_mode, sleep_algorithm, apply_rescoring,
                                     calculate_fragmentation, calculate_circadian))
 }
 
@@ -246,9 +209,6 @@ canhrActi <- function(agd_file_path,
                                                       "hendelman.adult", "hendelman.lifestyle", "swartz",
                                                       "leenders", "yngve.treadmill", "yngve.overground",
                                                       "brooks.overground", "brooks.bm", "freedson.children"),
-                                   analysis_mode = c("full.24h", "wake.only", "sleep.only"),
-                                   sleep_algorithm = c("cole.kripke", "sadeh"),
-                                   apply_rescoring = TRUE,
                                    calculate_fragmentation = TRUE,
                                    calculate_circadian = TRUE) {
 
@@ -256,8 +216,6 @@ canhrActi <- function(agd_file_path,
   intensity_algorithm <- match.arg(intensity_algorithm)
   axis_to_analyze <- match.arg(axis_to_analyze)
   mets_algorithm <- match.arg(mets_algorithm)
-  analysis_mode <- match.arg(analysis_mode)
-  sleep_algorithm <- match.arg(sleep_algorithm)
 
   # Validate parameter combinations
   if (axis_to_analyze == "vector_magnitude" && intensity_algorithm == "freedson1998") {
@@ -391,101 +349,10 @@ canhrActi <- function(agd_file_path,
     intensity <- CANHR.Cutpoints(cpm.for.analysis)
   }
 
-  # Sleep/Wake Analysis (Phase 2 Integration)
-  # Implements sleep-wake inversion methodology (Azadda et al., 2025)
-  # Mathematical formulation: n sleep periods → n-1 wake periods
-  # W_i = (T_out,i, T_in,i+1)
-  sleep.periods <- NULL
-  wake.periods <- NULL
-  wake.mask <- NULL
-  sleep.mask <- NULL
-  sleep.state <- NULL
-
-  if (analysis_mode != "full.24h") {
-    # Run sleep detection algorithm
-    if (sleep_algorithm == "cole.kripke") {
-      sleep.state <- sleep.cole.kripke(counts.data$axis1, apply_rescoring = apply_rescoring)
-    } else {
-      sleep.state <- sleep.sadeh(counts.data$axis1)
-    }
-
-    # Detect sleep periods using Tudor-Locke algorithm
-    sleep.periods <- sleep.tudor.locke(sleep.state, counts.data$timestamp, counts.data$axis1)
-
-    # Get participant identifier
-    participant.name <- if (!is.null(subject_info$subject_id) && !is.na(subject_info$subject_id)) {
-      subject_info$subject_id
-    } else {
-      tools::file_path_sans_ext(basename(agd_file_path))
-    }
-
-    if (!is.null(sleep.periods) && nrow(sleep.periods) > 0) {
-      sleep.periods$participant_id <- participant.name
-
-      # Check if we have enough sleep periods for wake-only analysis
-      # The n-1 rule requires at least 2 sleep periods
-      if (nrow(sleep.periods) < 2 && analysis_mode %in% c("wake.only", "comparison")) {
-        warning("Only ", nrow(sleep.periods), " sleep period detected. ",
-                "Wake-only analysis requires at least 2 sleep periods (n-1 rule). ",
-                "Consider using a longer recording period (multiple days) or 'full.24h' mode.")
-
-        if (analysis_mode == "comparison") {
-          warning("Comparison mode will not include wake-only results.")
-        }
-      }
-
-      # Create wake periods using n-1 rule
-      # Based on sleepwaker methodology (Azadda et al., 2025)
-      if (nrow(sleep.periods) >= 2) {
-        wake.periods <- tryCatch({
-          create.wake.periods(sleep.periods, participant_id = "participant_id")
-        }, error = function(e) {
-          warning("Could not create wake periods: ", e$message)
-          NULL
-        })
-
-        # Create wake mask from wake periods
-        if (!is.null(wake.periods) && nrow(wake.periods) > 0) {
-          wake.mask <- create.wake.mask(counts.data$timestamp, wake.periods)
-        }
-      }
-
-      # Create sleep mask from raw sleep state (epoch-level, not Tudor-Locke periods)
-      # Tudor-Locke periods can be inaccurate (e.g., detecting 24h as sleep)
-      # Raw sleep state is more reliable for sleep.only analysis
-      if (!is.null(sleep.state)) {
-        sleep.mask <- sleep.state == "S"
-      }
-    }
-  }
-
   valid.days.results <- valid.days(counts.data$timestamp, wear.time, min.wear.hours = min_wear_hours)
 
-  # Apply analysis mode to intensity calculations
-  if (analysis_mode == "wake.only" && !is.null(wake.mask)) {
-    intensity.for.summary <- intensity[wake.mask]
-    wear.time.for.summary <- wear.time[wake.mask]
-  } else if (analysis_mode == "sleep.only" && !is.null(sleep.mask)) {
-    intensity.for.summary <- intensity[sleep.mask]
-    wear.time.for.summary <- wear.time[sleep.mask]
-  } else {
-    intensity.for.summary <- intensity
-    wear.time.for.summary <- wear.time
-  }
-
-  intensity.summary <- intensity(intensity.for.summary, wear.time.for.summary)
-  mvpa.minutes <- mvpa(intensity.for.summary, wear.time.for.summary)
-
-  # Update wear time metrics based on analysis mode
-  if (analysis_mode == "wake.only" && !is.null(wake.mask)) {
-    wear.minutes <- sum(wear.time.for.summary)
-    wear.hours <- wear.minutes / 60
-    wear.percent <- 100 * wear.minutes / length(wear.time.for.summary)
-  } else if (analysis_mode == "sleep.only" && !is.null(sleep.mask)) {
-    wear.minutes <- sum(wear.time.for.summary)
-    wear.hours <- wear.minutes / 60
-    wear.percent <- 100 * wear.minutes / length(wear.time.for.summary)
-  }
+  intensity.summary <- intensity(intensity, wear.time)
+  mvpa.minutes <- mvpa(intensity, wear.time)
 
   mets <- NULL
   mets_summary <- NULL
@@ -510,71 +377,25 @@ canhrActi <- function(agd_file_path,
     )
   }
 
-  # Create epoch data with mode-specific filtering
-  # For wake.only and sleep.only modes, filter epoch data to only include relevant periods
-  if (analysis_mode == "wake.only" && !is.null(wake.mask)) {
-    # Only include wake period epochs
-    epoch.data <- data.frame(
-      epoch = (1:nrow(counts.data))[wake.mask],
-      timestamp = counts.data$timestamp[wake.mask],
-      date = as.Date(counts.data$timestamp[wake.mask]),
-      axis1 = counts.data$axis1[wake.mask],
-      axis2 = counts.data$axis2[wake.mask],
-      axis3 = counts.data$axis3[wake.mask],
-      steps = counts.data$steps[wake.mask],
-      counts_used = counts.for.analysis[wake.mask],
-      wear_time = wear.time[wake.mask],
-      intensity = as.character(intensity[wake.mask]),
-      is_valid_day = valid.days.results$valid_day_index[wake.mask],
-      stringsAsFactors = FALSE
-    )
+  # Create epoch data
+  epoch.data <- data.frame(
+    epoch = 1:nrow(counts.data),
+    timestamp = counts.data$timestamp,
+    date = as.Date(counts.data$timestamp),
+    axis1 = counts.data$axis1,
+    axis2 = counts.data$axis2,
+    axis3 = counts.data$axis3,
+    steps = counts.data$steps,
+    counts_used = counts.for.analysis,
+    wear_time = wear.time,
+    intensity = as.character(intensity),
+    is_valid_day = valid.days.results$valid_day_index,
+    stringsAsFactors = FALSE
+  )
 
-    if (calculate_mets) {
-      epoch.data$mets <- mets[wake.mask]
-      epoch.data$kcal <- kcal_per_epoch[wake.mask]
-    }
-  } else if (analysis_mode == "sleep.only" && !is.null(sleep.mask)) {
-    # Only include sleep period epochs
-    epoch.data <- data.frame(
-      epoch = (1:nrow(counts.data))[sleep.mask],
-      timestamp = counts.data$timestamp[sleep.mask],
-      date = as.Date(counts.data$timestamp[sleep.mask]),
-      axis1 = counts.data$axis1[sleep.mask],
-      axis2 = counts.data$axis2[sleep.mask],
-      axis3 = counts.data$axis3[sleep.mask],
-      steps = counts.data$steps[sleep.mask],
-      counts_used = counts.for.analysis[sleep.mask],
-      wear_time = wear.time[sleep.mask],
-      intensity = as.character(intensity[sleep.mask]),
-      is_valid_day = valid.days.results$valid_day_index[sleep.mask],
-      stringsAsFactors = FALSE
-    )
-
-    if (calculate_mets) {
-      epoch.data$mets <- mets[sleep.mask]
-      epoch.data$kcal <- kcal_per_epoch[sleep.mask]
-    }
-  } else {
-    # Full 24h or comparison mode: include all epochs
-    epoch.data <- data.frame(
-      epoch = 1:nrow(counts.data),
-      timestamp = counts.data$timestamp,
-      date = as.Date(counts.data$timestamp),
-      axis1 = counts.data$axis1,
-      axis2 = counts.data$axis2,
-      axis3 = counts.data$axis3,
-      steps = counts.data$steps,
-      counts_used = counts.for.analysis,
-      wear_time = wear.time,
-      intensity = as.character(intensity),
-      is_valid_day = valid.days.results$valid_day_index,
-      stringsAsFactors = FALSE
-    )
-
-    if (calculate_mets) {
-      epoch.data$mets <- mets
-      epoch.data$kcal <- kcal_per_epoch
-    }
+  if (calculate_mets) {
+    epoch.data$mets <- mets
+    epoch.data$kcal <- kcal_per_epoch
   }
 
   daily.stats <- valid.days.results$daily_summary
@@ -658,37 +479,75 @@ canhrActi <- function(agd_file_path,
     stringsAsFactors = FALSE
   )
 
+  # Filter to valid days only for fragmentation and circadian analyses
+
+  # Research-based best practices (Migueles et al., 2017; van Someren et al., 1999):
+  # - Fragmentation metrics require valid days (>=10h wear) for reliable estimates
+ # - Circadian metrics (L5, M10, IS, IV) need multiple complete days
+  # - Minimum 3 valid days recommended; 4+ preferred for reliability
+
+  valid_day_data <- epoch.data[epoch.data$is_valid_day, ]
+  n_valid_days <- valid.days.results$n_valid_days
+
   fragmentation_results <- NULL
   if (calculate_fragmentation) {
     if (output_summary) cat("Calculating sedentary fragmentation...\n")
-    tryCatch({
-      fragmentation_results <- sedentary.fragmentation(
-        intensity = epoch.data$intensity,
-        wear_time = epoch.data$wear_time,
-        timestamps = epoch.data$timestamp,
-        sedentary_levels = "sedentary",
-        min_bout_length = 1
-      )
-    }, error = function(e) {
-      if (output_summary) warning("Fragmentation calculation failed: ", e$message)
-      fragmentation_results <<- NULL
-    })
+
+    # Warn if insufficient valid days for reliable fragmentation metrics
+    if (n_valid_days < 3) {
+      if (output_summary) {
+        warning("Only ", n_valid_days, " valid day(s) available. ",
+                "Minimum 3 valid days recommended for reliable fragmentation metrics. ",
+                "Results should be interpreted with caution.")
+      }
+    }
+
+    if (n_valid_days > 0) {
+      tryCatch({
+        fragmentation_results <- sedentary.fragmentation(
+          intensity = valid_day_data$intensity,
+          timestamps = valid_day_data$timestamp,
+          wear_time = valid_day_data$wear_time,
+          epoch_length = epoch_length
+        )
+      }, error = function(e) {
+        if (output_summary) warning("Fragmentation calculation failed: ", e$message)
+        fragmentation_results <<- NULL
+      })
+    } else {
+      if (output_summary) warning("No valid days available for fragmentation analysis")
+    }
   }
 
   circadian_results <- NULL
   if (calculate_circadian) {
     if (output_summary) cat("Calculating circadian rhythm metrics...\n")
-    tryCatch({
-      circadian_results <- circadian.rhythm(
-        counts = epoch.data$axis1,
-        timestamps = epoch.data$timestamp,
-        wear_time = epoch.data$wear_time,
-        epoch_length = epoch_length
-      )
-    }, error = function(e) {
-      if (output_summary) warning("Circadian calculation failed: ", e$message)
-      circadian_results <<- NULL
-    })
+
+    # Warn if insufficient valid days for reliable circadian metrics
+    # IS (interdaily stability) specifically requires multiple days
+    if (n_valid_days < 3) {
+      if (output_summary) {
+        warning("Only ", n_valid_days, " valid day(s) available. ",
+                "Minimum 3 valid days recommended for reliable circadian rhythm metrics. ",
+                "IS (interdaily stability) requires multiple days to compute.")
+      }
+    }
+
+    if (n_valid_days > 0) {
+      tryCatch({
+        circadian_results <- circadian.rhythm(
+          counts = valid_day_data$axis1,
+          timestamps = valid_day_data$timestamp,
+          wear_time = valid_day_data$wear_time,
+          epoch_length = epoch_length
+        )
+      }, error = function(e) {
+        if (output_summary) warning("Circadian calculation failed: ", e$message)
+        circadian_results <<- NULL
+      })
+    } else {
+      if (output_summary) warning("No valid days available for circadian analysis")
+    }
   }
 
   results <- list(
@@ -701,8 +560,6 @@ canhrActi <- function(agd_file_path,
     subject_info = subject_info,
     mets_summary = mets_summary,
     energy_expenditure_summary = ee_summary,
-    sleep_periods = sleep.periods,
-    wake_periods = wake.periods,
     fragmentation = fragmentation_results,
     circadian = circadian_results,
     parameters = list(
@@ -714,9 +571,6 @@ canhrActi <- function(agd_file_path,
       min_wear_hours = min_wear_hours,
       calculate_mets = calculate_mets,
       mets_algorithm = if (calculate_mets) mets_algorithm else NA,
-      analysis_mode = analysis_mode,
-      sleep_algorithm = if (analysis_mode != "full.24h") sleep_algorithm else NA,
-      apply_rescoring = if (analysis_mode != "full.24h") apply_rescoring else NA,
       calculate_fragmentation = calculate_fragmentation,
       calculate_circadian = calculate_circadian
     )
@@ -726,7 +580,6 @@ canhrActi <- function(agd_file_path,
 
   if (output_summary) {
     cat("\nAnalysis Complete\n")
-    cat("Mode:", analysis_mode, "\n")
     cat("Valid days:", overall.summary$valid_days, "/", overall.summary$total_days, "\n")
     cat("Total wear time:", overall.summary$total_wear_hours, "hours\n")
     cat("MVPA:", overall.summary$mvpa_minutes, "minutes\n")
@@ -735,8 +588,10 @@ canhrActi <- function(agd_file_path,
       cat("Total Energy Expenditure:", round(mets_summary$total_kcal, 1), "kcal\n")
     }
     if (calculate_fragmentation && !is.null(fragmentation_results)) {
-      cat("Fragmentation index:", fragmentation_results$fragmentation_index, "bouts/hr\n")
-      cat("Break rate:", fragmentation_results$break_rate, "breaks/hr\n")
+      cat("Sedentary bouts:", fragmentation_results$total_bouts, "\n")
+      cat("Breaks per sed hour:", fragmentation_results$breaks_per_sed_hour, "\n")
+      cat("Alpha (power-law):", fragmentation_results$alpha, "\n")
+      cat("Gini coefficient:", fragmentation_results$gini, "\n")
     }
     if (calculate_circadian && !is.null(circadian_results)) {
       cat("L5:", circadian_results$L5, "cpm at", circadian_results$L5_start, "\n")
@@ -757,7 +612,6 @@ canhrActi <- function(agd_file_path,
 print.canhrActi_analysis <- function(x, ...) {
   s <- x$overall_summary
   cat("\ncanhrActi Analysis:", basename(x$parameters$file_path), "\n")
-  cat("Mode:", x$parameters$analysis_mode, "\n")
   cat("Valid days:", s$valid_days, "/", s$total_days, "\n")
   cat("Wear time:", s$total_wear_hours, "hours\n")
   cat("MVPA:", s$mvpa_minutes, "min (", s$mvpa_percent, "%)\n")

@@ -4,14 +4,20 @@
 \alias{read.agd}
 \title{Read ActiGraph .agd File}
 \usage{
-read.agd(filepath)
+read.agd(filepath, epoch_length = 60, verbose = TRUE)
 }
 \arguments{
 \item{filepath}{Path to .agd file}
+
+\item{epoch_length}{Epoch length in seconds for raw data conversion (default: 60)}
+
+\item{verbose}{Logical. Print progress messages? (default: TRUE)}
 }
 \value{
-Data frame with epoch data
+List with data and settings
 }
 \description{
-Read ActiGraph .agd File
+Reads both epoch-level AGD files (pre-processed in ActiLife) and raw AGD files
+(high-frequency acceleration data). Raw AGD files are automatically detected
+and converted to activity counts.
 }

@@ -929,14 +929,14 @@
         "RemoteRepo": "canhrActi",
         "RemoteUsername": "rdazadda",
         "RemoteRef": "HEAD",
-        "RemoteSha": "45979c072a16711a266401a1c83be81f3da02ae0",
+        "RemoteSha": "6032e9631a27d06c1eb5017bc94b0ad5c0505705",
         "GithubRepo": "canhrActi",
         "GithubUsername": "rdazadda",
         "GithubRef": "HEAD",
-        "GithubSHA1": "45979c072a16711a266401a1c83be81f3da02ae0",
+        "GithubSHA1": "6032e9631a27d06c1eb5017bc94b0ad5c0505705",
         "NeedsCompilation": "no",
-        "Packaged": "2025-12-04 22:58:01 UTC; rdazadda",
-        "Built": "R 4.5.2; ; 2025-12-04 22:58:02 UTC; windows"
+        "Packaged": "2025-12-09 11:28:46 UTC; rdazadda",
+        "Built": "R 4.5.2; ; 2025-12-09 11:28:47 UTC; windows"
       }
     },
     "cellranger": {

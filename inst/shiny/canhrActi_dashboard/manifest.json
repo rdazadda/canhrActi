@@ -2485,7 +2485,7 @@
       "checksum": "a5d7e760ce7f442f03b8c388e1728cce"
     },
     "R/mod_upload.R": {
-      "checksum": "0be3422f90828acab8f4ed00d56ec14e"
+      "checksum": "eccae2c644d03de929adcd521b9c327d"
     },
     "R/mod_wear_time.R": {
       "checksum": "d6cb72cbe83c0d6fc7d196c48180d167"
@@ -2494,7 +2494,7 @@
       "checksum": "b925cd3824eeca6664dd516ef5598c60"
     },
     "www/styles.css": {
-      "checksum": "5213ee79f5a1ec1a1672f9314bc95425"
+      "checksum": "f418b4075b856da5f36d0188a1b894b5"
     }
   },
   "users": null

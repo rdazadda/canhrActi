@@ -79,7 +79,7 @@ mod_upload_ui <- function(id) {
         # Example data button
         actionButton(
           ns("demo_btn"),
-          span(icon("database"), "Load Example Data"),
+          span(icon("database"), "Try Sample Files"),
           class = "btn-upload-action btn-demo"
         )
       ),
@@ -468,41 +468,36 @@ mod_upload_server <- function(id, shared) {
       withProgress(message = "Loading example data...", value = 0, {
         example_files <- example_agd("list")
         n_files <- length(example_files)
+        loaded <- 0
 
         for (i in seq_along(example_files)) {
           setProgress(value = i / n_files, detail = example_files[i])
 
           filepath <- example_agd(i)
-          agd_result <- tryCatch({
-            read.agd(filepath, verbose = FALSE)
-          }, error = function(e) {
-            showNotification(paste("Error loading:", example_files[i]), type = "error")
-            return(NULL)
-          })
+          result <- load_single_file(filepath, basename(filepath))
 
-          if (is.null(agd_result)) next
-
-          counts_data <- agd.counts(agd_result, convert.timestamps = TRUE)
-          subject_info <- extract.subject.info(agd_result$settings)
-          device_info <- .extract.device.info(agd_result$settings)
-          epoch_length <- .get.epoch.length(agd_result$settings)
+          if (!result$success) {
+            showNotification(paste("Error:", example_files[i]), type = "error")
+            next
+          }
 
           file_id <- paste0("file_", local$next_id)
 
           shared$files[[file_id]] <- list(
             id = file_id,
-            name = basename(filepath),
+            name = result$name %||% basename(filepath),
             original_path = filepath,
-            data = counts_data,
-            settings = agd_result$settings,
-            device_info = device_info,
-            subject_info = subject_info,
-            epoch_length = epoch_length,
-            duration_hrs = nrow(counts_data) * epoch_length / 3600,
-            n_epochs = nrow(counts_data)
+            data = result$data,
+            settings = result$settings,
+            device_info = result$device_info,
+            subject_info = result$subject_info,
+            epoch_length = result$epoch_length,
+            duration_hrs = result$duration_hrs,
+            n_epochs = result$n_epochs
           )
 
           local$next_id <- local$next_id + 1
+          loaded <- loaded + 1
 
           if (is.null(shared$selected_file)) {
             shared$selected_file <- file_id

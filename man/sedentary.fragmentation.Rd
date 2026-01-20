@@ -2,7 +2,7 @@
 % Please edit documentation in R/sedentary_fragmentation.R
 \name{sedentary.fragmentation}
 \alias{sedentary.fragmentation}
-\title{World-Class Sedentary Fragmentation Analysis}
+\title{Sedentary Fragmentation Analysis}
 \usage{
 sedentary.fragmentation(
   intensity,
@@ -51,7 +51,7 @@ A list with class "canhrActi_fragmentation" containing:
 \item{sedentary_percent}{Percentage of wear time spent sedentary}
 \item{total_bouts}{Number of sedentary bouts}
 \item{mean_bout_duration, median_bout_duration}{Central tendency of bout durations}
-\item{ASTP}{Active-to-Sedentary Transition Probability (gold standard)}
+\item{ASTP}{Active-to-Sedentary Transition Probability (validated)}
 \item{SATP}{Sedentary-to-Active Transition Probability}
 \item{W50}{Usual bout duration - weighted median (Chastin method)}
 \item{alpha}{Power-law exponent with robust xmin estimation}
@@ -63,7 +63,7 @@ A list with class "canhrActi_fragmentation" containing:
 }
 }
 \description{
-Comprehensive fragmentation analysis using gold-standard methods from Chastin & Granat
+Fragmentation analysis using validated methods from Chastin & Granat
 (2010), Wanigatunga et al. (2019), and related literature. Implements ASTP/SATP
 transition probabilities, robust power-law alpha estimation, usual bout duration,
 and survival analysis.

@@ -154,26 +154,6 @@ test_that("quality validates required columns", {
   expect_error(quality(accel.data), "x, y, z")
 })
 
-test_that("synthetic generates correct structure", {
-  result <- synthetic(duration.hours = 1, sampling.freq = 60, add.activity = FALSE)
-
-  expect_true("timestamp" %in% names(result))
-  expect_true("x" %in% names(result))
-  expect_true("y" %in% names(result))
-  expect_true("z" %in% names(result))
-  expect_equal(nrow(result), 1 * 3600 * 60)
-})
-
-test_that("synthetic adds activity bouts when requested", {
-  result.no.activity <- synthetic(duration.hours = 1, sampling.freq = 60, add.activity = FALSE)
-  result.with.activity <- synthetic(duration.hours = 1, sampling.freq = 60, add.activity = TRUE, n.bouts = 5)
-
-  sd.no.activity <- sd(result.no.activity$y)
-  sd.with.activity <- sd(result.with.activity$y)
-
-  expect_true(sd.with.activity > sd.no.activity)
-})
-
 test_that("print.canhrActi_valid_days displays summary", {
   timestamps <- seq(as.POSIXct("2024-01-01 00:00:00"), by = 60, length.out = 1440)
   wear.time <- rep(TRUE, 1440)

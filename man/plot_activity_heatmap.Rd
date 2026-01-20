@@ -10,7 +10,7 @@ plot_activity_heatmap(
   counts_col = "axis1",
   metric = NULL,
   aggregate_func = mean,
-  color_palette = "default",
+  color_palette = "viridis",
   show_values = FALSE,
   normalize = FALSE,
   show_weekends = TRUE,
@@ -31,8 +31,8 @@ plot_activity_heatmap(
 
 \item{aggregate_func}{Function to aggregate counts (default: mean)}
 
-\item{color_palette}{Color palette name: "default", "viridis", "plasma",
-"magma", "inferno", "cividis" (colorblind-safe), or custom vector}
+\item{color_palette}{Color palette: "viridis" (default), "default", "plasma",
+"magma", "inferno", "cividis", or custom vector}
 
 \item{show_values}{Logical. Show values in cells? (default: FALSE)}
 

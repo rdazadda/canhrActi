@@ -21,7 +21,7 @@ transition.probabilities(
 List with ASTP, SATP, and related metrics
 }
 \description{
-Gold-standard fragmentation metrics from aging research. ASTP (Active-to-Sedentary
+Validated fragmentation metrics from aging research. ASTP (Active-to-Sedentary
 Transition Probability) has been strongly associated with fatigability, functional
 decline, and mortality in older adults.
 }

@@ -2,24 +2,23 @@
 % Please edit documentation in R/cpp_interface.R
 \name{sleep_cole_kripke_cpp_wrapper}
 \alias{sleep_cole_kripke_cpp_wrapper}
-\title{Cole-Kripke Sleep Scoring (C++ Implementation)}
+\title{Cole-Kripke Sleep Algorithm}
 \usage{
 sleep_cole_kripke_cpp_wrapper(counts, threshold = 1, apply_rescoring = TRUE)
 }
 \arguments{
-\item{counts}{Numeric vector of activity counts (1-minute epochs)}
+\item{counts}{Activity counts (1-min epochs)}
 
 \item{threshold}{Discrimination threshold (default: 1.0)}
 
-\item{apply_rescoring}{Apply Webster's rescoring rules? (default: TRUE)}
+\item{apply_rescoring}{Apply Webster's rescoring? (default: TRUE)}
 }
 \value{
-Integer vector: 1 = sleep, 0 = wake
+Integer vector: 1=sleep, 0=wake
 }
 \description{
-High-performance implementation of Cole-Kripke (1992) algorithm.
+Cole-Kripke Sleep Algorithm
 }
 \references{
-Cole RJ, et al. (1992). Automatic sleep/wake identification from wrist
-activity. Sleep, 15(5), 461-469.
+Cole RJ, et al. (1992). Sleep, 15(5), 461-469.
 }

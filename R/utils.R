@@ -39,41 +39,6 @@ validate_timestamps <- function(ts) {
   invisible(TRUE)
 }
 
-
-#' Generate Synthetic Accelerometer Data
-#'
-#' @param duration.hours Numeric. Duration of data in hours (default: 24)
-#' @param sampling.freq Numeric. Sampling frequency in Hz (default: 60)
-#' @param add.activity Logical. Add activity bouts? (default: TRUE)
-#' @param n.bouts Numeric. Number of activity bouts (default: 10)
-#' @param step.freq Numeric. Stepping frequency in Hz (default: 2)
-#'
-#' @return Data frame with timestamp, x, y, z columns
-#'
-#' @export
-synthetic <- function(duration.hours = 24,
-                                    sampling.freq = 60,
-                                    add.activity = TRUE,
-                                    n.bouts = 10,
-                                    step.freq = 2) {
-  n.samples <- duration.hours * 3600 * sampling.freq
-  timestamps <- seq(from = as.POSIXct("2024-01-01 00:00:00"), by = 1/sampling.freq, length.out = n.samples)
-  x <- rnorm(n.samples, mean = 0, sd = 0.02)
-  y <- rnorm(n.samples, mean = 1, sd = 0.02)
-  z <- rnorm(n.samples, mean = 0, sd = 0.02)
-  if (add.activity) {
-    for (i in 1:n.bouts) {
-      bout.start <- sample(1:(n.samples - 600 * sampling.freq), 1)
-      bout.length <- sample(300:900, 1) * sampling.freq
-      bout.end <- min(bout.start + bout.length, n.samples)
-      t <- seq(0, (bout.end - bout.start) / sampling.freq, length.out = bout.end - bout.start + 1)
-      y[bout.start:bout.end] <- y[bout.start:bout.end] + 0.3 * sin(2 * pi * step.freq * t)
-      x[bout.start:bout.end] <- x[bout.start:bout.end] + 0.1 * sin(2 * pi * step.freq * t + pi/4)
-    }
-  }
-  data.frame(timestamp = timestamps, x = x, y = y, z = z, stringsAsFactors = FALSE)
-}
-
 #' Load ActiGraph CSV Data
 #'
 #' @param filepath Character. Path to the CSV file

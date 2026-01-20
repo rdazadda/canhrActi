@@ -2,27 +2,23 @@
 % Please edit documentation in R/cpp_interface.R
 \name{fragmentation_cpp}
 \alias{fragmentation_cpp}
-\title{Sedentary Fragmentation Analysis (C++ Implementation)}
+\title{Sedentary Fragmentation Metrics}
 \usage{
 fragmentation_cpp(counts, sedentary_threshold = 100L, wear = integer())
 }
 \arguments{
-\item{counts}{Numeric vector of activity counts}
+\item{counts}{Activity counts}
 
 \item{sedentary_threshold}{Sedentary threshold (default: 100)}
 
-\item{wear}{Optional wear time vector}
+\item{wear}{Wear time vector (optional)}
 }
 \value{
-List with all fragmentation metrics
+List with ASTP, SATP, W50, Gini, alpha
 }
 \description{
-Comprehensive fragmentation metrics including ASTP, SATP, W50, Gini, alpha.
+Sedentary Fragmentation Metrics
 }
 \references{
-Chastin SF, Granat MH (2010). Methods for objective measure, quantification
-and analysis of sedentary behaviour. Gait & Posture.
-
-Wanigatunga AA, et al. (2019). Association of total daily physical activity
-and fragmented physical activity with mortality. JAMA Network Open.
+Chastin SF, Granat MH (2010). Gait & Posture.
 }

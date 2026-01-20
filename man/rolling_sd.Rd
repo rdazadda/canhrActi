@@ -2,7 +2,7 @@
 % Please edit documentation in R/cpp_interface.R
 \name{rolling_sd}
 \alias{rolling_sd}
-\title{Rolling Standard Deviation (C++ Implementation)}
+\title{Rolling Standard Deviation}
 \usage{
 rolling_sd(x, window)
 }
@@ -12,8 +12,8 @@ rolling_sd(x, window)
 \item{window}{Window size}
 }
 \value{
-Numeric vector of rolling SDs
+Rolling SDs
 }
 \description{
-Rolling SD using Welford's algorithm.
+Rolling Standard Deviation
 }

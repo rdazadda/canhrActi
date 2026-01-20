@@ -2,7 +2,7 @@
 % Please edit documentation in R/cpp_interface.R
 \name{backend_info}
 \alias{backend_info}
-\title{Get Backend Information}
+\title{Backend Information}
 \usage{
 backend_info()
 }
@@ -10,5 +10,5 @@ backend_info()
 Invisible list with backend info
 }
 \description{
-Display information about computational backends.
+Backend Information
 }

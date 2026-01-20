@@ -2,22 +2,21 @@
 % Please edit documentation in R/cpp_interface.R
 \name{sri_cpp}
 \alias{sri_cpp}
-\title{Calculate Sleep Regularity Index (C++ Implementation)}
+\title{Sleep Regularity Index (SRI)}
 \usage{
 sri_cpp(sleep, epochs_per_day = 1440L)
 }
 \arguments{
-\item{sleep}{Integer vector of sleep scores}
+\item{sleep}{Sleep scores}
 
-\item{epochs_per_day}{Epochs per day (default: 1440 for minute data)}
+\item{epochs_per_day}{Epochs per day (default: 1440)}
 }
 \value{
-Numeric SRI value
+SRI value (-100 to 100)
 }
 \description{
-Measures day-to-day consistency of sleep patterns (-100 to 100).
+Sleep Regularity Index (SRI)
 }
 \references{
-Phillips AJK, et al. (2017). Irregular sleep/wake patterns are
-associated with poorer academic performance. Scientific Reports.
+Phillips AJK, et al. (2017). Scientific Reports.
 }

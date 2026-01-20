@@ -4,7 +4,7 @@
 \alias{visualization-advanced}
 \title{Advanced Visualization Module}
 \description{
-World-class visualization tools for accelerometer data, replicating and
+Advanced visualization tools for accelerometer data, replicating and
 exceeding ActiLife's graphing capabilities. Includes multi-day activity
 timelines, inclinometer/posture analysis, and interactive visualizations.
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/cpp_interface.R
 \name{wear_canhr2025_cpp_wrapper}
 \alias{wear_canhr2025_cpp_wrapper}
-\title{CANHR2025 Wear Time Detection (C++ Implementation)}
+\title{CANHR2025 Wear Time Algorithm}
 \usage{
 wear_canhr2025_cpp_wrapper(
   counts,
@@ -14,22 +14,21 @@ wear_canhr2025_cpp_wrapper(
 )
 }
 \arguments{
-\item{counts}{Numeric vector of activity counts}
+\item{counts}{Activity counts}
 
 \item{window_minutes}{Non-wear window (default: 120)}
 
 \item{spike_tolerance}{Spike tolerance (default: 3)}
 
-\item{spike_max_count}{Max spike count (default: 100)}
+\item{spike_max_count}{Max spike count (default: 150)}
 
 \item{upstream_minutes}{Upstream validation (default: 45)}
 
 \item{downstream_minutes}{Downstream validation (default: 45)}
 }
 \value{
-Integer vector: 1 = wear, 0 = non-wear
+Integer vector: 1=wear, 0=non-wear
 }
 \description{
-Conservative wear time algorithm optimized for populations with
-prolonged sedentary behavior.
+CANHR2025 Wear Time Algorithm
 }

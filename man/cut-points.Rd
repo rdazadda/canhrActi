@@ -2,9 +2,9 @@
 % Please edit documentation in R/cut_points.R
 \name{cut-points}
 \alias{cut-points}
-\title{Comprehensive Activity Intensity Cut-Points Library}
+\title{Activity Intensity Cut-Points Library}
 \description{
-A complete library of validated cut-points for activity intensity classification.
+Validated cut-points for activity intensity classification.
 Includes algorithms for adults, children, and older adults from ActiGraph
 and triaxial/vector magnitude approaches.
 }

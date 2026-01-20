@@ -2,7 +2,7 @@
 % Please edit documentation in R/cpp_interface.R
 \name{sleep_tudor_locke_cpp_wrapper}
 \alias{sleep_tudor_locke_cpp_wrapper}
-\title{Tudor-Locke Sleep Scoring (C++ Implementation)}
+\title{Tudor-Locke Sleep Algorithm}
 \usage{
 sleep_tudor_locke_cpp_wrapper(
   counts,
@@ -12,17 +12,17 @@ sleep_tudor_locke_cpp_wrapper(
 )
 }
 \arguments{
-\item{counts}{Numeric vector of activity counts}
+\item{counts}{Activity counts}
 
-\item{sleep_threshold}{Count threshold for sleep (default: 20)}
+\item{sleep_threshold}{Count threshold (default: 20)}
 
-\item{min_sleep_block}{Minimum sleep block in epochs (default: 160)}
+\item{min_sleep_block}{Minimum sleep block epochs (default: 160)}
 
 \item{max_wake_block}{Max wake gap to fill (default: 60)}
 }
 \value{
-Integer vector: 1 = sleep, 0 = wake
+Integer vector: 1=sleep, 0=wake
 }
 \description{
-High-performance implementation of Tudor-Locke sleep detection.
+Tudor-Locke Sleep Algorithm
 }

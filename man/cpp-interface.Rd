@@ -2,10 +2,9 @@
 % Please edit documentation in R/cpp_interface.R
 \name{cpp-interface}
 \alias{cpp-interface}
-\title{C++ Computational Core Interface}
+\title{C++ Computational Backend}
 \description{
-R interface functions for the high-performance C++ computational core.
-These functions provide 10-50x speedup for computationally intensive
-operations on large accelerometer datasets.
+High-performance C++ functions for accelerometer data processing.
+Provides 10-50x speedup for large datasets.
 }
 \keyword{internal}

@@ -2,10 +2,10 @@
 % Please edit documentation in R/sedentary_fragmentation.R
 \name{sedentary-fragmentation}
 \alias{sedentary-fragmentation}
-\title{World-Class Sedentary Fragmentation Analysis}
+\title{Sedentary Fragmentation Analysis}
 \description{
-Comprehensive sedentary behavior fragmentation analysis implementing gold-standard
-methods from peer-reviewed literature. Includes bout detection, transition probabilities,
+Sedentary behavior fragmentation analysis implementing validated methods
+from peer-reviewed literature. Includes bout detection, transition probabilities,
 power-law analysis with proper xmin estimation, and survival analysis.
 }
 \references{

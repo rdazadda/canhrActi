@@ -2,7 +2,7 @@
 % Please edit documentation in R/cpp_interface.R
 \name{mvpa_bouts_cpp}
 \alias{mvpa_bouts_cpp}
-\title{Detect MVPA Bouts (C++ Implementation)}
+\title{Detect MVPA Bouts}
 \usage{
 mvpa_bouts_cpp(
   counts,
@@ -13,19 +13,19 @@ mvpa_bouts_cpp(
 )
 }
 \arguments{
-\item{counts}{Numeric vector of activity counts}
+\item{counts}{Activity counts}
 
 \item{moderate_threshold}{MVPA threshold (default: 1952)}
 
-\item{min_bout_length}{Minimum bout length in epochs (default: 10)}
+\item{min_bout_length}{Min bout epochs (default: 10)}
 
-\item{drop_time}{Allowed drop time in epochs (default: 2)}
+\item{drop_time}{Allowed drop epochs (default: 2)}
 
 \item{use_80_percent_rule}{Use 80\% rule? (default: FALSE)}
 }
 \value{
-List with bout details and summary statistics
+List with bout details and statistics
 }
 \description{
-High-performance MVPA bout detection.
+Detect MVPA Bouts
 }

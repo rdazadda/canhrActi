@@ -4,8 +4,8 @@
 \alias{circadian-analysis}
 \title{Circadian Rhythm Analysis}
 \description{
-Comprehensive circadian rhythm analysis implementing gold-standard non-parametric
-methods from peer-reviewed literature for characterizing 24-hour activity patterns.
+Circadian rhythm analysis implementing non-parametric methods from peer-reviewed
+literature for characterizing 24-hour activity patterns.
 }
 \references{
 \strong{Non-Parametric Methods:}

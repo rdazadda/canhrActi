@@ -2,13 +2,13 @@
 % Please edit documentation in R/cpp_interface.R
 \name{cpp_available}
 \alias{cpp_available}
-\title{Check C++ Backend Availability}
+\title{Check C++ Availability}
 \usage{
 cpp_available()
 }
 \value{
-Logical indicating C++ availability
+Logical
 }
 \description{
-Check if C++ accelerated functions are available.
+Check C++ Availability
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/cpp_interface.R
 \name{sedentary_bouts_cpp}
 \alias{sedentary_bouts_cpp}
-\title{Detect Sedentary Bouts (C++ Implementation)}
+\title{Detect Sedentary Bouts}
 \usage{
 sedentary_bouts_cpp(
   counts,
@@ -12,17 +12,17 @@ sedentary_bouts_cpp(
 )
 }
 \arguments{
-\item{counts}{Numeric vector of activity counts}
+\item{counts}{Activity counts}
 
 \item{sedentary_threshold}{Sedentary threshold (default: 100)}
 
-\item{min_bout_length}{Minimum bout length (default: 1)}
+\item{min_bout_length}{Min bout length (default: 1)}
 
-\item{wear}{Optional wear time vector}
+\item{wear}{Wear time vector (optional)}
 }
 \value{
-List with bout details and summary statistics
+List with bout details and statistics
 }
 \description{
-High-performance sedentary bout detection.
+Detect Sedentary Bouts
 }

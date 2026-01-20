@@ -2,7 +2,7 @@
 % Please edit documentation in R/cpp_interface.R
 \name{rolling_sum}
 \alias{rolling_sum}
-\title{Rolling Sum (C++ Implementation)}
+\title{Rolling Sum}
 \usage{
 rolling_sum(x, window)
 }
@@ -12,8 +12,8 @@ rolling_sum(x, window)
 \item{window}{Window size}
 }
 \value{
-Numeric vector of rolling sums
+Rolling sums
 }
 \description{
-Rolling Sum (C++ Implementation)
+Rolling Sum
 }

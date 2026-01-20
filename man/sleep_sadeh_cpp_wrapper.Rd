@@ -2,22 +2,21 @@
 % Please edit documentation in R/cpp_interface.R
 \name{sleep_sadeh_cpp_wrapper}
 \alias{sleep_sadeh_cpp_wrapper}
-\title{Sadeh Sleep Scoring (C++ Implementation)}
+\title{Sadeh Sleep Algorithm}
 \usage{
 sleep_sadeh_cpp_wrapper(counts, threshold = -4)
 }
 \arguments{
-\item{counts}{Numeric vector of activity counts}
+\item{counts}{Activity counts}
 
 \item{threshold}{Probability threshold (default: -4.0)}
 }
 \value{
-Integer vector: 1 = sleep, 0 = wake
+Integer vector: 1=sleep, 0=wake
 }
 \description{
-High-performance implementation of Sadeh et al. (1994) algorithm.
+Sadeh Sleep Algorithm
 }
 \references{
-Sadeh A, et al. (1994). Activity-based sleep-wake identification.
-Sleep, 17(3), 201-207.
+Sadeh A, et al. (1994). Sleep, 17(3), 201-207.
 }

@@ -2,10 +2,11 @@
 % Please edit documentation in R/batch_analysis.R
 \name{canhrActi.batch}
 \alias{canhrActi.batch}
-\title{Analyze Multiple AGD Files at Once (Batch Processing)}
+\title{Batch Process Multiple AGD Files}
 \usage{
 canhrActi.batch(
   files,
+  config = NULL,
   wear_time_algorithm = c("choi", "troiano", "CANHR2025"),
   intensity_algorithm = c("freedson1998", "CANHR"),
   min_wear_hours = 10,
@@ -27,55 +28,56 @@ canhrActi.batch(
 )
 }
 \arguments{
-\item{files}{Character vector of AGD file paths OR a folder path containing AGD files}
+\item{files}{Character vector of AGD file paths OR a folder path}
 
-\item{wear_time_algorithm}{Wear time detection algorithm (default: "choi")}
+\item{config}{Optional config list from batch.config(). If NULL, uses defaults.}
 
-\item{intensity_algorithm}{Intensity classification algorithm (default: "freedson1998")}
+\item{wear_time_algorithm}{Wear time algorithm: "choi", "troiano", "CANHR2025"}
+
+\item{intensity_algorithm}{Intensity algorithm: "freedson1998", "CANHR"}
 
 \item{min_wear_hours}{Minimum hours for valid day (default: 10)}
 
-\item{axis_to_analyze}{Which axis to analyze (default: "axis1")}
+\item{axis_to_analyze}{Axis: "axis1" or "vector_magnitude"}
 
-\item{calculate_mets}{Calculate METs and energy expenditure (default: TRUE)}
+\item{calculate_mets}{Calculate METs? (default: TRUE)}
 
-\item{mets_algorithm}{METs prediction algorithm (default: "freedson.vm3")}
+\item{mets_algorithm}{METs algorithm (default: "freedson.vm3")}
 
-\item{sleep_algorithm}{Sleep scoring algorithm. Options: "cole_kripke", "sadeh", or NULL (default: NULL)}
+\item{sleep_algorithm}{Sleep algorithm: "cole_kripke", "sadeh", or NULL}
 
-\item{participant_age}{Participant age in years for age-specific algorithms (default: NULL)}
+\item{participant_age}{Age for age-specific algorithms}
 
-\item{export}{Logical. Export results to CSV? (default: TRUE)}
+\item{export}{Export CSV? (default: TRUE)}
 
-\item{output_folder}{Where to save CSV files (default: current directory)}
+\item{output_folder}{Output folder (default: ".")}
 
-\item{calculate_fragmentation}{Logical. Calculate sedentary fragmentation metrics? (default: TRUE)}
+\item{calculate_fragmentation}{Calculate fragmentation? (default: TRUE)}
 
-\item{calculate_circadian}{Logical. Calculate circadian rhythm metrics? (default: TRUE)}
+\item{calculate_circadian}{Calculate circadian? (default: TRUE)}
 
-\item{parallel}{Logical. Use parallel processing? (default: TRUE for >4 files)}
+\item{exclude_sleep}{Exclude sleep from activity? (default: TRUE)}
 
-\item{n_cores}{Number of CPU cores to use (default: auto-detect, max 8)}
+\item{parallel}{Use parallel processing? (default: auto)}
 
-\item{verbose}{Logical. Show detailed progress? (default: TRUE)}
+\item{n_cores}{CPU cores (default: auto-detect)}
+
+\item{verbose}{Show progress? (default: TRUE)}
 }
 \value{
-List with all results plus a combined summary table
+List with results and summary table
 }
 \description{
-Process multiple participants with parallel processing support.
-Includes detailed progress tracking.
+Process multiple participants with optional parallel processing.
 }
 \examples{
 \dontrun{
-# Basic usage - folder
-results <- canhrActi.batch("C:/My Data Folder")
+# Simple usage
+results <- canhrActi.batch("C:/Data")
 
-# Parallel processing with 4 cores
-results <- canhrActi.batch("C:/My Data", parallel = TRUE, n_cores = 4)
-
-# View combined summary
-print(results$summary)
+# With config object
+cfg <- batch.config(wear = "CANHR2025", sleep = "cole_kripke")
+results <- canhrActi.batch("C:/Data", config = cfg)
 }
 
 }

@@ -2,21 +2,20 @@
 % Please edit documentation in R/cpp_interface.R
 \name{circadian_cpp}
 \alias{circadian_cpp}
-\title{Comprehensive Circadian Analysis (C++ Implementation)}
+\title{Complete Circadian Analysis}
 \usage{
 circadian_cpp(minute_data, hours_per_day = 24L, start_minute = 0L)
 }
 \arguments{
-\item{minute_data}{Numeric vector of minute-level activity data}
+\item{minute_data}{Numeric vector of minute-level activity}
 
 \item{hours_per_day}{Hours per day (default: 24)}
 
-\item{start_minute}{Minute of day when data starts (0-1439). This ensures
-correct alignment of the 24-hour profile for L5/M10 calculation.}
+\item{start_minute}{Start minute of day (0-1439)}
 }
 \value{
-List with L5, M10, RA, IS, IV, phi, and other metrics
+List with L5, M10, RA, IS, IV, phi
 }
 \description{
-Calculate all circadian rhythm metrics in one optimized call.
+Complete Circadian Analysis
 }

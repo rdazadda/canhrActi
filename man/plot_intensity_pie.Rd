@@ -16,6 +16,7 @@ plot_intensity_pie(
   show_mvpa_goal = TRUE,
   mvpa_goal_minutes = 30,
   show_thresholds = TRUE,
+  colorblind_safe = FALSE,
   title = "Activity Intensity Distribution",
   subtitle = NULL
 )
@@ -42,6 +43,8 @@ plot_intensity_pie(
 \item{mvpa_goal_minutes}{Numeric. Daily MVPA goal in minutes (default: 30)}
 
 \item{show_thresholds}{Logical. Show intensity threshold labels? (default: TRUE)}
+
+\item{colorblind_safe}{Logical. Use colorblind-friendly colors? (default: FALSE)}
 
 \item{title}{Character. Plot title (default: "Activity Intensity Distribution")}
 

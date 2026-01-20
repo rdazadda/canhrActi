@@ -46,14 +46,14 @@ List with class 'canhrActi_circadian' containing:
 }
 }
 \description{
-Comprehensive circadian analysis using gold-standard non-parametric methods from
-GGIR, ActCR, nparACT, and peer-reviewed literature. Implements proper minute-level
-sliding window for L5/M10, Sleep Regularity Index, and multiple phase metrics.
+Circadian analysis using non-parametric methods from GGIR, ActCR, nparACT,
+and peer-reviewed literature. Implements minute-level sliding window for
+L5/M10, Sleep Regularity Index, and multiple phase metrics.
 }
 \details{
 \strong{Non-Parametric Metrics (van Someren et al., 1999):}
 
-This implementation uses the gold-standard \strong{minute-level sliding window}
+This implementation uses the \strong{minute-level sliding window}
 method for L5/M10 calculation, NOT hourly aggregation. This provides more accurate
 timing estimates (to the minute rather than hour).
 

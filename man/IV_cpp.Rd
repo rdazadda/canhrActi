@@ -2,16 +2,16 @@
 % Please edit documentation in R/cpp_interface.R
 \name{IV_cpp}
 \alias{IV_cpp}
-\title{Calculate Intradaily Variability (C++ Implementation)}
+\title{Intradaily Variability (IV)}
 \usage{
 IV_cpp(hourly_data)
 }
 \arguments{
-\item{hourly_data}{Numeric vector of hourly activity data}
+\item{hourly_data}{Numeric vector of hourly activity}
 }
 \value{
-Numeric IV value (lower = less fragmented)
+IV value (lower = less fragmented)
 }
 \description{
-Measures fragmentation within days (typically 0-2+).
+Intradaily Variability (IV)
 }

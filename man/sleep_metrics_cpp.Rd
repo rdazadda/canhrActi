@@ -2,12 +2,12 @@
 % Please edit documentation in R/cpp_interface.R
 \name{sleep_metrics_cpp}
 \alias{sleep_metrics_cpp}
-\title{Calculate Sleep Metrics (C++ Implementation)}
+\title{Sleep Quality Metrics}
 \usage{
 sleep_metrics_cpp(sleep, sleep_onset, wake_time)
 }
 \arguments{
-\item{sleep}{Integer vector of sleep scores (1 = sleep)}
+\item{sleep}{Sleep scores (1=sleep)}
 
 \item{sleep_onset}{Sleep onset index (1-indexed)}
 
@@ -17,5 +17,5 @@ sleep_metrics_cpp(sleep, sleep_onset, wake_time)
 List with TST, efficiency, SOL, WASO, awakenings, fragmentation
 }
 \description{
-Calculate comprehensive sleep quality metrics.
+Sleep Quality Metrics
 }

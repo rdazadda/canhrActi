@@ -2,7 +2,7 @@
 % Please edit documentation in R/cpp_interface.R
 \name{wear_troiano_cpp_wrapper}
 \alias{wear_troiano_cpp_wrapper}
-\title{Troiano Wear Time Detection (C++ Implementation)}
+\title{Troiano Wear Time Algorithm}
 \usage{
 wear_troiano_cpp_wrapper(
   counts,
@@ -12,21 +12,20 @@ wear_troiano_cpp_wrapper(
 )
 }
 \arguments{
-\item{counts}{Numeric vector of activity counts (1-minute epochs)}
+\item{counts}{Activity counts (1-min epochs)}
 
-\item{window_minutes}{Non-wear window in minutes (default: 60)}
+\item{window_minutes}{Non-wear window (default: 60)}
 
 \item{spike_tolerance}{Allowed spike minutes (default: 2)}
 
-\item{spike_max_count}{Max count during spike (default: 100)}
+\item{spike_max_count}{Max spike count (default: 100)}
 }
 \value{
-Integer vector: 1 = wear, 0 = non-wear
+Integer vector: 1=wear, 0=non-wear
 }
 \description{
-High-performance implementation of Troiano et al. (2007) algorithm.
+Troiano Wear Time Algorithm
 }
 \references{
-Troiano RP, et al. (2008). Physical activity in the United States measured
-by accelerometer. MSSE, 40(1), 181-188.
+Troiano RP, et al. (2008). MSSE, 40(1), 181-188.
 }

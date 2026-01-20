@@ -392,3 +392,37 @@ extract.subject.info <- function(agd_data) {
     weight_lbs = if (!is.na(weight_lbs)) weight_lbs else 0
   ))
 }
+
+#' Get Path to Example AGD Files
+#'
+#' @param file Character. Name of the example file or "list" to see available files.
+#' @return Character. Full path to the example AGD file.
+#' @export
+#' @examples
+#' example_agd()
+#' example_agd("list")
+#' agd_path <- example_agd(1)
+example_agd <- function(file = 1) {
+  extdata_dir <- system.file("extdata", package = "canhrActi")
+  if (extdata_dir == "") {
+    stop("Example data not found. Package may not be installed correctly.")
+  }
+  agd_files <- list.files(extdata_dir, pattern = "\\.agd$", full.names = TRUE)
+  if (length(agd_files) == 0) {
+    stop("No AGD files found in extdata directory.")
+  }
+  if (is.character(file) && file == "list") {
+    return(basename(agd_files))
+  }
+  if (is.numeric(file)) {
+    if (file < 1 || file > length(agd_files)) {
+      stop("File index out of range. Use example_agd('list') to see available files.")
+    }
+    return(agd_files[file])
+  }
+  matches <- grep(file, agd_files, value = TRUE)
+  if (length(matches) == 0) {
+    stop("No matching file found. Use example_agd('list') to see available files.")
+  }
+  return(matches[1])
+}

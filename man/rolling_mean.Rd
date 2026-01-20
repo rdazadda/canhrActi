@@ -2,7 +2,7 @@
 % Please edit documentation in R/cpp_interface.R
 \name{rolling_mean}
 \alias{rolling_mean}
-\title{Rolling Mean (C++ Implementation)}
+\title{Rolling Mean}
 \usage{
 rolling_mean(x, window)
 }
@@ -12,8 +12,8 @@ rolling_mean(x, window)
 \item{window}{Window size}
 }
 \value{
-Numeric vector of rolling means
+Rolling means
 }
 \description{
-O(n) rolling mean using cumulative sum.
+Rolling Mean
 }

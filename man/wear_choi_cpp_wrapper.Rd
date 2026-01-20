@@ -2,7 +2,7 @@
 % Please edit documentation in R/cpp_interface.R
 \name{wear_choi_cpp_wrapper}
 \alias{wear_choi_cpp_wrapper}
-\title{Choi Wear Time Detection (C++ Implementation)}
+\title{Choi Wear Time Algorithm}
 \usage{
 wear_choi_cpp_wrapper(
   counts,
@@ -14,7 +14,7 @@ wear_choi_cpp_wrapper(
 )
 }
 \arguments{
-\item{counts}{Numeric vector of activity counts}
+\item{counts}{Activity counts}
 
 \item{window_minutes}{Non-wear window (default: 90)}
 
@@ -27,12 +27,11 @@ wear_choi_cpp_wrapper(
 \item{downstream_minutes}{Downstream validation (default: 30)}
 }
 \value{
-Integer vector: 1 = wear, 0 = non-wear
+Integer vector: 1=wear, 0=non-wear
 }
 \description{
-High-performance implementation of Choi et al. (2011) algorithm.
+Choi Wear Time Algorithm
 }
 \references{
-Choi L, et al. (2011). Validation of accelerometer wear and nonwear time
-classification algorithm. MSSE, 43(2), 357-364.
+Choi L, et al. (2011). MSSE, 43(2), 357-364.
 }

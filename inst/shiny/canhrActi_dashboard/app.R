@@ -36,8 +36,8 @@ ui <- dashboardPage(
   skin = "blue",
 
   dashboardHeader(
-    title = HTML('<div class="header-brand"><span class="brand-logo">CANHR</span><span class="brand-name">Acti</span></div>'),
-    titleWidth = 260,  # Increased to accommodate larger brand typography (22px + 18px)
+    title = "CANHRActi",
+    titleWidth = 260,
 
     # File info indicator (shown when data loaded)
     tags$li(

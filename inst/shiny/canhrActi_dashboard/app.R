@@ -13,15 +13,8 @@ library(ggplot2)
 library(DT)
 library(shinyjs)
 
-# Load canhrActi
-if (!isNamespaceLoaded("canhrActi")) {
-  pkg_root <- normalizePath(file.path(dirname(getwd()), "..", ".."), mustWork = FALSE)
-  if (file.exists(file.path(pkg_root, "DESCRIPTION"))) {
-    devtools::load_all(pkg_root, quiet = TRUE)
-  } else {
-    library(canhrActi)
-  }
-}
+# Load canhrActi package
+library(canhrActi)
 
 # Optional: loading spinners
 if (requireNamespace("shinycssloaders", quietly = TRUE)) {
@@ -43,11 +36,7 @@ ui <- dashboardPage(
   skin = "blue",
 
   dashboardHeader(
-    title = tags$div(
-      class = "header-brand",
-      tags$span(class = "brand-logo", "CANHR"),
-      tags$span(class = "brand-name", "Acti")
-    ),
+    title = HTML('<div class="header-brand"><span class="brand-logo">CANHR</span><span class="brand-name">Acti</span></div>'),
     titleWidth = 260,  # Increased to accommodate larger brand typography (22px + 18px)
 
     # File info indicator (shown when data loaded)

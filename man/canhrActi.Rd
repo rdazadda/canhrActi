@@ -2,30 +2,33 @@
 % Please edit documentation in R/analyze_agd.R
 \name{canhrActi}
 \alias{canhrActi}
-\title{canhrActi: Analyze ActiGraph Files (AGD or GT3X)}
+\title{canhrActi: Analyze ActiGraph AGD Files}
 \usage{
 canhrActi(
   agd_file_path,
   wear_time_algorithm = c("choi", "troiano", "CANHR2025"),
-  intensity_algorithm = c("freedson1998", "CANHR"),
+  intensity_algorithm = c("freedson1998", "CANHR", "evenson", "puyau", "mattocks",
+    "pate_preschool", "troiano", "sasaki_vm3", "copeland_older", "auto"),
   min_wear_hours = 10,
   axis_to_analyze = c("axis1", "vector_magnitude"),
   calculate_mets = TRUE,
   mets_algorithm = c("freedson.vm3", "freedson.adult", "crouter", "hendelman.adult",
     "hendelman.lifestyle", "swartz", "leenders", "yngve.treadmill", "yngve.overground",
     "brooks.overground", "brooks.bm", "freedson.children"),
+  sleep_algorithm = NULL,
+  participant_age = NULL,
   output_summary = TRUE,
-  lfe_mode = FALSE,
   calculate_fragmentation = TRUE,
-  calculate_circadian = TRUE
+  calculate_circadian = TRUE,
+  exclude_sleep = TRUE
 )
 }
 \arguments{
 \item{agd_file_path}{Character. Can be:
 \itemize{
-\item Single file path (e.g., "path/to/file.agd" or "path/to/file.gt3x")
-\item Vector of file paths (e.g., c("file1.agd", "file2.gt3x"))
-\item Folder path (will analyze all .agd and .gt3x files in folder)
+\item Single file path (e.g., "path/to/file.agd")
+\item Vector of file paths (e.g., c("file1.agd", "file2.agd"))
+\item Folder path (will analyze all .agd files in folder)
 }}
 
 \item{wear_time_algorithm}{Character. Which wear time detection algorithm to use:
@@ -39,6 +42,14 @@ canhrActi(
 \itemize{
 \item \code{"freedson1998"} - Standard Freedson Adult cut points (default)
 \item \code{"CANHR"} - CANHR custom cut points
+\item \code{"evenson"} - Evenson children cut points (5-8 years)
+\item \code{"puyau"} - Puyau children cut points
+\item \code{"mattocks"} - Mattocks children cut points (12 years)
+\item \code{"pate_preschool"} - Pate preschool cut points (3-5 years)
+\item \code{"troiano"} - Troiano adult cut points
+\item \code{"sasaki_vm3"} - Sasaki triaxial cut points (requires vector_magnitude)
+\item \code{"copeland_older"} - Copeland older adult cut points (65+)
+\item \code{"auto"} - Auto-select based on participant age (if available)
 }}
 
 \item{min_wear_hours}{Numeric. Minimum hours of wear time for a valid day (default: 10)}
@@ -71,13 +82,30 @@ cut points may produce results that differ from published literature. Use axis1
 \item \code{"freedson.children"} - Freedson Children (2005)
 }}
 
-\item{output_summary}{Logical. Print detailed summary to console? (default: TRUE)}
+\item{sleep_algorithm}{Character. Sleep detection algorithm to use (default: NULL for none):
+\itemize{
+\item \code{NULL} - No sleep analysis (default)
+\item \code{"cole_kripke"} - Cole-Kripke (1992) algorithm
+\item \code{"sadeh"} - Sadeh (1994) algorithm
+\item \code{"tudor_locke"} - Tudor-Locke algorithm
+\item \code{"auto"} - Auto-select Cole-Kripke algorithm
+}}
 
-\item{lfe_mode}{Logical. Enable Low Frequency Extension mode for GT3X files? (default: FALSE)}
+\item{participant_age}{Numeric. Participant age in years for auto-selecting
+age-appropriate cut-points (optional). If NULL, uses adult cut-points.}
+
+\item{output_summary}{Logical. Print detailed summary to console? (default: TRUE)}
 
 \item{calculate_fragmentation}{Logical. Calculate sedentary fragmentation metrics? (default: TRUE)}
 
 \item{calculate_circadian}{Logical. Calculate circadian rhythm metrics (L5, M10, IS, IV)? (default: TRUE)}
+
+\item{exclude_sleep}{Logical. Exclude detected sleep periods from sedentary fragmentation
+analysis? (default: TRUE). Per SBRN consensus, sedentary behavior is defined as
+\strong{waking} behavior only. When TRUE, uses Cole-Kripke + Tudor-Locke algorithms
+to detect consolidated sleep PERIODS (not epoch-by-epoch classification) and excludes
+them from fragmentation metrics. This avoids the common pitfall where sleep detection
+algorithms misclassify daytime sedentary behavior as sleep.}
 }
 \value{
 A list of class \code{"canhrActi_analysis"} containing:
@@ -92,14 +120,14 @@ A list of class \code{"canhrActi_analysis"} containing:
 \item \code{mets_summary} - Data frame with METs statistics (if calculate_mets = TRUE)
 \item \code{energy_expenditure_summary} - Data frame with kcal statistics (if calculate_mets = TRUE)
 \item \code{fragmentation} - Sedentary fragmentation metrics (if calculate_fragmentation = TRUE)
-\item \code{circadian} - Circadian rhythm metrics L5, M10, IS, IV, RA, cosinor (if calculate_circadian = TRUE)
+\item \code{circadian} - Circadian rhythm metrics L5, M10, IS, IV, RA, phi (if calculate_circadian = TRUE)
 \item \code{parameters} - List of analysis parameters used
 }
 }
 \description{
-Main function for analyzing ActiGraph accelerometer files. Supports both
-pre-processed .agd files and raw .gt3x files. Automatically handles
-single files, multiple files, or entire folders.
+Main function for analyzing ActiGraph accelerometer files. Supports
+pre-processed .agd files. Automatically handles single files, multiple
+files, or entire folders.
 }
 \details{
 \strong{Algorithms Implemented:}
@@ -148,13 +176,10 @@ This threshold can be adjusted via the \code{min_wear_hours} parameter.
 # Single .agd file
 results <- canhrActi("path/to/file.agd")
 
-# Single .gt3x file (raw data)
-results <- canhrActi("path/to/file.gt3x")
+# Multiple files (batch)
+results <- canhrActi(c("file1.agd", "file2.agd"))
 
-# Multiple files (batch) - can mix .agd and .gt3x
-results <- canhrActi(c("file1.agd", "file2.gt3x"))
-
-# Entire folder (analyzes all .agd and .gt3x files)
+# Entire folder (analyzes all .agd files)
 results <- canhrActi("C:/My Data Folder")
 
 # View overall summary

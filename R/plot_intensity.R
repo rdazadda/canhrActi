@@ -130,8 +130,8 @@ plot_intensity_distribution <- function(x, style = c("bar", "pie")) {
                         ggplot2::aes(x = percentage, y = intensity, fill = intensity)) +
       ggplot2::geom_col(width = 0.7) +
       ggplot2::geom_text(ggplot2::aes(label = sprintf("%.1f%% (%d min)",
-                                                       percentage, minutes)),
-                        hjust = -0.1, size = 3.5) +
+                                                    percentage, minutes)),
+                        hjust = -0.1, size = 4.5) +
       ggplot2::scale_fill_manual(
         values = colors,
         guide = "none"
@@ -162,7 +162,7 @@ plot_intensity_distribution <- function(x, style = c("bar", "pie")) {
       ggplot2::coord_polar(theta = "y") +
       ggplot2::geom_text(ggplot2::aes(label = sprintf("%.1f%%", percentage)),
                         position = ggplot2::position_stack(vjust = 0.5),
-                        size = 3.5, fontface = "bold") +
+                        size = 4.5, fontface = "bold") +
       ggplot2::scale_fill_manual(
         values = colors,
         labels = c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous"),
@@ -189,7 +189,7 @@ plot_intensity_distribution <- function(x, style = c("bar", "pie")) {
 }
 
 
-#' Plot Wear Time Quality Check
+#' Plot Wear Time Quality Check from canhrActi Analysis
 #'
 #' Visualizes minute-by-minute counts with wear/non-wear classification overlay.
 #' Essential for validating wear time detection algorithm performance.
@@ -202,12 +202,12 @@ plot_intensity_distribution <- function(x, style = c("bar", "pie")) {
 #' @examples
 #' \dontrun{
 #' results <- canhrActi("participant.agd")
-#' plot_wear_time(results)
-#' plot_wear_time(results, date = "2024-01-15")
+#' plot_wear_time_check(results)
+#' plot_wear_time_check(results, date = "2024-01-15")
 #' }
 #'
 #' @export
-plot_wear_time <- function(x, date = NULL) {
+plot_wear_time_check <- function(x, date = NULL) {
 
   if (!inherits(x, "canhrActi_analysis")) {
     stop("Input must be a canhrActi_analysis object from canhrActi()")
@@ -608,7 +608,7 @@ plot_sleep <- function(x, night = 1, show_activity = TRUE, show_awakenings = TRU
       x = "Minutes Since Bedtime",
       y = NULL,
       caption = sprintf("Algorithm: %s | In bed: %s | Out bed: %s%s",
-                       x$parameters$algorithm,
+                       x$parameters$sleep_algorithm,
                        format(in_bed, "%H:%M"),
                        format(out_bed, "%H:%M"),
                        if (show_activity) " | Gray bars = activity intensity" else "")

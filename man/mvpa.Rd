@@ -4,18 +4,25 @@
 \alias{mvpa}
 \title{Calculate MVPA Minutes}
 \usage{
-mvpa(intensity_levels, wear_time = NULL, include_vigorous = TRUE)
+mvpa(
+  intensity_levels,
+  wear_time = NULL,
+  epoch_seconds = 60,
+  include_vigorous = TRUE
+)
 }
 \arguments{
 \item{intensity_levels}{Factor or character vector of intensity levels}
 
 \item{wear_time}{Logical vector indicating valid wear time (default: all TRUE)}
 
-\item{include_vigorous}{Logical. Include vigorous activity in MVPA? (default: TRUE)}
+\item{epoch_seconds}{Epoch length in seconds (default: 60)}
+
+\item{include_vigorous}{Include vigorous activity? (default: TRUE)}
 }
 \value{
 Numeric. Total MVPA minutes during wear time
 }
 \description{
-Calculate MVPA Minutes
+Calculate total minutes of Moderate-to-Vigorous Physical Activity.
 }

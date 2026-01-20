@@ -107,16 +107,17 @@ test_that("sedentary.fragmentation handles no sedentary", {
 
 test_that("sedentary.fragmentation bout distribution is correct", {
   # Create bouts of specific lengths
+  # Use gaps > 5 min to prevent bridging (default min_break_length = 5)
   intensity <- factor(c(
     rep("sedentary", 3),   # 3 min bout (1-5 category)
-    rep("light", 2),
+    rep("light", 10),      # 10 min gap - not bridged
     rep("sedentary", 8),   # 8 min bout (5-10 category)
-    rep("light", 2),
+    rep("light", 10),      # 10 min gap - not bridged
     rep("sedentary", 15),  # 15 min bout (10-20 category)
-    rep("light", 2),
+    rep("light", 10),      # 10 min gap - not bridged
     rep("sedentary", 45)   # 45 min bout (30-60 category)
   ), levels = c("sedentary", "light", "moderate", "vigorous", "very_vigorous"))
-  timestamps <- seq(as.POSIXct("2024-01-01 08:00:00"), by = "1 min", length.out = 77)
+  timestamps <- seq(as.POSIXct("2024-01-01 08:00:00"), by = "1 min", length.out = 101)
 
   frag <- sedentary.fragmentation(intensity, timestamps, epoch_length = 60)
 
@@ -151,7 +152,7 @@ test_that("print method works for fragmentation", {
 
   output <- capture.output(print(frag))
   expect_true(length(output) > 0)
-  expect_true(any(grepl("SEDENTARY FRAGMENTATION", output)))
+  expect_true(any(grepl("Sedentary Fragmentation", output)))
 })
 
 test_that("sedentary.breaks.hourly returns correct structure", {
@@ -196,12 +197,13 @@ test_that("alpha calculation handles edge cases", {
 })
 
 test_that("gini calculation is bounded [0, 1]", {
-  intensity <- factor(c(rep("sedentary", 10), rep("light", 5),
-                       rep("sedentary", 20), rep("light", 5),
-                       rep("sedentary", 5), rep("light", 5),
+  # Use gaps > 5 min to prevent bridging
+  intensity <- factor(c(rep("sedentary", 10), rep("light", 10),
+                       rep("sedentary", 20), rep("light", 10),
+                       rep("sedentary", 5), rep("light", 10),
                        rep("sedentary", 50)),
                      levels = c("sedentary", "light", "moderate", "vigorous", "very_vigorous"))
-  timestamps <- seq(as.POSIXct("2024-01-01 08:00:00"), by = "1 min", length.out = 100)
+  timestamps <- seq(as.POSIXct("2024-01-01 08:00:00"), by = "1 min", length.out = 115)
 
   frag <- sedentary.fragmentation(intensity, timestamps, epoch_length = 60)
 

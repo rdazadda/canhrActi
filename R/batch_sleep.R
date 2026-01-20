@@ -1,10 +1,10 @@
-#' Batch Sleep Analysis for ActiGraph Data
+#' Batch Sleep Analysis for ActiGraph AGD Files
 #'
-#' Performs sleep analysis on ActiGraph files with parallel processing support.
-#' Includes memory optimization and detailed progress tracking.
+#' Performs sleep analysis on ActiGraph AGD files with parallel processing support.
+#' Includes detailed progress tracking.
 #'
-#' @param agd_file_path Single file, vector of files, or folder path
-#' @param sleep_algorithm "cole.kripke" (adults) or "sadeh" (children/adolescents)
+#' @param agd_file_path Single AGD file, vector of AGD files, or folder path
+#' @param sleep_algorithm "cole_kripke" (adults) or "sadeh" (children/adolescents)
 #' @param apply_rescoring Apply Webster's rescoring rules? (default: TRUE)
 #' @param detect_sleep_period Detect sleep periods? (default: TRUE)
 #' @param bedtime_start Consecutive sleep epochs for bedtime (default: 5)
@@ -17,7 +17,6 @@
 #' @param parallel Use parallel processing? (default: TRUE for >4 files)
 #' @param n_cores Number of CPU cores (default: auto-detect, max 8)
 #' @param verbose Show detailed progress? (default: TRUE)
-#' @param memory_efficient Optimize memory for large files? (default: TRUE)
 #'
 #' @return List with results, summary, and parameters
 #'
@@ -35,7 +34,7 @@
 #'
 #' @export
 canhrActi.sleep <- function(agd_file_path,
-                            sleep_algorithm = c("cole.kripke", "sadeh"),
+                            sleep_algorithm = c("cole_kripke", "sadeh"),
                             apply_rescoring = TRUE,
                             detect_sleep_period = TRUE,
                             bedtime_start = 5,
@@ -47,28 +46,23 @@ canhrActi.sleep <- function(agd_file_path,
                             output_dir = "sleep_analysis_output",
                             parallel = NULL,
                             n_cores = NULL,
-                            verbose = TRUE,
-                            memory_efficient = TRUE) {
+                            verbose = TRUE) {
 
   sleep_algorithm <- match.arg(sleep_algorithm)
 
   # Handle folder or multiple files
   if (length(agd_file_path) == 1 && dir.exists(agd_file_path)) {
-    agd_files <- list.files(agd_file_path, pattern = "\\.agd$", full.names = TRUE, ignore.case = TRUE)
-    gt3x_files <- list.files(agd_file_path, pattern = "\\.gt3x$", full.names = TRUE, ignore.case = TRUE)
-    files <- c(agd_files, gt3x_files)
+    files <- list.files(agd_file_path, pattern = "\\.agd$", full.names = TRUE, ignore.case = TRUE)
 
     if (length(files) == 0) {
-      stop("No .agd or .gt3x files found in: ", agd_file_path)
+      stop("No .agd files found in: ", agd_file_path)
     }
 
     if (verbose) {
       cat("\n", paste(rep("=", 60), collapse = ""), "\n", sep = "")
       cat("canhrActi Sleep Batch Processing\n")
       cat(paste(rep("=", 60), collapse = ""), "\n\n", sep = "")
-      cat("Found files:\n")
-      if (length(agd_files) > 0) cat("  ", length(agd_files), " .agd files\n", sep = "")
-      if (length(gt3x_files) > 0) cat("  ", length(gt3x_files), " .gt3x files\n", sep = "")
+      cat("Found ", length(files), " .agd files\n", sep = "")
     }
   } else if (length(agd_file_path) > 1) {
     files <- agd_file_path
@@ -137,11 +131,6 @@ canhrActi.sleep <- function(agd_file_path,
         stringsAsFactors = FALSE
       )
 
-      if (memory_efficient) {
-        # Keep only sleep periods, discard epoch data
-        analysis$epoch_data <- NULL
-      }
-
       result$analysis <- analysis
       result$summary_row <- summary_row
       result$success <- TRUE
@@ -174,10 +163,13 @@ canhrActi.sleep <- function(agd_file_path,
       library(RSQLite)
     })
 
+    #  Also export 'files' and 'process_single_sleep' to cluster
+    # These are needed inside the parLapply function
     parallel::clusterExport(cl, c(
       "sleep_algorithm", "apply_rescoring", "detect_sleep_period",
       "bedtime_start", "wake_time_end", "min_sleep_period",
-      "max_sleep_period", "min_nonzero_epochs", "memory_efficient"
+      "max_sleep_period", "min_nonzero_epochs",
+      "files", "process_single_sleep"
     ), envir = environment())
 
     results_list <- parallel::parLapply(cl, seq_along(files), function(i) {
@@ -310,18 +302,11 @@ canhrActi.sleep <- function(agd_file_path,
                                     max_sleep_period,
                                     min_nonzero_epochs) {
 
-  is_gt3x <- grepl("\\.gt3x$", agd_file_path, ignore.case = TRUE)
-
-  if (is_gt3x) {
-    agd_data <- read.gt3x.file(agd_file_path, epoch_length = 60, lfe_mode = FALSE, verbose = FALSE)
-  } else {
-    agd_data <- read.agd(agd_file_path)
-  }
-
+  agd_data <- read.agd(agd_file_path)
   counts_data <- agd.counts(agd_data)
   subject_info <- extract.subject.info(agd_data)
 
-  if (sleep_algorithm == "cole.kripke") {
+  if (sleep_algorithm == "cole_kripke") {
     sleep_wake <- sleep.cole.kripke(counts_data$axis1, apply_rescoring = apply_rescoring)
   } else if (sleep_algorithm == "sadeh") {
     sleep_wake <- sleep.sadeh(counts_data$axis1)

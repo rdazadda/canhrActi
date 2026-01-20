@@ -2,13 +2,17 @@
 % Please edit documentation in R/sedentary_fragmentation.R
 \name{sedentary.fragmentation}
 \alias{sedentary.fragmentation}
-\title{Calculate Sedentary Fragmentation Metrics}
+\title{World-Class Sedentary Fragmentation Analysis}
 \usage{
 sedentary.fragmentation(
   intensity,
   timestamps,
   wear_time = NULL,
-  epoch_length = 60
+  sleep_mask = NULL,
+  epoch_length = 60,
+  min_break_length = 5,
+  robust_alpha = TRUE,
+  compare_distributions = TRUE
 )
 }
 \arguments{
@@ -16,45 +20,110 @@ sedentary.fragmentation(
 
 \item{timestamps}{POSIXct vector of timestamps}
 
-\item{wear_time}{Optional logical vector indicating wear time}
+\item{wear_time}{Optional logical vector indicating wear time (TRUE = worn)}
+
+\item{sleep_mask}{Optional vector indicating sleep status. Can be:
+\itemize{
+\item Logical vector (TRUE = asleep, FALSE = awake)
+\item Character vector ("S" or "sleep" = asleep, anything else = awake)
+When provided, sleep periods are EXCLUDED from sedentary analysis per
+SBRN consensus that sedentary behavior is "waking behavior" only.
+This prevents sleep from being misclassified as prolonged sedentary bouts.
+Reference: Tremblay et al. (2017) SBRN Terminology Consensus Project.
+}}
 
 \item{epoch_length}{Epoch length in seconds (default 60)}
+
+\item{min_break_length}{Minimum duration (minutes) for an active period to count as a
+"break" in sedentary time (default 5). Based on Healy et al. (2008) and GGIR methodology,
+shorter active periods are treated as continued sedentary time (gap bridging).
+Higher values = more conservative break counting (filters noise/fidgeting).
+Lower values (1-2) may inflate break counts with non-meaningful movements.}
+
+\item{robust_alpha}{Use robust alpha estimation with xmin optimization? (default TRUE)}
+
+\item{compare_distributions}{Compare power-law vs exponential fit? (default TRUE)}
 }
 \value{
 A list with class "canhrActi_fragmentation" containing:
-\item{total_sedentary_min}{Total sedentary time in minutes}
+\describe{
+\item{total_sedentary_min, total_sedentary_hours}{Total sedentary time}
+\item{sedentary_percent}{Percentage of wear time spent sedentary}
 \item{total_bouts}{Number of sedentary bouts}
-\item{mean_bout_duration}{Mean bout duration in minutes}
-\item{median_bout_duration}{Median bout duration in minutes}
-\item{max_bout_duration}{Maximum bout duration in minutes}
-\item{breaks_total}{Total number of breaks in sedentary time}
-\item{breaks_per_sed_hour}{Breaks per hour of sedentary time}
-\item{alpha}{Power-law exponent (fragmentation index)}
-\item{gini}{Gini coefficient for bout duration inequality}
-\item{bout_distribution}{Summary of bout duration distribution}
-\item{bouts}{Data frame of individual bouts}
+\item{mean_bout_duration, median_bout_duration}{Central tendency of bout durations}
+\item{ASTP}{Active-to-Sedentary Transition Probability (gold standard)}
+\item{SATP}{Sedentary-to-Active Transition Probability}
+\item{W50}{Usual bout duration - weighted median (Chastin method)}
+\item{alpha}{Power-law exponent with robust xmin estimation}
+\item{gini}{Gini coefficient for bout inequality}
+\item{breaks_per_sed_hour}{Breaks per sedentary hour}
+\item{pct_time_30min_bouts, pct_time_60min_bouts}{Prolonged sedentary percentage}
+\item{distribution_fit}{Power-law vs exponential comparison results}
+\item{survival_analysis}{Bout survival/hazard analysis results}
+}
 }
 \description{
-Computes comprehensive fragmentation metrics for sedentary behavior patterns.
-Based on methods from Chastin & Granat (2010) and subsequent literature.
+Comprehensive fragmentation analysis using gold-standard methods from Chastin & Granat
+(2010), Wanigatunga et al. (2019), and related literature. Implements ASTP/SATP
+transition probabilities, robust power-law alpha estimation, usual bout duration,
+and survival analysis.
 }
 \details{
-The alpha (power-law exponent) indicates how sedentary time is accumulated:
+\strong{Transition Probabilities (Wanigatunga et al., 2019):}
+
+ASTP (Active-to-Sedentary Transition Probability) is the reciprocal of mean
+active bout duration. Higher ASTP indicates more fragmented activity patterns.
+ASTP has been strongly associated with fatigability, functional decline, and
+mortality in older adults.
+
+SATP (Sedentary-to-Active Transition Probability) is the reciprocal of mean
+sedentary bout duration. Higher SATP indicates more fragmented sedentary time.
+
+\strong{Usual Bout Duration - W50 (Chastin & Granat, 2010):}
+
+The bout duration at which 50\% of total sedentary time is accumulated. Unlike
+simple median (dominated by many short bouts), W50 reflects the typical duration
+experienced when sedentary time is weighted by duration.
+
+\strong{Breaks in Sedentary Time (Healy et al., 2008):}
+
+A "break" is a transition from sedentary (<100 CPM) to non-sedentary (>=100 CPM)
+that is sustained for a meaningful duration. Brief movements (fidgeting, posture
+adjustments) should not count as breaks. This implementation uses a minimum
+break duration threshold (default 5 minutes) - active periods shorter than this
+are "bridged" and treated as continued sedentary time. This aligns with GGIR
+methodology and literature recommendations (Chastin 2015, Winkler 2012).
+
+Expected values:
 \itemize{
-\item Higher alpha (>2): More fragmented, many short bouts
-\item Lower alpha (<1.5): Less fragmented, dominated by long bouts
+\item Typical healthy adults: 2-5 breaks per sedentary hour
+\item Very sedentary individuals: 0.5-2 breaks per sedentary hour
+\item Active individuals: 5-10 breaks per sedentary hour
 }
+
+\strong{Power-Law Alpha (Clauset et al., 2009):}
+
+The scaling exponent of the bout duration distribution. This implementation uses
+the Clauset method which estimates the optimal xmin rather than assuming xmin=1.
+Lower alpha indicates more time in prolonged bouts; higher alpha indicates more
+fragmented patterns.
 }
 \examples{
-intensity <- factor(c(rep("sedentary", 30), rep("light", 5), rep("sedentary", 20),
-                      rep("moderate", 10), rep("sedentary", 15)),
-                    levels = c("sedentary", "light", "moderate", "vigorous", "very_vigorous"))
-timestamps <- seq(as.POSIXct("2024-01-01 08:00:00"), by = "1 min", length.out = 80)
-frag <- sedentary.fragmentation(intensity, timestamps)
+\dontrun{
+results <- canhrActi("participant.agd")
+frag <- sedentary.fragmentation(
+  results$epoch_data$intensity,
+  results$epoch_data$timestamp,
+  results$epoch_data$wear_time
+)
 print(frag)
+plot(frag, type = "distribution")
+plot(frag, type = "survival")
 }
-\references{
-Chastin, S. F., & Granat, M. H. (2010). Methods for objective measure,
-quantification and analysis of sedentary behaviour and inactivity.
-Gait & Posture, 31(1), 82-86.
+
+}
+\seealso{
+\code{\link{transition.probabilities}} for standalone ASTP/SATP calculation,
+\code{\link{usual.bout.duration}} for W50 calculation,
+\code{\link{detect.sedentary.bouts}} for bout detection
 }

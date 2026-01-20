@@ -96,25 +96,13 @@ test_that("circadian.rhythm creates hourly profile", {
   expect_equal(nrow(result$hourly_profile), 24)
 })
 
-test_that("circadian.rhythm performs cosinor analysis", {
-  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00"), by = 60, length.out = 1440)
-  counts <- c(rep(50, 360), rep(500, 600), rep(50, 480))
-
-  result <- circadian.rhythm(counts, timestamps)
-
-  expect_true("cosinor" %in% names(result))
-  expect_true("MESOR" %in% names(result$cosinor))
-  expect_true("amplitude" %in% names(result$cosinor))
-  expect_true("acrophase" %in% names(result$cosinor))
-})
-
 test_that("print method works for circadian results", {
   timestamps <- seq(as.POSIXct("2024-01-01 00:00:00"), by = 60, length.out = 1440)
   counts <- c(rep(50, 360), rep(500, 600), rep(50, 480))
 
   result <- circadian.rhythm(counts, timestamps)
 
-  expect_output(print(result), "Circadian")
+  expect_output(print(result), "CIRCADIAN", ignore.case = TRUE)
 })
 
 test_that("plot method works for circadian results", {

@@ -1,14 +1,14 @@
-#' canhrActi: Analyze ActiGraph Files (AGD or GT3X)
+#' canhrActi: Analyze ActiGraph AGD Files
 #'
-#' Main function for analyzing ActiGraph accelerometer files. Supports both
-#' pre-processed .agd files and raw .gt3x files. Automatically handles
-#' single files, multiple files, or entire folders.
+#' Main function for analyzing ActiGraph accelerometer files. Supports
+#' pre-processed .agd files. Automatically handles single files, multiple
+#' files, or entire folders.
 #'
 #' @param agd_file_path Character. Can be:
 #'   \itemize{
-#'     \item Single file path (e.g., "path/to/file.agd" or "path/to/file.gt3x")
-#'     \item Vector of file paths (e.g., c("file1.agd", "file2.gt3x"))
-#'     \item Folder path (will analyze all .agd and .gt3x files in folder)
+#'     \item Single file path (e.g., "path/to/file.agd")
+#'     \item Vector of file paths (e.g., c("file1.agd", "file2.agd"))
+#'     \item Folder path (will analyze all .agd files in folder)
 #'   }
 #' @param wear_time_algorithm Character. Which wear time detection algorithm to use:
 #'   \itemize{
@@ -20,6 +20,14 @@
 #'   \itemize{
 #'     \item \code{"freedson1998"} - Standard Freedson Adult cut points (default)
 #'     \item \code{"CANHR"} - CANHR custom cut points
+#'     \item \code{"evenson"} - Evenson children cut points (5-8 years)
+#'     \item \code{"puyau"} - Puyau children cut points
+#'     \item \code{"mattocks"} - Mattocks children cut points (12 years)
+#'     \item \code{"pate_preschool"} - Pate preschool cut points (3-5 years)
+#'     \item \code{"troiano"} - Troiano adult cut points
+#'     \item \code{"sasaki_vm3"} - Sasaki triaxial cut points (requires vector_magnitude)
+#'     \item \code{"copeland_older"} - Copeland older adult cut points (65+)
+#'     \item \code{"auto"} - Auto-select based on participant age (if available)
 #'   }
 #' @param min_wear_hours Numeric. Minimum hours of wear time for a valid day (default: 10)
 #' @param axis_to_analyze Character. Which axis to use for analysis:
@@ -47,10 +55,25 @@
 #'     \item \code{"brooks.bm"} - Brooks Adult with Body Mass (2005)
 #'     \item \code{"freedson.children"} - Freedson Children (2005)
 #'   }
+#' @param sleep_algorithm Character. Sleep detection algorithm to use (default: NULL for none):
+#'   \itemize{
+#'     \item \code{NULL} - No sleep analysis (default)
+#'     \item \code{"cole_kripke"} - Cole-Kripke (1992) algorithm
+#'     \item \code{"sadeh"} - Sadeh (1994) algorithm
+#'     \item \code{"tudor_locke"} - Tudor-Locke algorithm
+#'     \item \code{"auto"} - Auto-select Cole-Kripke algorithm
+#'   }
+#' @param participant_age Numeric. Participant age in years for auto-selecting
+#'   age-appropriate cut-points (optional). If NULL, uses adult cut-points.
 #' @param output_summary Logical. Print detailed summary to console? (default: TRUE)
-#' @param lfe_mode Logical. Enable Low Frequency Extension mode for GT3X files? (default: FALSE)
 #' @param calculate_fragmentation Logical. Calculate sedentary fragmentation metrics? (default: TRUE)
 #' @param calculate_circadian Logical. Calculate circadian rhythm metrics (L5, M10, IS, IV)? (default: TRUE)
+#' @param exclude_sleep Logical. Exclude detected sleep periods from sedentary fragmentation
+#'   analysis? (default: TRUE). Per SBRN consensus, sedentary behavior is defined as
+#'   \strong{waking} behavior only. When TRUE, uses Cole-Kripke + Tudor-Locke algorithms
+#'   to detect consolidated sleep PERIODS (not epoch-by-epoch classification) and excludes
+#'   them from fragmentation metrics. This avoids the common pitfall where sleep detection
+#'   algorithms misclassify daytime sedentary behavior as sleep.
 #'
 #' @return A list of class \code{"canhrActi_analysis"} containing:
 #'   \itemize{
@@ -64,7 +87,7 @@
 #'     \item \code{mets_summary} - Data frame with METs statistics (if calculate_mets = TRUE)
 #'     \item \code{energy_expenditure_summary} - Data frame with kcal statistics (if calculate_mets = TRUE)
 #'     \item \code{fragmentation} - Sedentary fragmentation metrics (if calculate_fragmentation = TRUE)
-#'     \item \code{circadian} - Circadian rhythm metrics L5, M10, IS, IV, RA, cosinor (if calculate_circadian = TRUE)
+#'     \item \code{circadian} - Circadian rhythm metrics L5, M10, IS, IV, RA, phi (if calculate_circadian = TRUE)
 #'     \item \code{parameters} - List of analysis parameters used
 #'   }
 #'
@@ -129,13 +152,10 @@
 #' # Single .agd file
 #' results <- canhrActi("path/to/file.agd")
 #'
-#' # Single .gt3x file (raw data)
-#' results <- canhrActi("path/to/file.gt3x")
+#' # Multiple files (batch)
+#' results <- canhrActi(c("file1.agd", "file2.agd"))
 #'
-#' # Multiple files (batch) - can mix .agd and .gt3x
-#' results <- canhrActi(c("file1.agd", "file2.gt3x"))
-#'
-#' # Entire folder (analyzes all .agd and .gt3x files)
+#' # Entire folder (analyzes all .agd files)
 #' results <- canhrActi("C:/My Data Folder")
 #'
 #' # View overall summary
@@ -167,7 +187,9 @@
 #' @export
 canhrActi <- function(agd_file_path,
                               wear_time_algorithm = c("choi", "troiano", "CANHR2025"),
-                              intensity_algorithm = c("freedson1998", "CANHR"),
+                              intensity_algorithm = c("freedson1998", "CANHR", "evenson", "puyau",
+                                                       "mattocks", "pate_preschool", "troiano",
+                                                       "sasaki_vm3", "copeland_older", "auto"),
                               min_wear_hours = 10,
                               axis_to_analyze = c("axis1", "vector_magnitude"),
                               calculate_mets = TRUE,
@@ -175,47 +197,79 @@ canhrActi <- function(agd_file_path,
                                                  "hendelman.adult", "hendelman.lifestyle", "swartz",
                                                  "leenders", "yngve.treadmill", "yngve.overground",
                                                  "brooks.overground", "brooks.bm", "freedson.children"),
+                              sleep_algorithm = NULL,
+                              participant_age = NULL,
                               output_summary = TRUE,
-                              lfe_mode = FALSE,
                               calculate_fragmentation = TRUE,
-                              calculate_circadian = TRUE) {
+                              calculate_circadian = TRUE,
+                              exclude_sleep = TRUE) {
 
   if ((length(agd_file_path) == 1 && dir.exists(agd_file_path)) || length(agd_file_path) > 1) {
     return(canhrActi.batch(agd_file_path, wear_time_algorithm, intensity_algorithm,
                            min_wear_hours, axis_to_analyze,
-                           export = !output_summary, lfe_mode = lfe_mode,
+                           export = !output_summary,
                            calculate_mets = calculate_mets, mets_algorithm = mets_algorithm,
+                           sleep_algorithm = sleep_algorithm,
+                           participant_age = participant_age,
                            calculate_fragmentation = calculate_fragmentation,
-                           calculate_circadian = calculate_circadian))
+                           calculate_circadian = calculate_circadian,
+                           exclude_sleep = exclude_sleep))
   }
 
   return(.canhrActi.single.internal(agd_file_path, wear_time_algorithm, intensity_algorithm,
                                     min_wear_hours, axis_to_analyze,
-                                    output_summary, lfe_mode,
+                                    output_summary,
                                     calculate_mets, mets_algorithm,
-                                    calculate_fragmentation, calculate_circadian))
+                                    sleep_algorithm = sleep_algorithm,
+                                    participant_age = participant_age,
+                                    calculate_fragmentation, calculate_circadian,
+                                    exclude_sleep = exclude_sleep))
 }
 
 
 .canhrActi.single.internal <- function(agd_file_path,
                                    wear_time_algorithm = c("choi", "troiano", "CANHR2025"),
-                                   intensity_algorithm = c("freedson1998", "CANHR"),
+                                   intensity_algorithm = c("freedson1998", "CANHR", "evenson", "puyau",
+                                                            "mattocks", "pate_preschool", "troiano",
+                                                            "sasaki_vm3", "copeland_older", "auto"),
                                    min_wear_hours = 10,
                                    axis_to_analyze = c("axis1", "vector_magnitude"),
                                    output_summary = TRUE,
-                                   lfe_mode = FALSE,
                                    calculate_mets = TRUE,
                                    mets_algorithm = c("freedson.vm3", "freedson.adult", "crouter",
                                                       "hendelman.adult", "hendelman.lifestyle", "swartz",
                                                       "leenders", "yngve.treadmill", "yngve.overground",
                                                       "brooks.overground", "brooks.bm", "freedson.children"),
+                                   sleep_algorithm = NULL,
+                                   participant_age = NULL,
                                    calculate_fragmentation = TRUE,
-                                   calculate_circadian = TRUE) {
+                                   calculate_circadian = TRUE,
+                                   exclude_sleep = TRUE) {
 
   wear_time_algorithm <- match.arg(wear_time_algorithm)
   intensity_algorithm <- match.arg(intensity_algorithm)
   axis_to_analyze <- match.arg(axis_to_analyze)
   mets_algorithm <- match.arg(mets_algorithm)
+
+  # Auto-select intensity algorithm based on age
+  if (intensity_algorithm == "auto" && !is.null(participant_age)) {
+    if (participant_age < 5) {
+      intensity_algorithm <- "pate_preschool"
+      if (output_summary) message("Age < 5: Using Pate preschool cut-points")
+    } else if (participant_age < 18) {
+      intensity_algorithm <- "evenson"
+      if (output_summary) message("Age 5-17: Using Evenson children cut-points")
+    } else if (participant_age >= 65) {
+      intensity_algorithm <- "copeland_older"
+      if (output_summary) message("Age >= 65: Using Copeland older adult cut-points")
+    } else {
+      intensity_algorithm <- "freedson1998"
+      if (output_summary) message("Age 18-64: Using Freedson adult cut-points")
+    }
+  } else if (intensity_algorithm == "auto") {
+    intensity_algorithm <- "freedson1998"
+    if (output_summary) message("No age provided; defaulting to Freedson adult cut-points")
+  }
 
   # Validate parameter combinations
   if (axis_to_analyze == "vector_magnitude" && intensity_algorithm == "freedson1998") {
@@ -232,23 +286,11 @@ canhrActi <- function(agd_file_path,
          "  3. You have read permissions for this file")
   }
 
-  # Check file type - support multiple device formats
+  # Check file type - only AGD files supported
   file_ext <- tolower(tools::file_ext(agd_file_path))
-  is_agd <- file_ext == "agd"
-  is_gt3x <- file_ext == "gt3x"
-  is_bin <- file_ext == "bin"      # GENEActiv
-  is_cwa <- file_ext == "cwa"      # Axivity
-  is_csv <- file_ext == "csv"      # Generic CSV
-
-  supported_formats <- c("agd", "gt3x", "bin", "cwa", "csv")
-  if (!file_ext %in% supported_formats) {
+  if (file_ext != "agd") {
     stop("Unsupported file format: ", basename(agd_file_path), "\n",
-         "Supported formats:\n",
-         "  - .agd: ActiGraph pre-processed data (from ActiLife)\n",
-         "  - .gt3x: ActiGraph raw acceleration data\n",
-         "  - .bin: GENEActiv raw data (requires GENEAread package)\n",
-         "  - .cwa: Axivity raw data (requires GGIRread package)\n",
-         "  - .csv: Generic CSV with x, y, z columns")
+         "Only ActiGraph .agd files (pre-processed from ActiLife) are supported.")
   }
 
   if (min_wear_hours < 0 || min_wear_hours > 24) {
@@ -256,45 +298,16 @@ canhrActi <- function(agd_file_path,
          "Common values: 10 hours (default), 8 hours (lenient), 12 hours (strict)")
   }
 
-  # Device type descriptions
-  device_descriptions <- c(
-    agd = "ActiGraph .agd (pre-processed counts)",
-    gt3x = "ActiGraph .gt3x (raw acceleration)",
-    bin = "GENEActiv .bin (raw acceleration)",
-    cwa = "Axivity .cwa (raw acceleration)",
-    csv = "Generic CSV (raw acceleration)"
-  )
+  # Device type description
+  device_description <- "ActiGraph .agd (pre-processed counts)"
 
   if (output_summary) {
     cat("\nAnalyzing:", basename(agd_file_path), "\n")
-    cat("File type:", device_descriptions[file_ext], "\n")
+    cat("File type:", device_description, "\n")
   }
 
-  # Read file based on type - unified multi-device support
-  if (is_agd) {
-    # ActiGraph AGD - pre-processed counts
-    agd.data <- read.agd(agd_file_path)
-  } else if (is_gt3x) {
-    # ActiGraph GT3X - raw data with built-in counts conversion
-    agd.data <- read.gt3x.file(agd_file_path, epoch_length = 60, lfe_mode = lfe_mode, verbose = output_summary)
-  } else {
-    # Other devices (GENEActiv, Axivity, CSV) - use unified reader
-    if (output_summary) cat("Using unified accelerometer reader...\n")
-    accel_data <- read.accelerometer(agd_file_path, epoch_length = 60, verbose = output_summary)
-
-    # Convert to canhrActi standard format
-    agd.data <- list(
-      data = data.frame(
-        timestamp = accel_data$data$timestamp,
-        axis1 = accel_data$data$axis1,
-        axis2 = accel_data$data$axis2,
-        axis3 = accel_data$data$axis3,
-        steps = if ("steps" %in% names(accel_data$data)) accel_data$data$steps else 0,
-        stringsAsFactors = FALSE
-      ),
-      settings = accel_data$settings
-    )
-  }
+  # Read AGD file
+  agd.data <- read.agd(agd_file_path)
 
   counts.data <- agd.counts(agd.data)
   subject_info <- extract.subject.info(agd.data)
@@ -330,29 +343,40 @@ canhrActi <- function(agd_file_path,
     wear.time <- wear.CANHR2025(counts.for.analysis)
   }
 
-  wear.minutes <- sum(wear.time)
+  # Calculate wear time accounting for epoch length
+  minutes_per_epoch <- epoch_length / 60
+  wear.minutes <- sum(wear.time) * minutes_per_epoch
   wear.hours <- wear.minutes / 60
-  wear.percent <- 100 * wear.minutes / length(wear.time)
+  wear.percent <- 100 * sum(wear.time) / length(wear.time)
 
   # Extract wear time periods (start/end timestamps for continuous wear)
   wear.time.periods <- get.wear.periods(wear.time, counts.data$timestamp, epoch_length = epoch_length)
 
+  # Apply intensity classification based on algorithm
   # Convert counts to CPM for cutpoint analysis
-  # Freedson and other cutpoints are calibrated for 60-second epochs
   cpm.for.analysis <- to_cpm(counts.for.analysis, epoch_length)
+  data.for.analysis <- cpm.for.analysis
+  analysis_metric <- "CPM"
 
-  if (intensity_algorithm == "freedson1998") {
-    intensity <- freedson(cpm.for.analysis)
-  } else if (intensity_algorithm == "CANHR") {
-    intensity <- CANHR.Cutpoints(cpm.for.analysis)
-  } else {
-    intensity <- CANHR.Cutpoints(cpm.for.analysis)
-  }
+  # Apply selected cut-point algorithm
+  intensity <- switch(intensity_algorithm,
+      "freedson1998" = freedson(cpm.for.analysis),
+      "CANHR" = CANHR.Cutpoints(cpm.for.analysis),
+      "evenson" = evenson(cpm.for.analysis),
+      "puyau" = puyau(cpm.for.analysis),
+      "mattocks" = mattocks(cpm.for.analysis),
+      "pate_preschool" = pate_preschool(cpm.for.analysis),
+      "troiano" = troiano(cpm.for.analysis),
+      "sasaki_vm3" = sasaki_vm3(cpm.for.analysis),
+      "copeland_older" = copeland_older(cpm.for.analysis),
+      # Default
+      freedson(cpm.for.analysis)
+    )
 
-  valid.days.results <- valid.days(counts.data$timestamp, wear.time, min.wear.hours = min_wear_hours)
+  valid.days.results <- valid.days(counts.data$timestamp, wear.time, min.wear.hours = min_wear_hours, epoch_length = epoch_length)
 
-  intensity.summary <- intensity(intensity, wear.time)
-  mvpa.minutes <- mvpa(intensity, wear.time)
+  intensity.summary <- intensity(intensity, wear.time, epoch_seconds = epoch_length)
+  mvpa.minutes <- mvpa(intensity, wear.time, epoch_seconds = epoch_length)
 
   mets <- NULL
   mets_summary <- NULL
@@ -361,7 +385,8 @@ canhrActi <- function(agd_file_path,
 
   if (calculate_mets) {
     mets <- calculate.mets(counts.data, algorithm = mets_algorithm,
-                          subject_info = subject_info, verbose = FALSE)
+                          subject_info = subject_info, epoch_length = epoch_length,
+                          verbose = FALSE)
 
     body_mass <- extract.body.mass(subject_info)
     ee <- calculate.energy.expenditure(mets, body_mass, epoch_length = epoch_length)
@@ -396,6 +421,42 @@ canhrActi <- function(agd_file_path,
   if (calculate_mets) {
     epoch.data$mets <- mets
     epoch.data$kcal <- kcal_per_epoch
+  }
+
+  # Sleep analysis
+  sleep_results <- NULL
+  if (!is.null(sleep_algorithm)) {
+    if (output_summary) cat("Performing sleep analysis...\n")
+
+    # Auto-select sleep algorithm
+    if (sleep_algorithm == "auto") {
+      sleep_algorithm <- "cole_kripke"
+      if (output_summary) message("Using Cole-Kripke algorithm")
+    }
+
+    tryCatch({
+      # Count-based algorithms
+      sleep_scores <- switch(sleep_algorithm,
+        "cole_kripke" = sleep.cole.kripke(counts.for.analysis),
+        "sadeh" = sleep.sadeh(counts.for.analysis),
+        "tudor_locke" = sleep.tudor.locke(counts.for.analysis),
+        sleep.cole.kripke(counts.for.analysis)  # default
+      )
+      epoch.data$sleep <- sleep_scores
+
+      sleep_results <- list(
+        sleep = sleep_scores,
+        algorithm = switch(sleep_algorithm,
+          "cole_kripke" = "Cole-Kripke (1992)",
+          "sadeh" = "Sadeh (1994)",
+          "tudor_locke" = "Tudor-Locke",
+          "Unknown"
+        )
+      )
+    }, error = function(e) {
+      if (output_summary) warning("Sleep analysis failed: ", e$message)
+      sleep_results <<- NULL
+    })
   }
 
   daily.stats <- valid.days.results$daily_summary
@@ -433,16 +494,30 @@ canhrActi <- function(agd_file_path,
     }
 
     daily.stats <- merge(daily.stats, daily.intensity, by = "date", all.x = TRUE, sort = FALSE)
-    names(daily.stats)[names(daily.stats) == "sedentary"] <- "sedentary_min"
-    names(daily.stats)[names(daily.stats) == "light"] <- "light_min"
-    names(daily.stats)[names(daily.stats) == "moderate"] <- "moderate_min"
-    names(daily.stats)[names(daily.stats) == "vigorous"] <- "vigorous_min"
-    names(daily.stats)[names(daily.stats) == "very_vigorous"] <- "very_vigorous_min"
-    names(daily.stats)[names(daily.stats) == "mvpa"] <- "mvpa_min"
-    names(daily.stats)[names(daily.stats) == "counts_used"] <- "average_cpm"
+
+    # Convert epoch counts to minutes using epoch_length
+    daily.stats$sedentary_min <- daily.stats$sedentary * minutes_per_epoch
+    daily.stats$light_min <- daily.stats$light * minutes_per_epoch
+    daily.stats$moderate_min <- daily.stats$moderate * minutes_per_epoch
+    daily.stats$vigorous_min <- daily.stats$vigorous * minutes_per_epoch
+    daily.stats$very_vigorous_min <- daily.stats$very_vigorous * minutes_per_epoch
+    daily.stats$mvpa_min <- daily.stats$mvpa * minutes_per_epoch
+    daily.stats$average_cpm <- daily.stats$counts_used
+
+    # Remove intermediate columns
+    daily.stats$sedentary <- NULL
+    daily.stats$light <- NULL
+    daily.stats$moderate <- NULL
+    daily.stats$vigorous <- NULL
+    daily.stats$very_vigorous <- NULL
+    daily.stats$mvpa <- NULL
+    daily.stats$counts_used <- NULL
+
     if (calculate_mets) {
-      names(daily.stats)[names(daily.stats) == "mets"] <- "average_mets"
-      names(daily.stats)[names(daily.stats) == "kcal"] <- "total_kcal"
+      daily.stats$average_mets <- daily.stats$mets
+      daily.stats$total_kcal <- daily.stats$kcal
+      daily.stats$mets <- NULL
+      daily.stats$kcal <- NULL
     }
   } else {
     daily.stats$sedentary_min <- NA
@@ -490,6 +565,7 @@ canhrActi <- function(agd_file_path,
   n_valid_days <- valid.days.results$n_valid_days
 
   fragmentation_results <- NULL
+  sleep_exclusion_info <- NULL
   if (calculate_fragmentation) {
     if (output_summary) cat("Calculating sedentary fragmentation...\n")
 
@@ -503,17 +579,92 @@ canhrActi <- function(agd_file_path,
     }
 
     if (n_valid_days > 0) {
-      tryCatch({
-        fragmentation_results <- sedentary.fragmentation(
+      # Create sleep mask if sleep exclusion is requested
+      # Per SBRN consensus: sedentary behavior = WAKING behavior only
+      sleep_mask <- NULL
+
+      if (exclude_sleep) {
+        if (output_summary) cat("  Detecting sleep periods for exclusion (SBRN: sedentary = waking only)...\n")
+
+        sleep_mask <- tryCatch({
+          # Run Cole-Kripke sleep/wake classification on valid day data
+          sleep_state <- sleep.cole.kripke(valid_day_data$axis1, apply_rescoring = TRUE)
+
+          # Detect consolidated sleep PERIODS using Tudor-Locke algorithm
+          # This groups epoch-by-epoch classification into actual sleep windows
+          # and filters out suspicious periods (device removal, sedentary misclassification)
+          sleep_periods <- sleep.tudor.locke(
+            sleep.state = sleep_state,
+            timestamps = valid_day_data$timestamp,
+            counts = valid_day_data$axis1
+          )
+
+          # Create mask from detected sleep PERIOD WINDOWS
+          # Only exclude epochs within actual detected sleep periods, not epoch-by-epoch classification
+          mask <- rep(FALSE, nrow(valid_day_data))
+
+          if (!is.null(sleep_periods) && nrow(sleep_periods) > 0) {
+            tz <- attr(valid_day_data$timestamp[1], "tzone")
+            if (is.null(tz) || tz == "") tz <- "UTC"
+
+            for (i in seq_len(nrow(sleep_periods))) {
+              period_start <- as.POSIXct(sleep_periods$in_bed_time[i],
+                                         format = "%Y-%m-%d %H:%M:%S", tz = tz)
+              period_end <- as.POSIXct(sleep_periods$out_bed_time[i],
+                                       format = "%Y-%m-%d %H:%M:%S", tz = tz)
+
+              in_period <- valid_day_data$timestamp >= period_start &
+                          valid_day_data$timestamp <= period_end
+              mask[in_period] <- TRUE
+            }
+
+            n_periods <- nrow(sleep_periods)
+            n_excluded <- sum(mask)
+            hours_excluded <- round(n_excluded * epoch_length / 3600, 1)
+
+            if (output_summary) {
+              cat(sprintf("  Sleep exclusion: %d period(s), %d epochs (%.1f hours) excluded\n",
+                          n_periods, n_excluded, hours_excluded))
+            }
+
+            # Store info for results
+            sleep_exclusion_info <- list(
+              periods_detected = n_periods,
+              epochs_excluded = n_excluded,
+              hours_excluded = hours_excluded,
+              sleep_periods = sleep_periods
+            )
+          } else {
+            if (output_summary) cat("  No sleep periods detected - analyzing all waking wear time\n")
+          }
+
+          mask
+        }, error = function(e) {
+          if (output_summary) warning("Sleep detection failed: ", e$message, ". Proceeding without sleep exclusion.")
+          NULL
+        })
+      }
+
+      fragmentation_results <- tryCatch({
+        sedentary.fragmentation(
           intensity = valid_day_data$intensity,
           timestamps = valid_day_data$timestamp,
           wear_time = valid_day_data$wear_time,
+          sleep_mask = sleep_mask,  # Exclude detected sleep periods
           epoch_length = epoch_length
         )
       }, error = function(e) {
         if (output_summary) warning("Fragmentation calculation failed: ", e$message)
-        fragmentation_results <<- NULL
+        NULL
       })
+
+      # Add sleep exclusion info to fragmentation results
+      if (!is.null(fragmentation_results) && !is.null(sleep_exclusion_info)) {
+        fragmentation_results$sleep_excluded <- TRUE
+        fragmentation_results$sleep_exclusion_info <- sleep_exclusion_info
+      } else if (!is.null(fragmentation_results)) {
+        fragmentation_results$sleep_excluded <- FALSE
+      }
     } else {
       if (output_summary) warning("No valid days available for fragmentation analysis")
     }
@@ -562,15 +713,19 @@ canhrActi <- function(agd_file_path,
     energy_expenditure_summary = ee_summary,
     fragmentation = fragmentation_results,
     circadian = circadian_results,
+    sleep = sleep_results,
     parameters = list(
       file_path = agd_file_path,
       epoch_length = epoch_length,
       wear_time_algorithm = wear_time_algorithm,
       intensity_algorithm = intensity_algorithm,
       axis_analyzed = axis_to_analyze,
+      analysis_metric = "CPM",
       min_wear_hours = min_wear_hours,
       calculate_mets = calculate_mets,
       mets_algorithm = if (calculate_mets) mets_algorithm else NA,
+      sleep_algorithm = sleep_algorithm,
+      participant_age = participant_age,
       calculate_fragmentation = calculate_fragmentation,
       calculate_circadian = calculate_circadian
     )
@@ -582,6 +737,7 @@ canhrActi <- function(agd_file_path,
     cat("\nAnalysis Complete\n")
     cat("Valid days:", overall.summary$valid_days, "/", overall.summary$total_days, "\n")
     cat("Total wear time:", overall.summary$total_wear_hours, "hours\n")
+    cat("Intensity algorithm:", intensity_algorithm, "\n")
     cat("MVPA:", overall.summary$mvpa_minutes, "minutes\n")
     if (calculate_mets && !is.null(mets_summary)) {
       cat("Average METs:", mets_summary$average_mets, "\n")
@@ -597,6 +753,15 @@ canhrActi <- function(agd_file_path,
       cat("L5:", circadian_results$L5, "cpm at", circadian_results$L5_start, "\n")
       cat("M10:", circadian_results$M10, "cpm at", circadian_results$M10_start, "\n")
       cat("Relative Amplitude:", circadian_results$RA, "\n")
+    }
+    if (!is.null(sleep_results)) {
+      cat("\nSleep Analysis (", sleep_results$algorithm, "):\n", sep = "")
+      if (!is.null(sleep_results$metrics)) {
+        cat("  Total Sleep Time:", round(sleep_results$metrics$total_sleep_time_min, 1), "min\n")
+        cat("  Sleep Efficiency:", round(sleep_results$metrics$sleep_efficiency, 1), "%\n")
+        cat("  WASO:", round(sleep_results$metrics$waso_min, 1), "min\n")
+        cat("  Awakenings:", sleep_results$metrics$n_awakenings, "\n")
+      }
     }
     cat("\n")
   }

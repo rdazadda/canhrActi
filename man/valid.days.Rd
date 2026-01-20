@@ -4,7 +4,7 @@
 \alias{valid.days}
 \title{Identify Valid Wear Days}
 \usage{
-valid.days(timestamps, wear_time, min.wear.hours = 10)
+valid.days(timestamps, wear_time, min.wear.hours = 10, epoch_length = 60)
 }
 \arguments{
 \item{timestamps}{Vector of POSIXct timestamps}
@@ -12,6 +12,8 @@ valid.days(timestamps, wear_time, min.wear.hours = 10)
 \item{wear_time}{Logical vector indicating wear time}
 
 \item{min.wear.hours}{Minimum hours of wear time for a valid day (default: 10)}
+
+\item{epoch_length}{Numeric. Epoch length in seconds (default: 60)}
 }
 \value{
 List with valid.days, daily.summary, n.valid.days, and valid.day.index

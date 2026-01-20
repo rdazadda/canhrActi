@@ -14,19 +14,20 @@ canhrActi.batch(
   mets_algorithm = c("freedson.vm3", "freedson.adult", "crouter", "hendelman.adult",
     "hendelman.lifestyle", "swartz", "leenders", "yngve.treadmill", "yngve.overground",
     "brooks.overground", "brooks.bm", "freedson.children"),
+  sleep_algorithm = NULL,
+  participant_age = NULL,
   export = TRUE,
   output_folder = ".",
-  lfe_mode = FALSE,
   calculate_fragmentation = TRUE,
   calculate_circadian = TRUE,
+  exclude_sleep = TRUE,
   parallel = NULL,
   n_cores = NULL,
-  verbose = TRUE,
-  memory_efficient = TRUE
+  verbose = TRUE
 )
 }
 \arguments{
-\item{files}{Character vector of file paths OR a folder path}
+\item{files}{Character vector of AGD file paths OR a folder path containing AGD files}
 
 \item{wear_time_algorithm}{Wear time detection algorithm (default: "choi")}
 
@@ -40,11 +41,13 @@ canhrActi.batch(
 
 \item{mets_algorithm}{METs prediction algorithm (default: "freedson.vm3")}
 
+\item{sleep_algorithm}{Sleep scoring algorithm. Options: "cole_kripke", "sadeh", or NULL (default: NULL)}
+
+\item{participant_age}{Participant age in years for age-specific algorithms (default: NULL)}
+
 \item{export}{Logical. Export results to CSV? (default: TRUE)}
 
 \item{output_folder}{Where to save CSV files (default: current directory)}
-
-\item{lfe_mode}{Logical. Low frequency extension mode (default: FALSE)}
 
 \item{calculate_fragmentation}{Logical. Calculate sedentary fragmentation metrics? (default: TRUE)}
 
@@ -55,15 +58,13 @@ canhrActi.batch(
 \item{n_cores}{Number of CPU cores to use (default: auto-detect, max 8)}
 
 \item{verbose}{Logical. Show detailed progress? (default: TRUE)}
-
-\item{memory_efficient}{Logical. Optimize memory for large files? (default: TRUE)}
 }
 \value{
 List with all results plus a combined summary table
 }
 \description{
 Process multiple participants with parallel processing support.
-Includes memory optimization for large datasets and detailed progress tracking.
+Includes detailed progress tracking.
 }
 \examples{
 \dontrun{
@@ -72,9 +73,6 @@ results <- canhrActi.batch("C:/My Data Folder")
 
 # Parallel processing with 4 cores
 results <- canhrActi.batch("C:/My Data", parallel = TRUE, n_cores = 4)
-
-# Memory-efficient mode for large datasets
-results <- canhrActi.batch("C:/Large Study", memory_efficient = TRUE)
 
 # View combined summary
 print(results$summary)

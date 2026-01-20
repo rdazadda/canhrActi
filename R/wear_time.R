@@ -19,183 +19,111 @@
                                    min_window_len = 30) {
 
   n.minutes <- length(counts_per_minute)
+  if (n.minutes == 0) return(logical(0))
+  if (n.minutes < non_wear_window) return(rep(TRUE, n.minutes))
+
   wear.time <- rep(TRUE, n.minutes)
 
+  # Handle NA values - treat as zeros
 
-  # Handle NA values - treat as zeros (no activity detected)
-  # This prevents errors and is consistent with how missing data is typically handled
-  if (any(is.na(counts_per_minute))) {
-    counts_per_minute <- ifelse(is.na(counts_per_minute), 0, counts_per_minute)
-  }
+  counts_per_minute[is.na(counts_per_minute)] <- 0
 
+  # OPTIMIZED: Pre-compute key indicators using vectorized operations
+  is_zero <- counts_per_minute == 0
+  is_spike <- counts_per_minute > 0 & counts_per_minute <= spike_stoplevel
+  is_above_stop <- counts_per_minute > spike_stoplevel
+
+  # Pre-compute cumulative sums for fast window calculations
+  zero_cumsum <- c(0, cumsum(is_zero))
+  above_cumsum <- c(0, cumsum(is_above_stop))
+
+  # Find windows with enough zeros and no values above stoplevel
+  # Using vectorized rolling sums
+  n_zeros_in_window <- zero_cumsum[(non_wear_window + 1):(n.minutes + 1)] - zero_cumsum[1:(n.minutes - non_wear_window + 1)]
+  n_above_in_window <- above_cumsum[(non_wear_window + 1):(n.minutes + 1)] - above_cumsum[1:(n.minutes - non_wear_window + 1)]
+
+  # Candidate windows: enough zeros, no above-stoplevel values
+  min_zeros_required <- non_wear_window - spike_tolerance
+  candidate_starts <- which(n_zeros_in_window >= min_zeros_required & n_above_in_window == 0)
+
+  if (length(candidate_starts) == 0) return(wear.time)
+
+  # Process candidates (still need some iteration but much fewer)
   i <- 1L
-  while (i <= n.minutes) {
-    if (i + non_wear_window - 1L > n.minutes) break
+  while (i <= length(candidate_starts)) {
+    window.start <- candidate_starts[i]
+    window.end <- window.start + non_wear_window - 1L
 
-    window.start <- i
-    window.end <- i + non_wear_window - 1L
-    window <- counts_per_minute[window.start:window.end]
+    # Check consecutive spike constraint using RLE on window
+    window_spikes <- is_spike[window.start:window.end]
+    rle_spikes <- rle(window_spikes)
+    max_consec_spikes <- if (any(rle_spikes$values)) max(rle_spikes$lengths[rle_spikes$values]) else 0L
 
-    is.zero <- window == 0
-    is.spike <- window > 0 & window <= spike_stoplevel
-    has.above.stoplevel <- any(window > spike_stoplevel)
-    n.zeros <- sum(is.zero)
+    if (max_consec_spikes > spike_tolerance) {
+      i <- i + 1L
+      next
+    }
 
-    # For Troiano (simple algorithm)
-    if (!validate_spikes) {
-      # Count CONSECUTIVE spikes using run-length encoding
-      rle.result <- rle(is.spike)
-      max.consecutive.spikes <- 0
-      if (any(rle.result$values)) {
-        max.consecutive.spikes <- max(rle.result$lengths[rle.result$values])
+    # For Choi/CANHR2025: validate spikes with upstream/downstream
+    if (validate_spikes && any(window_spikes)) {
+      spike_positions <- which(window_spikes)
+      valid_nonwear <- TRUE
+
+      for (sp_idx in spike_positions) {
+        actual_pos <- window.start + sp_idx - 1L
+
+        # Check upstream zeros
+        up_start <- max(1L, actual_pos - min_window_len)
+        up_end <- actual_pos - 1L
+        has_upstream <- up_end >= up_start && all(counts_per_minute[up_start:up_end] == 0)
+
+        # Check downstream zeros
+        down_start <- actual_pos + 1L
+        down_end <- min(n.minutes, actual_pos + min_window_len)
+        has_downstream <- down_start <= down_end && all(counts_per_minute[down_start:down_end] == 0)
+
+        if (!has_upstream || !has_downstream) {
+          valid_nonwear <- FALSE
+          break
+        }
       }
 
-      # Check: enough zeros AND no consecutive spike run exceeds tolerance
-      if (!has.above.stoplevel && n.zeros >= (non_wear_window - spike_tolerance) && max.consecutive.spikes <= spike_tolerance) {
-        # Mark initial window as non-wear
-        wear.time[window.start:window.end] <- FALSE
-
-        # EXTEND non-wear period beyond the window
-        extend.pos <- window.end + 1L
-        while (extend.pos <= n.minutes) {
-          val <- counts_per_minute[extend.pos]
-          if (val == 0) {
-            # Zero count - extend non-wear
-            wear.time[extend.pos] <- FALSE
-            extend.pos <- extend.pos + 1L
-          } else if (val <= spike_stoplevel) {
-            # Potential spike - check if it's within tolerance
-            spike.start <- extend.pos
-            spike.len <- 0L
-            while (extend.pos <= n.minutes &&
-                   counts_per_minute[extend.pos] > 0 &&
-                   counts_per_minute[extend.pos] <= spike_stoplevel) {
-              spike.len <- spike.len + 1L
-              extend.pos <- extend.pos + 1L
-            }
-            if (spike.len <= spike_tolerance) {
-              # Valid spike within tolerance - mark as non-wear
-              wear.time[spike.start:(spike.start + spike.len - 1L)] <- FALSE
-            } else {
-              # Spike too long - end non-wear period
-              # Revert the spike minutes back to wear
-              wear.time[spike.start:(spike.start + spike.len - 1L)] <- TRUE
-              break
-            }
-          } else {
-            # Activity above spike level - end non-wear period
-            break
-          }
-        }
-        i <- extend.pos
-      } else {
+      if (!valid_nonwear) {
         i <- i + 1L
-      }
-      next
-    }
-
-    # For Choi and CANHR2025 (with spike validation)
-    rle.spike <- rle(is.spike)
-    spike.lengths <- rle.spike$lengths[rle.spike$values]
-
-    # Check minimum zeros requirement
-    if (n.zeros < (non_wear_window - spike_tolerance)) {
-      i <- i + 1L
-      next
-    }
-
-    # Check no consecutive spike exceeds tolerance
-    if (length(spike.lengths) > 0 && any(spike.lengths > spike_tolerance)) {
-      i <- i + 1L
-      next
-    }
-
-    valid.nonwear <- TRUE
-
-    # Validate spikes with upstream/downstream zero windows
-    if (length(spike.lengths) > 0) {
-      spike.positions <- which(is.spike)
-
-      for (spike.idx in spike.positions) {
-        actual.pos <- window.start + spike.idx - 1L
-
-        # Check upstream (allow shorter window at data boundaries)
-        upstream.start <- max(1L, actual.pos - min_window_len)
-        upstream.end <- actual.pos - 1L
-        has.upstream <- FALSE
-
-        if (upstream.end >= upstream.start && upstream.end >= 1L) {
-          upstream.window <- counts_per_minute[upstream.start:upstream.end]
-          # Accept if we have at least some zeros (relaxed for boundaries)
-          min.required <- min(min_window_len, length(upstream.window))
-          if (length(upstream.window) >= min.required && all(upstream.window == 0)) {
-            has.upstream <- TRUE
-          }
-        }
-
-        # Check downstream (allow shorter window at data boundaries)
-        downstream.start <- actual.pos + 1L
-        downstream.end <- min(n.minutes, actual.pos + min_window_len)
-        has.downstream <- FALSE
-
-        if (downstream.start <= downstream.end && downstream.start <= n.minutes) {
-          downstream.window <- counts_per_minute[downstream.start:downstream.end]
-          min.required <- min(min_window_len, length(downstream.window))
-          if (length(downstream.window) >= min.required && all(downstream.window == 0)) {
-            has.downstream <- TRUE
-          }
-        }
-
-        # Spike is valid if it has zeros on at least one side
-        if (!has.upstream && !has.downstream) {
-          valid.nonwear <- FALSE
-          break
-        }
+        next
       }
     }
 
-    if (valid.nonwear) {
-      # Mark initial window as non-wear
-      wear.time[window.start:window.end] <- FALSE
+    # Valid non-wear window found - mark and extend
+    wear.time[window.start:window.end] <- FALSE
 
-      # EXTEND non-wear period beyond the window (Choi extension)
-      extend.pos <- window.end + 1L
-      while (extend.pos <= n.minutes) {
-        val <- counts_per_minute[extend.pos]
-        if (val == 0) {
-          # Zero count - extend non-wear
-          wear.time[extend.pos] <- FALSE
-          extend.pos <- extend.pos + 1L
-        } else if (val <= spike_stoplevel) {
-          # Potential spike - check consecutive length and upstream/downstream
-          spike.start <- extend.pos
-          spike.len <- 0L
-          while (extend.pos <= n.minutes &&
-                 counts_per_minute[extend.pos] > 0 &&
-                 counts_per_minute[extend.pos] <= spike_stoplevel) {
-            spike.len <- spike.len + 1L
-            extend.pos <- extend.pos + 1L
-          }
+    # Extend non-wear period using vectorized approach
+    extend_pos <- window.end + 1L
+    while (extend_pos <= n.minutes) {
+      if (is_zero[extend_pos]) {
+        wear.time[extend_pos] <- FALSE
+        extend_pos <- extend_pos + 1L
+      } else if (is_spike[extend_pos]) {
+        # Find consecutive spike length
+        spike_start <- extend_pos
+        while (extend_pos <= n.minutes && is_spike[extend_pos]) {
+          extend_pos <- extend_pos + 1L
+        }
+        spike_len <- extend_pos - spike_start
 
-          if (spike.len <= spike_tolerance) {
-            # Valid spike within tolerance - mark as non-wear and continue
-            # (Same as Troiano - upstream/downstream validation only applies to initial detection)
-            wear.time[spike.start:(spike.start + spike.len - 1L)] <- FALSE
-          } else {
-            # Spike too long - end non-wear period
-            # Revert the spike minutes back to wear
-            wear.time[spike.start:(spike.start + spike.len - 1L)] <- TRUE
-            break
-          }
+        if (spike_len <= spike_tolerance) {
+          wear.time[spike_start:(extend_pos - 1L)] <- FALSE
         } else {
-          # Activity above spike level - end non-wear period
           break
         }
+      } else {
+        break
       }
-      i <- extend.pos
-    } else {
-      i <- i + 1L
     }
+
+    # Skip to candidates after this non-wear period
+    i <- which(candidate_starts > extend_pos)[1]
+    if (is.na(i)) break
   }
 
   return(wear.time)
@@ -232,7 +160,7 @@ wear.troiano <- function(counts_per_minute,
 #' Choi et al. (2011) algorithm with upstream/downstream window validation.
 #' The Choi algorithm extends Troiano by requiring that any spike of activity
 #' within a non-wear period must be surrounded by consecutive zero-count windows
-#' of at least 30 minutes on at least one side.
+#' of at least 30 minutes on BOTH sides (upstream AND downstream).
 #'
 #' @param counts_per_minute Numeric vector of activity counts (one value per epoch)
 #' @param non_wear_window Integer. Window length in minutes for initial non-wear detection (default: 90)

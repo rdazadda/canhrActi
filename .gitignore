@@ -11,7 +11,6 @@
 
 # RStudio files
 .Rproj.user/
-*.Rproj
 
 # OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
 .httr-oauth
@@ -42,3 +41,30 @@ po/*~
 exports/
 test_exports/
 
+# Auto-generated plot files
+Rplots.pdf
+
+# Windows artifacts
+nul
+Thumbs.db
+
+# macOS artifacts
+.DS_Store
+
+# Compiled code (build artifacts)
+src/*.o
+src/*.so
+src/*.dll
+src/symbols.rds
+src/*.a
+
+# Temporary R files
+temp_run.R
+temp*.R
+test_canhrActi.R
+
+# Log files
+*.log
+*.err.log
+*.out.log
+dashboard.log

@@ -1,185 +1,105 @@
-# Module
+# 
+# Upload Module - Redesigned UI/UX
+# 
+# Design Philosophy:
+#   1. Progressive Disclosure - Start simple, reveal complexity as needed
+#   2. Hero Upload Area - Make the primary action obvious and inviting
+#   3. Visual Hierarchy - Upload > File List > Details
+#   4. Clean, Card-Based Design - Modern, scannable interface
+#   5. Minimal Metrics - Only show what matters
+# 
 
 mod_upload_ui <- function(id) {
+
   ns <- NS(id)
 
   tagList(
-    # Welcome Banner
-    fluidRow(
-      column(
-        width = 12,
+    div(
+      class = "upload-shell",
+      # SECTION 1: HERO UPLOAD ZONE
+      # Design Decision: Large, centered upload area is the focal point.
+      # Progressive disclosure: This is all users see initially.
+      div(
+        class = "upload-hero",
+        id = ns("upload_zone"),
+        # Accessibility: describe the upload zone
+        role = "region",
+        `aria-label` = "File upload area",
+        div(class = "upload-hero-icon", icon("cloud-upload-alt"), `aria-hidden` = "true"),
+        div(class = "upload-hero-title", id = ns("upload_title"), "Import Accelerometer Data"),
+        div(class = "upload-hero-subtitle",
+            "Drag and drop AGD files here, or use the options below"),
+
+        # Hidden file input that covers the entire hero zone
+        fileInput(
+          ns("files"),
+          NULL,
+          multiple = TRUE,
+          accept = ".agd",
+          buttonLabel = "",
+          placeholder = ""
+        ),
+
+        # Supported formats badges
         div(
-          class = "welcome-banner",
-          style = "background: linear-gradient(135deg, #236192 0%, #1a4a6f 100%); color: white; padding: 25px 30px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(35, 97, 146, 0.3);",
-          fluidRow(
-            column(
-              width = 8,
-              h3(style = "margin: 0 0 10px 0; font-weight: 600;",
-                 icon("chart-line", style = "margin-right: 10px;"),
-                 "Welcome to canhrActi"),
-              p(style = "margin: 0; opacity: 0.9; font-size: 14px; line-height: 1.6;",
-                "Accelerometer data analysis platform for physical activity research. ",
-                "Upload ActiGraph files (.agd, .gt3x, .csv) to analyze wear time, ",
-                "activity patterns, sleep, and circadian rhythms.")
-            ),
-            column(
-              width = 4,
-              div(
-                style = "text-align: right; padding-top: 5px;",
-                tags$span(
-                  style = "display: inline-block; background: rgba(255,205,0,0.2); padding: 8px 15px; border-radius: 20px; font-size: 12px; border: 1px solid rgba(255,205,0,0.4);",
-                  icon("lightbulb", style = "color: #FFCD00; margin-right: 8px;"),
-                  "Tip: Upload multiple files for batch analysis"
-                )
-              )
-            )
-          )
-        )
-      )
-    ),
-
-    # Summary boxes at top
-    fluidRow(
-      valueBoxOutput(ns("vb_file_count"), width = 3),
-      valueBoxOutput(ns("vb_total_duration"), width = 3),
-      valueBoxOutput(ns("vb_total_epochs"), width = 3),
-      valueBoxOutput(ns("vb_avg_epoch_len"), width = 3)
-    ),
-
-    fluidRow(
-      # Left column - Upload controls
-      column(
-        width = 4,
-
-        # File upload box
-        box(
-          title = span(icon("upload", style = "margin-right: 8px;"), "Add Files"),
-          status = "primary", solidHeader = TRUE,
-          width = NULL,
-
-          div(
-            style = "background: linear-gradient(135deg, #e8f4fc 0%, #f8fafc 100%); border-radius: 8px; padding: 15px; margin-bottom: 15px; border: 2px dashed #b8d4e8;",
-            div(style = "text-align: center; margin-bottom: 10px;",
-                icon("cloud-upload-alt", style = "font-size: 32px; color: #236192; opacity: 0.7;")),
-            fileInput(
-              ns("files"),
-              NULL,
-              multiple = TRUE,
-              accept = c(".agd", ".gt3x", ".csv"),
-              buttonLabel = span(icon("folder-open"), " Select Files"),
-              placeholder = "AGD, GT3X, or CSV files"
-            )
-          ),
-
-          # Add directory - native folder picker using webkitdirectory
-          tags$div(
-            style = "margin-bottom: 15px;",
-            tags$label("Or select entire folder:", class = "control-label", style = "font-size: 12px; color: #666; margin-bottom: 8px;"),
-            tags$div(
-              class = "input-group",
-              tags$label(
-                class = "btn btn-info btn-block",
-                style = "margin-bottom: 0; background: linear-gradient(135deg, #FFCD00 0%, #e6b800 100%); border: none; color: #0d2137; font-weight: 500;",
-                icon("folder-open"), " Browse Folder...",
-                tags$input(
-                  type = "file",
-                  id = ns("dir_files"),
-                  webkitdirectory = TRUE,
-                  multiple = TRUE,
-                  style = "display: none;",
-                  accept = ".agd,.gt3x,.csv"
-                )
-              )
-            )
-          ),
-
-          hr(style = "border-color: #e8f4fc; margin: 20px 0;"),
-
-          div(
-            style = "display: flex; gap: 10px;",
-            div(style = "flex: 1;",
-                actionButton(ns("demo_btn"), span(icon("database"), " Demo"),
-                            class = "btn-default btn-block",
-                            style = "border: 2px solid #FFCD00; color: #0d2137;")),
-            div(style = "flex: 1;",
-                actionButton(ns("clear_all_btn"), span(icon("trash"), " Clear"),
-                            class = "btn-default btn-block",
-                            style = "border: 2px solid #dc3545; color: #dc3545;"))
-          )
-        ),
-
-        # Supported formats info
-        box(
-          title = span(icon("file-alt", style = "margin-right: 8px;"), "Supported Formats"),
-          status = "info", width = NULL, collapsible = TRUE, collapsed = TRUE,
-          div(
-            style = "font-size: 12px;",
-            tags$table(
-              style = "width: 100%;",
-              tags$tr(
-                tags$td(style = "padding: 5px;", tags$span(class = "label label-primary", ".agd")),
-                tags$td(style = "padding: 5px; color: #666;", "ActiGraph database files (epoch or raw)")
-              ),
-              tags$tr(
-                tags$td(style = "padding: 5px;", tags$span(class = "label label-success", ".gt3x")),
-                tags$td(style = "padding: 5px; color: #666;", "ActiGraph GT3X+ raw files")
-              ),
-              tags$tr(
-                tags$td(style = "padding: 5px;", tags$span(class = "label label-warning", ".csv")),
-                tags$td(style = "padding: 5px; color: #666;", "ActiLife exported CSV files")
-              )
-            ),
-            hr(style = "margin: 10px 0;"),
-            div(style = "color: #236192;",
-                icon("info-circle"), " Raw files are automatically converted to activity counts")
-          )
-        ),
-
-        # Device Information box (populated from file metadata)
-        box(
-          title = span(icon("microchip", style = "margin-right: 8px;"), "Device Information"),
-          status = "info", solidHeader = FALSE,
-          width = NULL,
-          uiOutput(ns("device_info_display"))
-        ),
-
-        # Subject Biometric Information box (populated from file metadata)
-        box(
-          title = span(icon("user", style = "margin-right: 8px;"), "Subject Information"),
-          status = "success", solidHeader = FALSE,
-          width = NULL,
-          uiOutput(ns("subject_info_display"))
+          class = "upload-hero-formats",
+          span(class = "format-badge", ".agd"),
+          span(class = "text-sm text-muted", "ActiGraph Database Files")
         )
       ),
 
-      # Right column - File list and info
-      column(
-        width = 8,
+      # SECTION 2: ACTION BUTTONS
+      # Design Decision: Secondary actions below hero zone.
+      # Demo button prominent for first-time users.
+      div(
+        class = "upload-actions",
 
-        # File list table
-        box(
-          title = span(icon("list-alt", style = "margin-right: 8px;"), "Loaded Files"),
-          status = "primary", solidHeader = TRUE,
-          width = NULL,
-          DT::dataTableOutput(ns("file_table")),
-          br(),
-          fluidRow(
-            column(6, actionButton(ns("remove_selected_btn"), span(icon("minus-circle"), " Remove Selected"),
-                                   class = "btn-default", style = "border: 2px solid #dc3545; color: #dc3545;")),
-            column(6, actionButton(ns("view_selected_btn"), span(icon("eye"), " View Selected"),
-                                   class = "btn-primary"))
+        # Browse files button (individual selection)
+        tags$label(
+          class = "btn btn-upload-action btn-browse",
+          `for` = ns("files"),
+          icon("file-upload"), "Choose Files"
+        ),
+
+        # Folder selection button
+        tags$label(
+          class = "btn btn-upload-action btn-folder",
+          icon("folder-open"), "Choose Folder",
+          tags$input(
+            type = "file",
+            id = ns("dir_files"),
+              # Note: webkitdirectory only works in Chrome/Edge browsers
+            webkitdirectory = TRUE,
+            multiple = TRUE,
+            class = "hidden",
+            accept = ".agd"
           )
         ),
 
-        # Data preview table
-        box(
-          title = span(icon("table", style = "margin-right: 8px;"), "Data Preview"),
-          status = "info", solidHeader = FALSE,
-          width = NULL, collapsible = TRUE,
-          DT::dataTableOutput(ns("preview_table"))
+        # Demo button - prominent for first-time users
+        actionButton(
+          ns("demo_btn"),
+          span(icon("play-circle"), "Try Demo Data"),
+          class = "btn-upload-action btn-demo"
         )
+      ),
+
+      div(
+        class = "upload-helper",
+        icon("info-circle"),
+        "Supports batch import of multiple files. AGD files from ActiLife are automatically detected."
       )
-    )
+    ),
+
+    # SECTION 3: METRICS STRIP (Conditional - only shown when files loaded)
+    # Design Decision: Minimal, horizontal strip with only essential metrics.
+    # Replaces the 4 bulky value boxes with a clean, compact design.
+    uiOutput(ns("metrics_strip")),
+
+    # SECTION 4: MAIN CONTENT AREA (Two columns when files loaded)
+    # Design Decision: File list on left, details on right.
+    # Uses progressive disclosure - only shown when files exist.
+    uiOutput(ns("main_content"))
   )
 }
 
@@ -187,13 +107,15 @@ mod_upload_server <- function(id, shared) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # Local state
+    # LOCAL STATE
     local <- reactiveValues(
       next_id = 1,
-      selected_rows = NULL
+      active_tab = "device"  # Track which details tab is active
     )
 
-    # Helper: Get setting value from settings data frame
+    # HELPER FUNCTIONS
+
+    # Get setting value from settings data frame
     get_setting <- function(settings, name) {
       if (is.null(settings) || !is.data.frame(settings)) return(NA)
       value <- settings$settingValue[tolower(settings$settingName) == tolower(name)]
@@ -203,26 +125,29 @@ mod_upload_server <- function(id, shared) {
       return(value)
     }
 
-    # Helper: Format height from cm to ft/in
+    # Format height from cm to ft/in
     format_height <- function(height_cm) {
-      if (is.na(height_cm) || height_cm == 0) return("N/A")
-      height_cm <- as.numeric(height_cm)
+      if (is.null(height_cm) || length(height_cm) == 0) return("N/A")
+      height_cm <- suppressWarnings(as.numeric(height_cm))
+      if (is.na(height_cm) || height_cm <= 0) return("N/A")
       total_inches <- height_cm / 2.54
       feet <- floor(total_inches / 12)
       inches <- round(total_inches %% 12)
       paste0(feet, "ft ", inches, "in")
     }
 
-    # Helper: Format weight from kg to lbs
+    # Format weight from kg to lbs
     format_weight <- function(mass_kg) {
-      if (is.na(mass_kg) || mass_kg == 0) return("N/A")
-      mass_kg <- as.numeric(mass_kg)
+      if (is.null(mass_kg) || length(mass_kg) == 0) return("N/A")
+      mass_kg <- suppressWarnings(as.numeric(mass_kg))
+      if (is.na(mass_kg) || mass_kg <= 0) return("N/A")
       lbs <- round(mass_kg * 2.20462)
-      paste0(lbs, "lbs")
+      paste0(lbs, " lbs")
     }
 
-    # Helper: Format sex
+    # Format sex
     format_sex <- function(sex) {
+      if (is.null(sex) || length(sex) == 0) return("N/A")
       if (is.na(sex) || sex == "" || sex == "0") return("N/A")
       sex_lower <- tolower(as.character(sex))
       if (sex_lower %in% c("male", "m", "1")) return("Male")
@@ -230,7 +155,7 @@ mod_upload_server <- function(id, shared) {
       return(sex)
     }
 
-    # Helper: Format timestamp from AGD format
+    # Format timestamp from AGD format
     format_agd_timestamp <- function(ts_value) {
       if (is.na(ts_value)) return("N/A")
       ts_numeric <- as.numeric(ts_value)
@@ -239,19 +164,33 @@ mod_upload_server <- function(id, shared) {
       format(ts, "%m/%d/%Y %I:%M %p")
     }
 
-    # Helper: Load a single file
+    # Format ETA for progress
+    format_eta <- function(seconds) {
+      if (is.na(seconds) || seconds < 0) return("calculating...")
+      if (seconds < 60) return(paste0(round(seconds), "s"))
+      if (seconds < 3600) return(paste0(round(seconds / 60, 1), "m"))
+      return(paste0(round(seconds / 3600, 1), "h"))
+    }
+
+    # Load a single file
+    # Memory management: Large files (>100MB) will show a warning as they may
+    # cause slow UI responsiveness. For async processing support, install the
+    # future and promises packages and enable: future::plan(future::multisession)
     load_single_file <- function(file_path, file_name) {
       ext <- tolower(tools::file_ext(file_name))
+
+      # Check file size for memory management
+      file_size_mb <- file.info(file_path)$size / (1024 * 1024)
+      if (!is.na(file_size_mb) && file_size_mb > 100) {
+        warning("Large file detected (", round(file_size_mb, 1), " MB): ",
+                file_name, ". Processing may take longer and use significant memory.")
+      }
 
       result <- tryCatch({
         if (ext == "agd") {
           canhrActi::read.agd(file_path)
-        } else if (ext == "csv") {
-          canhrActi::load.actigraph.csv(file_path)
-        } else if (ext == "gt3x") {
-          canhrActi::read.gt3x.file(file_path)
         } else {
-          stop("Unsupported file type: ", ext)
+          stop("Unsupported file type: ", ext, ". Only AGD files are supported.")
         }
       }, error = function(e) {
         return(list(error = e$message))
@@ -262,22 +201,29 @@ mod_upload_server <- function(id, shared) {
       }
 
       # Extract raw data and settings
+      sleep_data <- NULL
+      awakenings_data <- NULL
+      wear_time_data <- NULL
+      capsense_data <- NULL
+
       if (is.list(result) && "data" %in% names(result)) {
         raw_data <- result$data
         settings <- result$settings
+        if (!is.null(result$sleep)) sleep_data <- result$sleep
+        if (!is.null(result$awakenings)) awakenings_data <- result$awakenings
+        if (!is.null(result$wear_time)) wear_time_data <- result$wear_time
+        if (!is.null(result$capsense)) capsense_data <- result$capsense
       } else {
         raw_data <- result
         settings <- NULL
       }
 
-      # Convert AGD data to standard format with timestamps
+      # Convert data to standard format with timestamps
       if ("dataTimestamp" %in% names(raw_data)) {
-        # Extract axis values
         a1 <- if ("axis1" %in% names(raw_data)) raw_data$axis1 else NA
         a2 <- if ("axis2" %in% names(raw_data)) raw_data$axis2 else NA
         a3 <- if ("axis3" %in% names(raw_data)) raw_data$axis3 else NA
 
-        # Calculate Vector Magnitude: sqrt(axis1^2 + axis2^2 + axis3^2)
         vm <- if (!all(is.na(a1)) && !all(is.na(a2)) && !all(is.na(a3))) {
           round(sqrt(a1^2 + a2^2 + a3^2), 1)
         } else {
@@ -299,11 +245,11 @@ mod_upload_server <- function(id, shared) {
           inclineLying = if ("inclineLying" %in% names(raw_data)) raw_data$inclineLying else NA,
           stringsAsFactors = FALSE
         )
-        # Remove columns that are all NA
         data <- data[, colSums(!is.na(data)) > 0]
+
       } else if ("timestamp" %in% names(raw_data)) {
-        # Add vector magnitude if axis columns exist
-        if (all(c("axis1", "axis2", "axis3") %in% names(raw_data))) {
+        if (all(c("axis1", "axis2", "axis3") %in% names(raw_data)) &&
+            !"vector_magnitude" %in% names(raw_data)) {
           raw_data$vector_magnitude <- round(sqrt(raw_data$axis1^2 + raw_data$axis2^2 + raw_data$axis3^2), 1)
         }
         data <- raw_data
@@ -311,7 +257,7 @@ mod_upload_server <- function(id, shared) {
         data <- raw_data
       }
 
-      # Detect epoch length from settings or data
+      # Detect epoch length
       epoch_len <- as.numeric(get_setting(settings, "epochlength"))
       if (is.na(epoch_len) && "timestamp" %in% names(data) && nrow(data) > 1) {
         diff_secs <- as.numeric(difftime(data$timestamp[2], data$timestamp[1], units = "secs"))
@@ -325,7 +271,7 @@ mod_upload_server <- function(id, shared) {
         duration_hrs <- as.numeric(difftime(max(data$timestamp), min(data$timestamp), units = "hours"))
       }
 
-      # Extract comprehensive device info from settings
+      # Extract device info
       device_info <- list(
         device_type = get_setting(settings, "devicetype"),
         serial_number = get_setting(settings, "deviceserial"),
@@ -345,21 +291,27 @@ mod_upload_server <- function(id, shared) {
         modes = get_setting(settings, "modesstring")
       )
 
-      # Extract comprehensive subject info from settings
+      # Extract subject info
+      mass_val <- get_setting(settings, "mass")
+      # Convert mass from kg to lbs for exports
+      mass_kg <- suppressWarnings(as.numeric(mass_val))
+      weight_lbs_val <- if (!is.na(mass_kg) && mass_kg > 0) round(mass_kg * 2.20462) else 0
+
       subject_info <- list(
         id = get_setting(settings, "subjectname"),
         sex = get_setting(settings, "sex"),
         age = get_setting(settings, "age"),
         date_of_birth = get_setting(settings, "dateofbirth"),
         height = get_setting(settings, "height"),
-        mass = get_setting(settings, "mass"),
+        mass = mass_val,
+        weight_lbs = weight_lbs_val,  # Added for exports
         limb = get_setting(settings, "limb"),
         side = get_setting(settings, "side"),
         dominance = get_setting(settings, "dominance"),
         race = get_setting(settings, "race")
       )
 
-      # Fallback ID from file name if not in metadata
+      # Fallback ID from file name
       if (is.na(subject_info$id) || subject_info$id == "") {
         subject_info$id <- tools::file_path_sans_ext(file_name)
       }
@@ -372,19 +324,17 @@ mod_upload_server <- function(id, shared) {
         subject_info = subject_info,
         epoch_length = epoch_len,
         duration_hrs = duration_hrs,
-        n_epochs = nrow(data)
+        n_epochs = nrow(data),
+        actilife_sleep = sleep_data,
+        actilife_awakenings = awakenings_data,
+        actilife_wear_time = wear_time_data,
+        capsense = capsense_data
       ))
     }
 
-    # Helper: Format ETA
-    format_eta <- function(seconds) {
-      if (is.na(seconds) || seconds < 0) return("calculating...")
-      if (seconds < 60) return(paste0(round(seconds), "s"))
-      if (seconds < 3600) return(paste0(round(seconds / 60, 1), "m"))
-      return(paste0(round(seconds / 3600, 1), "h"))
-    }
+    # FILE UPLOAD HANDLERS
 
-    # Add files when selected
+    # Handle file upload
     observeEvent(input$files, {
       req(input$files)
 
@@ -395,7 +345,6 @@ mod_upload_server <- function(id, shared) {
         for (i in seq_len(n_files)) {
           file_info <- input$files[i, ]
 
-          # Calculate ETA
           if (i > 1) {
             elapsed <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
             avg_time <- elapsed / (i - 1)
@@ -421,14 +370,17 @@ mod_upload_server <- function(id, shared) {
               subject_info = result$subject_info,
               epoch_length = result$epoch_length,
               duration_hrs = result$duration_hrs,
-              n_epochs = result$n_epochs
+              n_epochs = result$n_epochs,
+              actilife_sleep = result$actilife_sleep,
+              actilife_awakenings = result$actilife_awakenings,
+              actilife_wear_time = result$actilife_wear_time,
+              capsense = result$capsense
             )
 
             local$next_id <- local$next_id + 1
             shared$file_count <- length(shared$files)
             shared$data_loaded <- TRUE
 
-            # Auto-select first file
             if (is.null(shared$selected_file)) {
               shared$selected_file <- file_id
             }
@@ -438,20 +390,19 @@ mod_upload_server <- function(id, shared) {
         }
       })
 
-      showNotification(paste(sum(sapply(input$files$name, function(x) TRUE)), "file(s) processed"), type = "message")
+      showNotification(paste(n_files, "file(s) processed"), type = "message")
     })
 
-    # Handle directory selection (files from folder via webkitdirectory)
+    # Handle directory selection
     observeEvent(input$dir_files, {
       req(input$dir_files)
 
-      # Filter to only supported file types
       all_files <- input$dir_files
-      supported_ext <- c("agd", "gt3x", "csv")
+      supported_ext <- c("agd")
       valid_idx <- which(tolower(tools::file_ext(all_files$name)) %in% supported_ext)
 
       if (length(valid_idx) == 0) {
-        showNotification("No supported files (.agd, .gt3x, .csv) found in selected folder", type = "warning")
+        showNotification("No AGD files found in selected folder", type = "warning")
         return()
       }
 
@@ -464,7 +415,6 @@ mod_upload_server <- function(id, shared) {
         for (i in seq_len(n_files)) {
           file_info <- files_to_load[i, ]
 
-          # Calculate ETA
           if (i > 1) {
             elapsed <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
             avg_time <- elapsed / (i - 1)
@@ -490,7 +440,11 @@ mod_upload_server <- function(id, shared) {
               subject_info = result$subject_info,
               epoch_length = result$epoch_length,
               duration_hrs = result$duration_hrs,
-              n_epochs = result$n_epochs
+              n_epochs = result$n_epochs,
+              actilife_sleep = result$actilife_sleep,
+              actilife_awakenings = result$actilife_awakenings,
+              actilife_wear_time = result$actilife_wear_time,
+              capsense = result$capsense
             )
 
             local$next_id <- local$next_id + 1
@@ -503,9 +457,7 @@ mod_upload_server <- function(id, shared) {
         }
         shared$file_count <- length(shared$files)
         shared$data_loaded <- length(shared$files) > 0
-
-        # Memory cleanup
-        gc(verbose = FALSE)
+        # gc() removed - R handles this automatically
       })
 
       showNotification(paste(loaded, "of", n_files, "files loaded from directory"), type = "message")
@@ -522,7 +474,6 @@ mod_upload_server <- function(id, shared) {
           ts <- seq(from = start_date, by = 60, length.out = n)
           hour <- as.numeric(format(ts, "%H"))
 
-          # Vary activity patterns
           base_activity <- 400 + i * 50
           base <- ifelse(hour >= 7 & hour <= 22, base_activity, 30 + i * 10)
 
@@ -607,248 +558,388 @@ mod_upload_server <- function(id, shared) {
       showNotification("All files cleared", type = "message")
     })
 
-    # Remove selected files
-    observeEvent(input$remove_selected_btn, {
-      selected <- input$file_table_rows_selected
-      req(selected)
+    # FILE CARD CLICK HANDLERS
+    # These are generated dynamically for each file card
 
+    # Track observed files to prevent memory leak from duplicate observers
+    observed_files <- reactiveVal(character(0))
+
+    #  Clean up observed_files when files are removed
+    # This prevents memory accumulation when files are removed and re-added
+    observe({
+      current_files <- names(shared$files)
+      already_observed <- observed_files()
+      # Remove files from tracking that no longer exist
+      still_valid <- intersect(already_observed, current_files)
+      if (length(still_valid) < length(already_observed)) {
+        observed_files(still_valid)
+      }
+    })
+
+    # Create observers only for NEW files
+    observe({
       file_ids <- names(shared$files)
-      ids_to_remove <- file_ids[selected]
+      already_observed <- observed_files()
+      new_files <- setdiff(file_ids, already_observed)
 
-      for (fid in ids_to_remove) {
-        shared$files[[fid]] <- NULL
-        # Clean up results
-        shared$results$wear_time[[fid]] <- NULL
-        shared$results$sleep[[fid]] <- NULL
-        shared$results$activity[[fid]] <- NULL
-        shared$results$circadian[[fid]] <- NULL
-        shared$results$energy[[fid]] <- NULL
-      }
+      if (length(new_files) > 0) {
+        lapply(new_files, function(fid) {
+          #  Added once = TRUE to select observer to prevent duplicates
+          observeEvent(input[[paste0("select_", fid)]], {
+            shared$selected_file <- fid
+          }, ignoreInit = TRUE, once = FALSE)  # once = FALSE is OK here since we track observed_files
 
-      shared$file_count <- length(shared$files)
-      shared$data_loaded <- length(shared$files) > 0
+          observeEvent(input[[paste0("remove_", fid)]], {
+            shared$files[[fid]] <- NULL
+            shared$results$wear_time[[fid]] <- NULL
+            shared$results$sleep[[fid]] <- NULL
+            shared$results$activity[[fid]] <- NULL
+            shared$results$circadian[[fid]] <- NULL
+            shared$results$energy[[fid]] <- NULL
 
-      if (shared$selected_file %in% ids_to_remove) {
-        shared$selected_file <- if (length(shared$files) > 0) names(shared$files)[1] else NULL
-      }
+            shared$file_count <- length(shared$files)
+            shared$data_loaded <- length(shared$files) > 0
 
-      showNotification(paste(length(ids_to_remove), "file(s) removed"), type = "message")
-    })
+            if (identical(shared$selected_file, fid)) {
+              shared$selected_file <- if (length(shared$files) > 0) names(shared$files)[1] else NULL
+            }
 
-    # View selected file
-    observeEvent(input$view_selected_btn, {
-      selected <- input$file_table_rows_selected
-      req(selected, length(selected) == 1)
+            # Remove from observed_files so it can be re-added
+            observed_files(setdiff(observed_files(), fid))
 
-      file_ids <- names(shared$files)
-      shared$selected_file <- file_ids[selected]
-    })
-
-    # Also select on row click
-    observeEvent(input$file_table_rows_selected, {
-      selected <- input$file_table_rows_selected
-      if (length(selected) == 1) {
-        file_ids <- names(shared$files)
-        shared$selected_file <- file_ids[selected]
+            showNotification("File removed", type = "message")
+          }, ignoreInit = TRUE, once = TRUE)
+        })
+        observed_files(union(already_observed, new_files))
       }
     })
 
-    # Value boxes
-    output$vb_file_count <- renderValueBox({
-      valueBox(shared$file_count, "Files Loaded", icon = icon("file"), color = "blue")
-    })
+    # Tab switching observers
+    # Consolidated tab observers
+    observeEvent(input$tab_device, { local$active_tab <- "device" })
+    observeEvent(input$tab_subject, { local$active_tab <- "subject" })
+    observeEvent(input$tab_preview, { local$active_tab <- "preview" })
+    #     observeEvent(input$tab_subject, { local$active_tab <- "subject" }) # Consolidated above
+    #     observeEvent(input$tab_preview, { local$active_tab <- "preview" }) # Consolidated above
 
-    output$vb_total_duration <- renderValueBox({
-      if (shared$file_count == 0) {
-        valueBox("--", "Total Duration", icon = icon("clock"), color = "green")
-      } else {
-        total_hrs <- sum(sapply(shared$files, function(f) f$duration_hrs), na.rm = TRUE)
-        valueBox(paste0(round(total_hrs, 1), "h"), "Total Duration", icon = icon("clock"), color = "green")
-      }
-    })
+    # RENDER: METRICS STRIP
+    # Design Decision: Only shown when files are loaded. Compact horizontal strip.
+    output$metrics_strip <- renderUI({
+      req(shared$file_count > 0)
 
-    output$vb_total_epochs <- renderValueBox({
-      if (shared$file_count == 0) {
-        valueBox("--", "Total Epochs", icon = icon("list"), color = "yellow")
-      } else {
-        total <- sum(sapply(shared$files, function(f) f$n_epochs), na.rm = TRUE)
-        valueBox(format(total, big.mark = ","), "Total Epochs", icon = icon("list"), color = "yellow")
-      }
-    })
+      total_hrs <- sum(sapply(shared$files, function(f) f$duration_hrs), na.rm = TRUE)
+      total_epochs <- sum(sapply(shared$files, function(f) {
+        n <- f$n_epochs
+        if (is.null(n) || !is.numeric(n)) return(0)
+        as.numeric(n[1])
+      }), na.rm = TRUE)
 
-    output$vb_avg_epoch_len <- renderValueBox({
-      if (shared$file_count == 0) {
-        valueBox("--", "Epoch Length", icon = icon("stopwatch"), color = "purple")
-      } else {
-        epochs <- sapply(shared$files, function(f) f$epoch_length)
-        avg_epoch <- round(mean(epochs, na.rm = TRUE))
-        shared$epoch_length <- avg_epoch
-        valueBox(paste0(avg_epoch, " sec"), "Epoch Length", icon = icon("stopwatch"), color = "purple")
-      }
-    })
+      div(
+        class = "metrics-strip",
 
-    # File list table
-    output$file_table <- DT::renderDataTable({
-      if (shared$file_count == 0) {
-        return(DT::datatable(data.frame(Message = "No files loaded. Add files or load demo data."), rownames = FALSE))
-      }
+        # Files count
+        div(
+          class = "metric-item",
+          div(class = "metric-icon files", icon("file-alt")),
+          div(
+            div(class = "metric-value", shared$file_count),
+            div(class = "metric-label", if (shared$file_count == 1) "File" else "Files")
+          )
+        ),
 
-      df <- data.frame(
-        File = sapply(shared$files, function(f) f$name),
-        Subject = sapply(shared$files, function(f) f$subject_info$id),
-        Duration = sapply(shared$files, function(f) paste0(round(f$duration_hrs, 1), "h")),
-        Epochs = sapply(shared$files, function(f) format(f$n_epochs, big.mark = ",")),
-        Epoch_Len = sapply(shared$files, function(f) paste0(f$epoch_length, "s")),
-        stringsAsFactors = FALSE
-      )
+        # Total duration
+        div(
+          class = "metric-item",
+          div(class = "metric-icon duration", icon("clock")),
+          div(
+            div(class = "metric-value", paste0(round(total_hrs, 1), "h")),
+            div(class = "metric-label", "Recording Time")
+          )
+        ),
 
-      DT::datatable(
-        df,
-        selection = "multiple",
-        options = list(pageLength = 10, scrollX = TRUE),
-        rownames = FALSE,
-        colnames = c("File Name", "Subject ID", "Duration", "Epochs", "Epoch")
-      )
-    })
-
-    # Device Information Display (like ActiLife)
-    output$device_info_display <- renderUI({
-      if (is.null(shared$selected_file) || is.null(shared$files[[shared$selected_file]])) {
-        return(tags$div(class = "text-center text-muted", style = "padding: 15px;",
-                        tags$p("Select a file to view device information")))
-      }
-
-      f <- shared$files[[shared$selected_file]]
-      dev <- f$device_info
-
-      # Format first and last epoch times
-      first_epoch <- if (!is.na(dev$start_datetime)) format_agd_timestamp(dev$start_datetime) else "N/A"
-      last_epoch <- if (!is.na(dev$stop_datetime)) format_agd_timestamp(dev$stop_datetime) else "N/A"
-
-      # If timestamps not in settings, get from data
-      if (first_epoch == "N/A" && "timestamp" %in% names(f$data) && nrow(f$data) > 0) {
-        first_epoch <- format(min(f$data$timestamp), "%m/%d/%Y %I:%M %p")
-        last_epoch <- format(max(f$data$timestamp), "%m/%d/%Y %I:%M %p")
-      }
-
-      # Battery formatting
-      battery_str <- if (!is.na(dev$battery)) paste0(dev$battery, "V") else "N/A"
-      if (!is.na(dev$battery) && is.numeric(as.numeric(dev$battery))) {
-        battery_str <- sprintf("%.2fV", as.numeric(dev$battery))
-      }
-
-      tags$div(
-        style = "font-size: 12px; overflow-x: auto;",
-        tags$table(class = "table table-condensed table-bordered",
-                   style = "margin-bottom: 0; table-layout: fixed; width: 100%;",
-          tags$colgroup(
-            tags$col(style = "width: 25%;"),
-            tags$col(style = "width: 25%;"),
-            tags$col(style = "width: 25%;"),
-            tags$col(style = "width: 25%;")
-          ),
-          tags$tbody(
-            tags$tr(tags$td(tags$strong("Device Type:")),
-                    tags$td(style = "word-wrap: break-word;", dev$device_type %||% "N/A"),
-                    tags$td(tags$strong("Epoch Length:")),
-                    tags$td(style = "word-wrap: break-word;", paste0(dev$epoch_length, " sec"))),
-            tags$tr(tags$td(tags$strong("Serial Number:")),
-                    tags$td(style = "word-wrap: break-word;", dev$serial_number %||% "N/A"),
-                    tags$td(tags$strong("First Epoch:")),
-                    tags$td(style = "word-wrap: break-word;", first_epoch)),
-            tags$tr(tags$td(tags$strong("Epoch Count:")),
-                    tags$td(style = "word-wrap: break-word;", format(f$n_epochs, big.mark = ",")),
-                    tags$td(tags$strong("Last Epoch:")),
-                    tags$td(style = "word-wrap: break-word;", last_epoch)),
-            tags$tr(tags$td(tags$strong("Firmware:")),
-                    tags$td(style = "word-wrap: break-word;", dev$firmware %||% "N/A"),
-                    tags$td(tags$strong("Sample Rate:")),
-                    tags$td(style = "word-wrap: break-word;", if (!is.na(dev$sample_rate)) paste0(dev$sample_rate, " Hz") else "N/A")),
-            tags$tr(tags$td(tags$strong("Battery:")),
-                    tags$td(style = "word-wrap: break-word;", battery_str),
-                    tags$td(tags$strong("Filter:")),
-                    tags$td(style = "word-wrap: break-word;", dev$filter %||% "Normal")),
-            tags$tr(tags$td(tags$strong("Software:")),
-                    tags$td(style = "word-wrap: break-word;", paste0(dev$software %||% "", " ", dev$software_version %||% "")),
-                    tags$td(tags$strong("Modes:")),
-                    tags$td(style = "word-wrap: break-word;", dev$modes %||% "N/A"))
+        # Total epochs
+        div(
+          class = "metric-item",
+          div(class = "metric-icon epochs", icon("table")),
+          div(
+            div(class = "metric-value", format(total_epochs, big.mark = ",")),
+            div(class = "metric-label", "Data Points")
           )
         )
       )
     })
 
-    # Subject Biometric Information Display (like ActiLife)
-    output$subject_info_display <- renderUI({
-      if (is.null(shared$selected_file) || is.null(shared$files[[shared$selected_file]])) {
-        return(tags$div(class = "text-center text-muted", style = "padding: 15px;",
-                        tags$p("Select a file to view subject information")))
-      }
+    # RENDER: MAIN CONTENT (File List + Details Panel)
+    # Design Decision: Two-column layout only when files exist.
+    # Progressive disclosure - hidden when no files.
+    output$main_content <- renderUI({
+      req(shared$file_count > 0)
 
-      f <- shared$files[[shared$selected_file]]
-      subj <- f$subject_info
+      fluidRow(
+        # Left column: File List
+        column(
+          width = 5,
+          div(
+            class = "file-list-container",
 
-      # Format values
-      sex_formatted <- format_sex(subj$sex)
-      height_formatted <- format_height(subj$height)
-      weight_formatted <- format_weight(subj$mass)
-      age_str <- if (!is.na(subj$age) && subj$age != "0") subj$age else "N/A"
-      dob_str <- if (!is.na(subj$date_of_birth)) format_agd_timestamp(subj$date_of_birth) else "N/A"
-      limb_str <- if (!is.na(subj$limb) && subj$limb != "") subj$limb else "N/A"
-      side_str <- if (!is.na(subj$side) && subj$side != "") subj$side else "N/A"
-      dominance_str <- if (!is.na(subj$dominance) && subj$dominance != "") subj$dominance else "N/A"
-      race_str <- if (!is.na(subj$race) && subj$race != "") subj$race else "N/A"
+            # Header with actions
+            div(
+              class = "file-list-header",
+              h4(class = "file-list-title", icon("list"), "Imported Files"),
+              div(
+                class = "file-list-actions",
+                actionButton(
+                  ns("clear_all_btn"),
+                  span(icon("trash-alt"), "Remove All"),
+                  class = "btn btn-outline-danger btn-sm"
+                )
+              )
+            ),
 
-      tags$div(
-        style = "font-size: 12px; overflow-x: auto;",
-        tags$table(class = "table table-condensed table-bordered",
-                   style = "margin-bottom: 0; table-layout: fixed; width: 100%;",
-          tags$colgroup(
-            tags$col(style = "width: 25%;"),
-            tags$col(style = "width: 25%;"),
-            tags$col(style = "width: 25%;"),
-            tags$col(style = "width: 25%;")
-          ),
-          tags$tbody(
-            tags$tr(tags$td(tags$strong("Subject Name:")),
-                    tags$td(colspan = "3", style = "word-wrap: break-word;", subj$id %||% "N/A")),
-            tags$tr(tags$td(tags$strong("Gender:")),
-                    tags$td(style = "word-wrap: break-word;", sex_formatted),
-                    tags$td(tags$strong("Date of Birth:")),
-                    tags$td(style = "word-wrap: break-word;", dob_str)),
-            tags$tr(tags$td(tags$strong("Height:")),
-                    tags$td(style = "word-wrap: break-word;", height_formatted),
-                    tags$td(tags$strong("Age:")),
-                    tags$td(style = "word-wrap: break-word;", age_str)),
-            tags$tr(tags$td(tags$strong("Weight:")),
-                    tags$td(style = "word-wrap: break-word;", weight_formatted),
-                    tags$td(tags$strong("Race:")),
-                    tags$td(style = "word-wrap: break-word;", race_str)),
-            tags$tr(tags$td(tags$strong("Limb:")),
-                    tags$td(style = "word-wrap: break-word;", limb_str),
-                    tags$td(tags$strong("Side:")),
-                    tags$td(style = "word-wrap: break-word;", side_str)),
-            tags$tr(tags$td(tags$strong("Dominance:")),
-                    tags$td(colspan = "3", style = "word-wrap: break-word;", dominance_str))
+            # File cards
+            div(
+              class = "file-list-scroll",
+              lapply(names(shared$files), function(fid) {
+                f <- shared$files[[fid]]
+                is_selected <- identical(shared$selected_file, fid)
+
+                div(
+                  class = paste("file-card", if (is_selected) "selected" else ""),
+                  # Accessibility: keyboard navigation and ARIA attributes
+                  tabindex = "0",
+                  role = "button",
+                  `aria-pressed` = tolower(as.character(is_selected)),
+                  `aria-label` = paste("Select file", f$name),
+                  onclick = paste0("Shiny.setInputValue('", ns(paste0("select_", fid)), "', Math.random())"),
+                  # Keyboard support: Enter or Space to select
+                  onkeydown = paste0("if(event.key==='Enter'||event.key===' '){event.preventDefault();Shiny.setInputValue('", ns(paste0("select_", fid)), "', Math.random())}"),
+
+                  # File icon
+                  div(class = "file-card-icon", icon("file-alt")),
+
+                  # File info
+                  div(
+                    class = "file-card-info",
+                    div(class = "file-card-name", f$name),
+                    div(
+                      class = "file-card-meta",
+                      span(icon("user", class = "fa-sm"), " ", f$subject_info$id),
+                      span(icon("clock", class = "fa-sm"), " ", round(f$duration_hrs, 1), "h"),
+                      span(icon("layer-group", class = "fa-sm"), " ", f$epoch_length, "s epochs")
+                    )
+                  ),
+
+                  # Quick actions
+                  div(
+                    class = "file-card-actions",
+                    tags$button(
+                      class = "btn btn-outline-danger btn-xs",
+                      `aria-label` = paste("Remove file", f$name),
+                      title = "Remove file",
+                      onclick = paste0("event.stopPropagation(); Shiny.setInputValue('", ns(paste0("remove_", fid)), "', Math.random())"),
+                      icon("times"),
+                      span(class = "sr-only", "Remove")
+                    )
+                  )
+                )
+              })
+            )
           )
+        ),
+
+        # Right column: Details Panel
+        column(
+          width = 7,
+          uiOutput(ns("details_panel"))
         )
       )
     })
 
-    # Data preview table
+    # RENDER: DETAILS PANEL
+    # Design Decision: Tabbed interface for Device/Subject/Preview info.
+    # Only shown when a file is selected.
+    output$details_panel <- renderUI({
+      if (is.null(shared$selected_file) || is.null(shared$files[[shared$selected_file]])) {
+        return(
+          div(
+            class = "details-panel",
+            empty_state(
+              title = NULL,
+              message = "Select a file to view device and subject information",
+              show_icon = FALSE
+            )
+          )
+        )
+      }
+
+      f <- shared$files[[shared$selected_file]]
+
+      div(
+        class = "details-panel",
+
+        # Header
+        div(
+          class = "details-header",
+          h4(class = "details-title", f$name)
+        ),
+
+        # Tabs
+        div(
+          class = "details-tabs",
+          tags$button(
+            class = paste("details-tab", if (local$active_tab == "device") "active" else ""),
+            onclick = paste0("Shiny.setInputValue('", ns("tab_device"), "', Math.random())"),
+            icon("microchip"), " Device"
+          ),
+          tags$button(
+            class = paste("details-tab", if (local$active_tab == "subject") "active" else ""),
+            onclick = paste0("Shiny.setInputValue('", ns("tab_subject"), "', Math.random())"),
+            icon("user"), " Subject"
+          ),
+          tags$button(
+            class = paste("details-tab", if (local$active_tab == "preview") "active" else ""),
+            onclick = paste0("Shiny.setInputValue('", ns("tab_preview"), "', Math.random())"),
+            icon("table"), " Data Preview"
+          )
+        ),
+
+        # Tab content
+        div(
+          class = "details-content",
+          uiOutput(ns("tab_content"))
+        )
+      )
+    })
+
+    # RENDER: TAB CONTENT
+    # Switches between Device, Subject, and Preview tabs
+    output$tab_content <- renderUI({
+      req(shared$selected_file, shared$files[[shared$selected_file]])
+
+      f <- shared$files[[shared$selected_file]]
+
+      if (local$active_tab == "device") {
+        # Device Info Tab
+        dev <- f$device_info
+
+        first_epoch <- if (!is.na(dev$start_datetime)) format_agd_timestamp(dev$start_datetime) else "N/A"
+        last_epoch <- if (!is.na(dev$stop_datetime)) format_agd_timestamp(dev$stop_datetime) else "N/A"
+
+        if (first_epoch == "N/A" && "timestamp" %in% names(f$data) && nrow(f$data) > 0) {
+          first_epoch <- format(min(f$data$timestamp), "%m/%d/%Y %I:%M %p")
+          last_epoch <- format(max(f$data$timestamp), "%m/%d/%Y %I:%M %p")
+        }
+
+        div(
+          class = "info-grid",
+          div(class = "info-item",
+              span(class = "info-label", "Device Type"),
+              span(class = "info-value", dev$device_type %||% "N/A")),
+          div(class = "info-item",
+              span(class = "info-label", "Serial Number"),
+              span(class = "info-value", dev$serial_number %||% "N/A")),
+          div(class = "info-item",
+              span(class = "info-label", "Epoch Length"),
+              span(class = "info-value", paste0(dev$epoch_length, " sec"))),
+          div(class = "info-item",
+              span(class = "info-label", "Sample Rate"),
+              span(class = "info-value", if (!is.na(dev$sample_rate)) paste0(dev$sample_rate, " Hz") else "N/A")),
+          div(class = "info-item",
+              span(class = "info-label", "First Epoch"),
+              span(class = "info-value", first_epoch)),
+          div(class = "info-item",
+              span(class = "info-label", "Last Epoch"),
+              span(class = "info-value", last_epoch)),
+          div(class = "info-item",
+              span(class = "info-label", "Firmware"),
+              span(class = "info-value", dev$firmware %||% "N/A")),
+          div(class = "info-item",
+              span(class = "info-label", "Filter"),
+              span(class = "info-value", dev$filter %||% "Normal")),
+          div(class = "info-item",
+              span(class = "info-label", "Software"),
+              span(class = "info-value", paste0(dev$software %||% "", " ", dev$software_version %||% ""))),
+          div(class = "info-item",
+              span(class = "info-label", "Total Epochs"),
+              span(class = "info-value", format(f$n_epochs, big.mark = ",")))
+        )
+
+      } else if (local$active_tab == "subject") {
+        # Subject Info Tab
+        subj <- f$subject_info
+
+        div(
+          class = "info-grid",
+          div(class = "info-item",
+              span(class = "info-label", "Subject ID"),
+              span(class = "info-value", subj$id %||% "N/A")),
+          div(class = "info-item",
+              span(class = "info-label", "Gender"),
+              span(class = "info-value", format_sex(subj$sex))),
+          div(class = "info-item",
+              span(class = "info-label", "Age"),
+              span(class = "info-value", if (!is.na(subj$age) && subj$age != "0") subj$age else "N/A")),
+          div(class = "info-item",
+              span(class = "info-label", "Date of Birth"),
+              span(class = "info-value", if (!is.na(subj$date_of_birth)) format_agd_timestamp(subj$date_of_birth) else "N/A")),
+          div(class = "info-item",
+              span(class = "info-label", "Height"),
+              span(class = "info-value", format_height(subj$height))),
+          div(class = "info-item",
+              span(class = "info-label", "Weight"),
+              span(class = "info-value", format_weight(subj$mass))),
+          div(class = "info-item",
+              span(class = "info-label", "Limb"),
+              span(class = "info-value", if (!is.na(subj$limb) && subj$limb != "") subj$limb else "N/A")),
+          div(class = "info-item",
+              span(class = "info-label", "Side"),
+              span(class = "info-value", if (!is.na(subj$side) && subj$side != "") subj$side else "N/A")),
+          div(class = "info-item",
+              span(class = "info-label", "Dominance"),
+              span(class = "info-value", if (!is.na(subj$dominance) && subj$dominance != "") subj$dominance else "N/A")),
+          div(class = "info-item",
+              span(class = "info-label", "Race"),
+              span(class = "info-value", if (!is.na(subj$race) && subj$race != "") subj$race else "N/A"))
+        )
+
+      } else {
+        # Data Preview Tab
+        DT::dataTableOutput(ns("preview_table"))
+      }
+    })
+
+    # RENDER: PREVIEW TABLE
     output$preview_table <- DT::renderDataTable({
       req(shared$selected_file, shared$files[[shared$selected_file]])
 
       data <- shared$files[[shared$selected_file]]$data
-      display <- head(data, 500)
+
+      if (is.null(data) || !is.data.frame(data) || nrow(data) == 0) {
+        return(DT::datatable(
+          data.frame(Message = "No data available for preview"),
+          rownames = FALSE
+        ))
+      }
+
+      display <- head(data, 100)
 
       if ("timestamp" %in% names(display)) {
         display$timestamp <- format(display$timestamp, "%Y-%m-%d %H:%M:%S")
       }
 
-      DT::datatable(display, options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
+      DT::datatable(
+        display,
+        options = list(
+          pageLength = 10,
+          scrollX = TRUE,
+          dom = 'tip',
+          language = list(
+            info = "Showing _START_ to _END_ of _TOTAL_ epochs (first 100 shown)"
+          )
+        ),
+        rownames = FALSE,
+        class = "compact stripe"
+      )
     })
   })
 }
-
-# Null coalesce operator
-`%||%` <- function(a, b) if (is.null(a) || (length(a) == 1 && is.na(a))) b else a

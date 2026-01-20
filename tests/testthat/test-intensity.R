@@ -36,7 +36,7 @@ test_that("to_cpm handles empty input", {
 
 # Tests for freedson cutpoints (using ActiLife-standard thresholds)
 test_that("freedson classifies sedentary correctly", {
-  counts <- c(0, 50, 100)  # 0-100 CPM is sedentary
+  counts <- c(0, 50, 99)  # 0-99 CPM is sedentary (Freedson 1998)
   result <- freedson(counts)
   expect_true(all(result == "sedentary"))
 })
@@ -65,11 +65,11 @@ test_that("freedson classifies very vigorous correctly", {
   expect_true(all(result == "very_vigorous"))
 })
 
-test_that("freedson handles boundary values at 100-101", {
-  counts <- c(100, 101)
+test_that("freedson handles boundary values at 99-100", {
+  counts <- c(99, 100)
   result <- freedson(counts)
-  expect_equal(as.character(result[1]), "sedentary")  # 100 CPM = sedentary
-  expect_equal(as.character(result[2]), "light")       # 101 CPM = light
+  expect_equal(as.character(result[1]), "sedentary")  # 99 CPM = sedentary
+  expect_equal(as.character(result[2]), "light")       # 100 CPM = light (Freedson 1998)
 })
 
 test_that("freedson handles boundary values at 1951-1952", {

@@ -2,11 +2,11 @@
 % Please edit documentation in R/batch_sleep.R
 \name{canhrActi.sleep}
 \alias{canhrActi.sleep}
-\title{Batch Sleep Analysis for ActiGraph Data}
+\title{Batch Sleep Analysis for ActiGraph AGD Files}
 \usage{
 canhrActi.sleep(
   agd_file_path,
-  sleep_algorithm = c("cole.kripke", "sadeh"),
+  sleep_algorithm = c("cole_kripke", "sadeh"),
   apply_rescoring = TRUE,
   detect_sleep_period = TRUE,
   bedtime_start = 5,
@@ -18,14 +18,13 @@ canhrActi.sleep(
   output_dir = "sleep_analysis_output",
   parallel = NULL,
   n_cores = NULL,
-  verbose = TRUE,
-  memory_efficient = TRUE
+  verbose = TRUE
 )
 }
 \arguments{
-\item{agd_file_path}{Single file, vector of files, or folder path}
+\item{agd_file_path}{Single AGD file, vector of AGD files, or folder path}
 
-\item{sleep_algorithm}{"cole.kripke" (adults) or "sadeh" (children/adolescents)}
+\item{sleep_algorithm}{"cole_kripke" (adults) or "sadeh" (children/adolescents)}
 
 \item{apply_rescoring}{Apply Webster's rescoring rules? (default: TRUE)}
 
@@ -50,15 +49,13 @@ canhrActi.sleep(
 \item{n_cores}{Number of CPU cores (default: auto-detect, max 8)}
 
 \item{verbose}{Show detailed progress? (default: TRUE)}
-
-\item{memory_efficient}{Optimize memory for large files? (default: TRUE)}
 }
 \value{
 List with results, summary, and parameters
 }
 \description{
-Performs sleep analysis on ActiGraph files with parallel processing support.
-Includes memory optimization and detailed progress tracking.
+Performs sleep analysis on ActiGraph AGD files with parallel processing support.
+Includes detailed progress tracking.
 }
 \examples{
 \dontrun{

@@ -2,7 +2,7 @@
 % Please edit documentation in R/cut_points.R
 \name{CANHR.Cutpoints}
 \alias{CANHR.Cutpoints}
-\title{Apply CANHR Cut Points}
+\title{Apply CANHR Custom Cut Points}
 \usage{
 CANHR.Cutpoints(counts_per_minute)
 }
@@ -10,8 +10,8 @@ CANHR.Cutpoints(counts_per_minute)
 \item{counts_per_minute}{Numeric vector of counts per minute}
 }
 \value{
-Ordered factor with levels: sedentary, light, moderate, vigorous, very_vigorous
+Ordered factor with intensity levels
 }
 \description{
-Apply CANHR Cut Points
+Custom cut-points developed by the Center for Alaska Native Health Research.
 }

@@ -17,7 +17,7 @@ Implements the Sadeh sleep/wake scoring algorithm for children/adolescents (ages
 }
 \details{
 Uses 11-epoch window (5 previous + current + 5 next):
-SI = 7.601 - (0.065\emph{AVG) - (1.08}NATS) - (0.056\emph{SD) - (0.703}LG)
+PS = 7.601 - (0.065\emph{AVG) - (1.08}NATS) - (0.056\emph{SD) - (0.703}LG)
 
 AVG: Mean of 11-epoch window
 NATS: Count of epochs with 50 <= counts < 100
@@ -25,6 +25,10 @@ SD: Standard deviation of current + 5 previous epochs
 LG: ln(count + 1)
 
 Counts capped at 300. Classification: SI > -4 = Sleep, SI <= -4 = Wake
+
+Note: This threshold matches the validated actigraph.sleepr implementation.
+The original Sadeh (1994) paper used >= 0, but ActiGraph implementations
+use > -4 which has been validated against polysomnography.
 }
 \examples{
 \dontrun{
@@ -39,7 +43,4 @@ table(sleep.wake)
 Sadeh A, Sharkey KM, Carskadon MA (1994).
 Activity-based sleep-wake identification: an empirical test of methodological issues.
 Sleep, 17(3):201-207.
-
-ActiGraph documentation:
-https://actigraphcorp.my.site.com/support/s/article/Where-can-I-find-documentation-for-the-Sadeh-and-Cole-Kripke-algorithms
 }

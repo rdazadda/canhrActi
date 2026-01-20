@@ -29,12 +29,12 @@ classification, circadian rhythm analysis, and batch processing.
 \details{
 The dashboard includes the following modules:
 \itemize{
-\item \strong{Data Upload}: Load AGD, GT3X, or CSV files, configure subject info
+\item \strong{Data Upload}: Load AGD files, configure subject info
 \item \strong{Overview}: Quick summary of data quality and key metrics
 \item \strong{Wear Time}: Detect wear/non-wear time using Choi, Troiano, or CANHR algorithms
 \item \strong{Sleep Analysis}: Cole-Kripke, Sadeh, and Tudor-Locke sleep detection
 \item \strong{Physical Activity}: Intensity classification and MVPA bout detection
-\item \strong{Circadian Rhythm}: L5, M10, IS, IV, and cosinor analysis
+\item \strong{Circadian Rhythm}: L5, M10, IS, IV, RA, and phi analysis
 \item \strong{Batch Processing}: Process multiple files at once
 \item \strong{Export}: Generate CSV exports and HTML reports
 }

@@ -4,7 +4,13 @@
 \alias{sedentary.breaks.hourly}
 \title{Summarize Sedentary Breaks by Hour}
 \usage{
-sedentary.breaks.hourly(intensity, timestamps, wear_time = NULL)
+sedentary.breaks.hourly(
+  intensity,
+  timestamps,
+  wear_time = NULL,
+  min_break_length = 5,
+  epoch_length = 60
+)
 }
 \arguments{
 \item{intensity}{Factor or character vector of intensity classifications}
@@ -12,10 +18,27 @@ sedentary.breaks.hourly(intensity, timestamps, wear_time = NULL)
 \item{timestamps}{POSIXct vector of timestamps}
 
 \item{wear_time}{Optional logical vector indicating wear time}
+
+\item{min_break_length}{Minimum duration (minutes) for a break to be counted.
+Shorter active periods are bridged as continued sedentary time. Default: 5}
+
+\item{epoch_length}{Epoch length in seconds. Default: 60}
 }
 \value{
-A data frame with hourly break statistics
+Data frame with hourly break statistics:
+\describe{
+\item{hour}{Hour of day (0-23)}
+\item{sedentary_min}{Total sedentary epochs in that hour}
+\item{breaks}{Number of valid breaks (>= min_break_length)}
+\item{wear_min}{Total wear time epochs in that hour}
+\item{breaks_per_hour}{Breaks per sedentary hour}
+}
 }
 \description{
-Calculates hourly patterns of sedentary breaks throughout the day.
+Calculates sedentary break statistics for each hour of the day.
+Uses gap-bridging to match the main sedentary.fragmentation() function,
+ensuring consistent break counts.
+}
+\seealso{
+\code{\link{sedentary.fragmentation}} for full fragmentation analysis
 }

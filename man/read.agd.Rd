@@ -4,20 +4,39 @@
 \alias{read.agd}
 \title{Read ActiGraph .agd File}
 \usage{
-read.agd(filepath, epoch_length = 60, verbose = TRUE)
+read.agd(
+  filepath,
+  include_sleep = TRUE,
+  include_wear_time = TRUE,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{filepath}{Path to .agd file}
 
-\item{epoch_length}{Epoch length in seconds for raw data conversion (default: 60)}
+\item{include_sleep}{Logical. Include sleep analysis data if available? (default: TRUE)}
+
+\item{include_wear_time}{Logical. Include wear time validation data if available? (default: TRUE)}
 
 \item{verbose}{Logical. Print progress messages? (default: TRUE)}
 }
 \value{
-List with data and settings
+List containing:
+\itemize{
+\item \code{data} - Data frame with epoch-level activity counts (axis1, axis2, axis3, steps, etc.)
+\item \code{settings} - Data frame with device and subject settings
+\item \code{sleep} - Sleep periods detected by ActiLife (if available and requested)
+\item \code{awakenings} - Awakening events during sleep (if available and requested)
+\item \code{wear_time} - Wear time validation bouts (if available and requested)
+\item \code{capsense} - Capacitive sensor data for on-body detection (if available)
+\item \code{tables} - Character vector of all tables in the AGD file
+}
 }
 \description{
-Reads both epoch-level AGD files (pre-processed in ActiLife) and raw AGD files
-(high-frequency acceleration data). Raw AGD files are automatically detected
-and converted to activity counts.
+Reads epoch-level AGD files (pre-processed in ActiLife). AGD files contain
+activity counts that have already been computed from raw acceleration data.
+}
+\details{
+AGD files are SQLite databases created by ActiLife software. They contain
+pre-processed activity counts at user-specified epoch lengths (e.g., 60 seconds).
 }

@@ -12,7 +12,7 @@
 \item{timestamps}{POSIXct timestamps}
 }
 \value{
-Data frame with hour, mean_counts, sd_counts, n
+Data frame with hour, mean_counts, sd_counts, se_counts, n
 }
 \description{
 Calculate Hourly Activity Profile

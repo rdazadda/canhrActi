@@ -1,15 +1,30 @@
 #' Read ActiGraph .agd File
 #'
-#' Reads both epoch-level AGD files (pre-processed in ActiLife) and raw AGD files
-#' (high-frequency acceleration data). Raw AGD files are automatically detected
-#' and converted to activity counts.
+#' Reads epoch-level AGD files (pre-processed in ActiLife). AGD files contain
+#' activity counts that have already been computed from raw acceleration data.
 #'
 #' @param filepath Path to .agd file
-#' @param epoch_length Epoch length in seconds for raw data conversion (default: 60)
+#' @param include_sleep Logical. Include sleep analysis data if available? (default: TRUE)
+#' @param include_wear_time Logical. Include wear time validation data if available? (default: TRUE)
 #' @param verbose Logical. Print progress messages? (default: TRUE)
-#' @return List with data and settings
+#'
+#' @return List containing:
+#'   \itemize{
+#'     \item \code{data} - Data frame with epoch-level activity counts (axis1, axis2, axis3, steps, etc.)
+#'     \item \code{settings} - Data frame with device and subject settings
+#'     \item \code{sleep} - Sleep periods detected by ActiLife (if available and requested)
+#'     \item \code{awakenings} - Awakening events during sleep (if available and requested)
+#'     \item \code{wear_time} - Wear time validation bouts (if available and requested)
+#'     \item \code{capsense} - Capacitive sensor data for on-body detection (if available)
+#'     \item \code{tables} - Character vector of all tables in the AGD file
+#'   }
+#'
+#' @details
+#' AGD files are SQLite databases created by ActiLife software. They contain
+#' pre-processed activity counts at user-specified epoch lengths (e.g., 60 seconds).
+#'
 #' @export
-read.agd <- function(filepath, epoch_length = 60, verbose = TRUE) {
+read.agd <- function(filepath, include_sleep = TRUE, include_wear_time = TRUE, verbose = TRUE) {
 
   if (!file.exists(filepath)) {
     stop(sprintf("File not found: %s", filepath))
@@ -24,214 +39,84 @@ read.agd <- function(filepath, epoch_length = 60, verbose = TRUE) {
 
   tables <- DBI::dbListTables(con)
 
-  # Read settings first (needed for sampling frequency)
+  if (verbose) {
+    cat("AGD file tables:", paste(tables, collapse = ", "), "\n")
+  }
+
+  # Read settings
   settings <- NULL
   if ("settings" %in% tables) {
     settings <- DBI::dbReadTable(con, "settings")
   }
 
-  # Check if this is a raw AGD file (has accelerometer table)
-  is_raw <- "accelerometer" %in% tables
-
-  if (is_raw) {
-    # Raw AGD file - contains high-frequency acceleration data
-    if (verbose) cat("Detected raw AGD file. Converting to activity counts...\n")
-
-    result <- .read.agd.raw(con, settings, epoch_length, verbose)
-
+  # Read epoch data (activity counts)
+  data <- NULL
+  if ("data" %in% tables) {
+    data <- DBI::dbReadTable(con, "data")
+  } else if ("epochs" %in% tables) {
+    data <- DBI::dbReadTable(con, "epochs")
   } else {
-    # Epoch AGD file - already has counts
-    if ("data" %in% tables) {
-      data <- DBI::dbReadTable(con, "data")
-    } else if ("epochs" %in% tables) {
-      data <- DBI::dbReadTable(con, "epochs")
-    } else {
-      stop(sprintf("Could not find 'data', 'epochs', or 'accelerometer' table in .agd file.\nAvailable tables: %s",
-                   paste(tables, collapse = ", ")))
-    }
+    stop(sprintf("Could not find 'data' or 'epochs' table in .agd file.\nAvailable tables: %s",
+                 paste(tables, collapse = ", ")))
+  }
 
-    result <- list(
-      data = data,
-      settings = settings,
-      is_raw = FALSE
-    )
+  if (verbose) {
+    cat("Epochs loaded:", nrow(data), "\n")
+  }
+
+  # Build result list
+
+  result <- list(
+    data = data,
+    settings = settings,
+    tables = tables
+  )
+
+  # Read sleep data if requested and available
+  if (include_sleep) {
+    if ("sleep" %in% tables) {
+      result$sleep <- DBI::dbReadTable(con, "sleep")
+      if (verbose && nrow(result$sleep) > 0) {
+        cat("Sleep periods found:", nrow(result$sleep), "\n")
+      }
+    }
+    if ("awakenings" %in% tables) {
+      result$awakenings <- DBI::dbReadTable(con, "awakenings")
+      if (verbose && nrow(result$awakenings) > 0) {
+        cat("Awakenings found:", nrow(result$awakenings), "\n")
+      }
+    }
+  }
+
+  # Read wear time validation data if requested and available
+  if (include_wear_time) {
+    if ("wtvBouts" %in% tables) {
+      result$wear_time <- DBI::dbReadTable(con, "wtvBouts")
+      if (verbose && nrow(result$wear_time) > 0) {
+        cat("Wear time bouts:", nrow(result$wear_time), "\n")
+      }
+    }
+    if ("filters" %in% tables) {
+      result$filters <- DBI::dbReadTable(con, "filters")
+    }
+  }
+
+  # Read capsense data if available (on-body detection)
+  if ("capsense" %in% tables) {
+    result$capsense <- DBI::dbReadTable(con, "capsense")
+    if (verbose && nrow(result$capsense) > 0) {
+      cat("Capsense samples:", nrow(result$capsense), "\n")
+    }
   }
 
   return(result)
 }
 
 
-#' Read Raw AGD File (Internal)
+#' Check if File is AGD Format
 #'
-#' Reads raw acceleration data from AGD file and converts to activity counts.
-#'
-#' @param con Database connection
-#' @param settings Settings data frame
-#' @param epoch_length Epoch length in seconds
-#' @param verbose Print progress messages?
-#' @return List with data and settings
-#' @keywords internal
-.read.agd.raw <- function(con, settings, epoch_length = 60, verbose = TRUE) {
-
-  # Read raw accelerometer data
-  raw_data <- DBI::dbReadTable(con, "accelerometer")
-
-  if (verbose) cat("Raw samples:", nrow(raw_data), "\n")
-
-  # Get sampling frequency from settings
-  sampling_freq <- 30  # Default
-  if (!is.null(settings)) {
-    freq_row <- settings$settingValue[settings$settingName == "samplerate"]
-    if (length(freq_row) > 0 && !is.na(freq_row[1])) {
-      sampling_freq <- as.numeric(freq_row[1])
-    }
-  }
-
-  if (verbose) cat("Sampling frequency:", sampling_freq, "Hz\n")
-
-  # Extract acceleration columns
-  # Raw AGD can have different column names: x/y/z, axis1/axis2/axis3, accelerometerX/Y/Z
-  if ("x" %in% names(raw_data)) {
-    x <- raw_data$x
-    y <- raw_data$y
-    z <- raw_data$z
-  } else if ("axis1" %in% names(raw_data)) {
-    x <- raw_data$axis1
-    y <- raw_data$axis2
-    z <- raw_data$axis3
-  } else if ("accelerometerX" %in% names(raw_data)) {
-    x <- raw_data$accelerometerX
-    y <- raw_data$accelerometerY
-    z <- raw_data$accelerometerZ
-  } else {
-    # Try to find numeric columns
-    num_cols <- sapply(raw_data, is.numeric)
-    if (sum(num_cols) >= 3) {
-      cols <- names(raw_data)[num_cols][1:3]
-      x <- raw_data[[cols[1]]]
-      y <- raw_data[[cols[2]]]
-      z <- raw_data[[cols[3]]]
-      if (verbose) cat("Using columns:", paste(cols, collapse = ", "), "\n")
-    } else {
-      stop("Could not find acceleration columns in raw AGD file.\nAvailable columns: ",
-           paste(names(raw_data), collapse = ", "))
-    }
-  }
-
-  # Get timestamps
-  if ("dataTimestamp" %in% names(raw_data)) {
-    timestamps <- as.POSIXct((raw_data$dataTimestamp / 10000000 - 62135596800),
-                             origin = '1970-01-01', tz = 'UTC')
-  } else if ("timestamp" %in% names(raw_data)) {
-    timestamps <- as.POSIXct(raw_data$timestamp)
-  } else {
-    # Create timestamps from start time in settings
-    start_time <- as.POSIXct("2024-01-01 00:00:00", tz = "UTC")
-    if (!is.null(settings)) {
-      start_row <- settings$settingValue[settings$settingName == "startdatetime"]
-      if (length(start_row) > 0 && !is.na(start_row[1])) {
-        start_ticks <- as.numeric(start_row[1])
-        start_time <- as.POSIXct((start_ticks / 10000000 - 62135596800),
-                                 origin = '1970-01-01', tz = 'UTC')
-      }
-    }
-    timestamps <- seq(start_time, by = 1/sampling_freq, length.out = nrow(raw_data))
-  }
-
-  if (verbose) cat("Converting raw acceleration to activity counts...\n")
-
-  # Convert to activity counts
-  # Try agcounts package first, fall back to internal function
-  if (requireNamespace("agcounts", quietly = TRUE)) {
-    if (verbose) cat("Using agcounts package for count conversion\n")
-
-    raw_df <- data.frame(
-      time = timestamps,
-      X = x,
-      Y = y,
-      Z = z
-    )
-
-    counts_result <- tryCatch({
-      agcounts::calculate_counts(raw_df, epoch = epoch_length, sample_rate = sampling_freq)
-    }, error = function(e) {
-      if (verbose) cat("agcounts failed:", e$message, "\nFalling back to internal conversion\n")
-      NULL
-    })
-
-    if (!is.null(counts_result)) {
-      # agcounts returns Axis1, Axis2, Axis3
-      counts_x <- counts_result$Axis1
-      counts_y <- counts_result$Axis2
-      counts_z <- counts_result$Axis3
-
-      n_epochs <- nrow(counts_result)
-      start_time <- timestamps[1]
-      epoch_timestamps <- seq(start_time, by = epoch_length, length.out = n_epochs)
-
-      # Convert ActiGraph timestamp format
-      epoch_ticks <- as.numeric(epoch_timestamps + 62135596800) * 10000000
-
-      data <- data.frame(
-        dataTimestamp = epoch_ticks,
-        axis1 = counts_x,
-        axis2 = counts_y,
-        axis3 = counts_z,
-        steps = 0,
-        stringsAsFactors = FALSE
-      )
-
-      if (verbose) cat("Conversion complete:", n_epochs, "epochs\n")
-
-      return(list(
-        data = data,
-        settings = settings,
-        is_raw = TRUE,
-        raw_samples = nrow(raw_data),
-        sampling_freq = sampling_freq
-      ))
-    }
-  }
-
-  # Fall back to internal counts function
-  if (verbose) cat("Using internal count conversion\n")
-
-  counts_x <- counts(x, sampling_freq, epoch_length)
-  counts_y <- counts(y, sampling_freq, epoch_length)
-  counts_z <- counts(z, sampling_freq, epoch_length)
-
-  n_epochs <- length(counts_x)
-  start_time <- timestamps[1]
-  epoch_timestamps <- seq(start_time, by = epoch_length, length.out = n_epochs)
-
-  # Convert to ActiGraph timestamp format
-  epoch_ticks <- as.numeric(epoch_timestamps + 62135596800) * 10000000
-
-  data <- data.frame(
-    dataTimestamp = epoch_ticks,
-    axis1 = counts_x,
-    axis2 = counts_y,
-    axis3 = counts_z,
-    steps = 0,
-    stringsAsFactors = FALSE
-  )
-
-  if (verbose) cat("Conversion complete:", n_epochs, "epochs\n")
-
-  return(list(
-    data = data,
-    settings = settings,
-    is_raw = TRUE,
-    raw_samples = nrow(raw_data),
-    sampling_freq = sampling_freq
-  ))
-}
-
-
-#' Check if AGD File is Raw
-#'
-#' @param filepath Path to .agd file
-#' @return Logical. TRUE if raw AGD, FALSE if epoch AGD
+#' @param filepath Path to file
+#' @return Logical. TRUE if file has .agd extension
 #' @keywords internal
 .is.agd.file <- function(filepath) {
   tolower(tools::file_ext(filepath)) == "agd"
@@ -243,15 +128,13 @@ read.agd <- function(filepath, epoch_length = 60, verbose = TRUE) {
 #' Quickly reads just the metadata/settings from an AGD file without loading data.
 #'
 #' @param filepath Path to .agd file
-#' @return List with file info
+#' @return List with file info including tables, settings, and row counts
 #' @keywords internal
 .read.agd.metadata <- function(filepath) {
   con <- DBI::dbConnect(RSQLite::SQLite(), filepath)
   on.exit(DBI::dbDisconnect(con), add = TRUE)
 
   tables <- DBI::dbListTables(con)
-
-  is_raw <- "accelerometer" %in% tables
   has_epochs <- "data" %in% tables || "epochs" %in% tables
 
   settings <- NULL
@@ -261,17 +144,24 @@ read.agd <- function(filepath, epoch_length = 60, verbose = TRUE) {
 
   # Get row counts
   n_rows <- 0
-  if (is_raw) {
-    n_rows <- DBI::dbGetQuery(con, "SELECT COUNT(*) FROM accelerometer")[[1]]
-  } else if (has_epochs) {
+  if (has_epochs) {
     table_name <- if ("data" %in% tables) "data" else "epochs"
     n_rows <- DBI::dbGetQuery(con, paste0("SELECT COUNT(*) FROM ", table_name))[[1]]
   }
 
+  # Get epoch length from settings
+  epoch_length <- NA
+  if (!is.null(settings)) {
+    epoch_val <- settings$settingValue[settings$settingName == "epochlength"]
+    if (length(epoch_val) > 0) {
+      epoch_length <- as.numeric(epoch_val[1])
+    }
+  }
+
   list(
-    is_raw = is_raw,
     has_epochs = has_epochs,
-    n_rows = n_rows,
+    n_epochs = n_rows,
+    epoch_length = epoch_length,
     tables = tables,
     settings = settings
   )
@@ -280,32 +170,158 @@ read.agd <- function(filepath, epoch_length = 60, verbose = TRUE) {
 
 #' Extract Counts from .agd Data
 #'
+#' Extracts activity counts, timestamps, steps, and inclinometer data (if available)
+#' from AGD file data. Inclinometer data can be used to enhance sleep detection
+#' for AGD files that lack raw acceleration.
+#'
 #' @param agd_data List returned from read.agd()
 #' @param convert.timestamps Logical. Convert ActiGraph timestamps to POSIXct (default: TRUE)
-#' @return Data frame with counts per minute and timestamps
+#' @param include_inclinometer Logical. Include inclinometer data if available? (default: TRUE)
+#'
+#' @return Data frame with counts per minute, timestamps, and optional inclinometer data:
+#'   \itemize{
+#'     \item \code{timestamp} - POSIXct timestamp (if convert.timestamps = TRUE)
+#'     \item \code{axis1} - Vertical axis counts (Y-axis)
+#'     \item \code{axis2} - Horizontal axis counts (X-axis)
+#'     \item \code{axis3} - Anterior-posterior axis counts (Z-axis)
+#'     \item \code{steps} - Step counts
+#'     \item \code{lux} - Light intensity (if available)
+#'     \item \code{inclineOff} - Off-body indicator (if available)
+#'     \item \code{inclineStanding} - Standing indicator (if available)
+#'     \item \code{inclineSitting} - Sitting indicator (if available)
+#'     \item \code{inclineLying} - Lying indicator (if available)
+#'   }
+#'
+#' @details
+#' Inclinometer data is particularly useful for sleep detection in AGD files:
+#' \itemize{
+#'   \item \code{inclineLying = 1} indicates the device detected lying posture
+#'   \item Combined with low activity (Cole-Kripke sleep), this provides better specificity
+#'   \item Not all AGD files contain inclinometer data (depends on ActiLife processing settings)
+#' }
+#'
 #' @export
-agd.counts <- function(agd_data, convert.timestamps = TRUE) {
+agd.counts <- function(agd_data, convert.timestamps = TRUE, include_inclinometer = TRUE) {
+  # Input validation
+  if (is.null(agd_data) || !is.list(agd_data)) {
+    stop("agd_data must be a list (output from read.agd)")
+  }
+  if (is.null(agd_data$data) || !is.data.frame(agd_data$data)) {
+    stop("agd_data$data must be a data.frame")
+  }
+
   data <- agd_data$data
+
+  if (nrow(data) == 0) {
+    warning("AGD data is empty (0 rows)")
+    return(data.frame(timestamp = character(0), axis1 = integer(0),
+                      axis2 = integer(0), axis3 = integer(0),
+                      steps = integer(0), stringsAsFactors = FALSE))
+  }
+
+  timestamps <- NULL
 
   if ("dataTimestamp" %in% names(data)) {
     if (convert.timestamps) {
+      #  Add validation for dataTimestamp column
+      if (!is.numeric(data$dataTimestamp)) {
+        warning("dataTimestamp column is not numeric, attempting conversion")
+        data$dataTimestamp <- as.numeric(data$dataTimestamp)
+      }
+
+      # Check for NA values
+      na_count <- sum(is.na(data$dataTimestamp))
+      if (na_count > 0) {
+        warning("Found ", na_count, " NA values in dataTimestamp column")
+      }
+
       timestamps <- as.POSIXct((data$dataTimestamp / 10000000 - 62135596800),
                                origin = '1970-01-01', tz = 'UTC')
+
+      #  Validate timestamps are in reasonable range (1990-2050)
+      min_valid_date <- as.POSIXct("1990-01-01", tz = "UTC")
+      max_valid_date <- as.POSIXct("2050-01-01", tz = "UTC")
+      valid_timestamps <- !is.na(timestamps) & timestamps >= min_valid_date & timestamps <= max_valid_date
+
+      if (any(!valid_timestamps)) {
+        n_invalid <- sum(!valid_timestamps)
+        warning("Found ", n_invalid, " timestamps outside valid range (1990-2050). ",
+                "This may indicate data corruption or incorrect timestamp format.")
+      }
     } else {
       timestamps <- data$dataTimestamp
     }
-  } else {
+  } else if ("timestamp" %in% names(data)) {
+    timestamps <- data$timestamp
+
+    #  Validate existing timestamps if POSIXct
+    if (inherits(timestamps, "POSIXct")) {
+      min_valid_date <- as.POSIXct("1990-01-01", tz = "UTC")
+      max_valid_date <- as.POSIXct("2050-01-01", tz = "UTC")
+      valid_timestamps <- !is.na(timestamps) & timestamps >= min_valid_date & timestamps <= max_valid_date
+
+      if (any(!valid_timestamps)) {
+        n_invalid <- sum(!valid_timestamps)
+        warning("Found ", n_invalid, " timestamps outside valid range (1990-2050).")
+      }
+    }
+  }
+
+  #  Issue warning instead of silent fallback to sequence
+  if (is.null(timestamps)) {
+    warning("No valid timestamp column found (dataTimestamp or timestamp). ",
+            "Using sequential epoch numbers instead. This may affect time-based analyses.")
     timestamps <- seq_len(nrow(data))
   }
 
-  data.frame(
+  # Build base data frame with counts
+  result <- data.frame(
     timestamp = timestamps,
-    axis1 = if ("axis1" %in% names(data)) data$axis1 else NA,
-    axis2 = if ("axis2" %in% names(data)) data$axis2 else NA,
-    axis3 = if ("axis3" %in% names(data)) data$axis3 else NA,
-    steps = if ("steps" %in% names(data)) data$steps else NA,
+    axis1 = if ("axis1" %in% names(data)) data$axis1 else NA_integer_,
+    axis2 = if ("axis2" %in% names(data)) data$axis2 else NA_integer_,
+    axis3 = if ("axis3" %in% names(data)) data$axis3 else NA_integer_,
+    steps = if ("steps" %in% names(data)) data$steps else NA_integer_,
     stringsAsFactors = FALSE
   )
+
+  # Add light data if available
+  if ("lux" %in% names(data)) {
+    result$lux <- data$lux
+  }
+
+  # Add inclinometer data if requested and available
+  # Inclinometer data is valuable for sleep detection in AGD files
+  if (include_inclinometer) {
+    if ("inclineOff" %in% names(data)) {
+      result$inclineOff <- data$inclineOff
+    }
+    if ("inclineStanding" %in% names(data)) {
+      result$inclineStanding <- data$inclineStanding
+    }
+    if ("inclineSitting" %in% names(data)) {
+      result$inclineSitting <- data$inclineSitting
+    }
+    if ("inclineLying" %in% names(data)) {
+      result$inclineLying <- data$inclineLying
+    }
+  }
+
+  return(result)
+}
+
+
+#' Check if AGD Data Has Inclinometer Information
+#'
+#' Checks whether an AGD file contains inclinometer data, which can be used
+#' to enhance sleep detection algorithms.
+#'
+#' @param agd_data List returned from read.agd()
+#' @return Logical. TRUE if inclinometer data is available
+#' @export
+has.inclinometer <- function(agd_data) {
+  data <- agd_data$data
+  inclinometer_cols <- c("inclineOff", "inclineStanding", "inclineSitting", "inclineLying")
+  any(inclinometer_cols %in% names(data))
 }
 
 #' Extract Subject Information from AGD Settings

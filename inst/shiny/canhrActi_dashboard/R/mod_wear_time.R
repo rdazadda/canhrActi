@@ -1,33 +1,166 @@
-# Module
+# Module: Wear Time Validation
+# Consistent with Activity/Sleep tabs: chart-first layout, compact metrics strip
 
 mod_wear_time_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
     # Page Header
-    fluidRow(
-      column(
-        width = 12,
-        div(
-          style = "background: linear-gradient(135deg, #236192 0%, #1a4a6f 100%); color: white; padding: 20px 25px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(35, 97, 146, 0.3);",
-          fluidRow(
-            column(
-              width = 8,
-              h3(style = "margin: 0 0 8px 0; font-weight: 600;",
-                 icon("clock", style = "margin-right: 10px;"),
-                 "Wear Time Validation"),
-              p(style = "margin: 0; opacity: 0.9; font-size: 13px;",
-                "Detect periods when the device was worn vs. non-wear. Essential for accurate activity analysis.")
-            ),
-            column(
-              width = 4,
-              div(
-                style = "text-align: right;",
-                tags$span(
-                  style = "display: inline-block; background: rgba(255,205,0,0.2); padding: 8px 15px; border-radius: 20px; font-size: 11px; border: 1px solid rgba(255,205,0,0.4);",
-                  icon("lightbulb", style = "color: #FFCD00; margin-right: 6px;"),
-                  "Run this before Physical Activity analysis"
+    page_header(
+      icon_name = "clock",
+      title = "Wear Time Validation",
+      subtitle = "Detect device wear and non-wear periods",
+      status_output_id = ns("validation_status_badge")
+    ),
+
+    # Compact Metrics Strip (matching Activity/Sleep tab style)
+    div(class = "metrics-strip metrics-strip--transparent",
+      # File count badge
+      div(class = "file-info-badge metrics-strip-fixed",
+        textOutput(ns("sum_files"), inline = TRUE), "/",
+        textOutput(ns("total_files"), inline = TRUE), " validated"
+      ),
+
+      # Valid Days metric
+      div(class = "metric-card metric-card--inline",
+        div(class = "metric-value", textOutput(ns("sum_valid_days"), inline = TRUE)),
+        div(class = "metric-label", "Valid Days")
+      ),
+
+      # Avg Wear Time metric
+      div(class = "metric-card metric-card--inline",
+        div(class = "metric-value", textOutput(ns("sum_avg_wear"), inline = TRUE)),
+        div(class = "metric-label", "Avg Wear Time")
+      ),
+
+      # Wear % metric
+      div(class = "metric-card metric-card--inline",
+        div(class = "metric-value", textOutput(ns("sum_wear_pct"), inline = TRUE)),
+        div(class = "metric-label", "Wear %")
+      ),
+
+      # Algorithm selector (inline)
+      div(class = "metric-card metric-card--inline",
+        selectInput(ns("algorithm"), NULL,
+                    choices = c("Choi (2011)" = "choi",
+                                "Troiano (2008)" = "troiano",
+                                "CANHR (2025)" = "canhr"),
+                    selected = "choi", width = "145px")
+      ),
+
+      # Quick actions (matching Activity/Sleep tab)
+      div(class = "cluster cluster--gap-2 ml-auto metrics-strip-fixed",
+        actionButton(ns("run_btn"), span(icon("play"), "Run Validation"),
+                     class = "btn-primary"),
+        actionButton(ns("clear_results"), span(icon("redo"), "Reset"),
+                     class = "btn-default")
+      )
+    ),
+
+    # Advanced Settings Panel (collapsible)
+    shinyjs::hidden(
+      div(id = ns("advanced_panel"),
+        div(class = "advanced-settings-box",
+          # CSS Grid layout - 3 columns
+          div(class = "advanced-settings-grid",
+
+            # Column 1: Non-Wear Definition
+            div(class = "settings-column",
+              div(class = "settings-column-header",
+                icon("sliders-h"), "Non-Wear Definition"
+              ),
+              div(class = "form-input-row",
+                tags$label("Minimum Length", class = "form-input-label"),
+                div(class = "form-input-wrapper",
+                  numericInput(ns("min_length"), NULL, value = 90, min = 30, max = 180, width = "100%"),
+                  span(class = "form-input-unit", "min")
                 )
+              ),
+              div(class = "form-input-row",
+                tags$label("Small Window", class = "form-input-label"),
+                div(class = "form-input-wrapper",
+                  numericInput(ns("small_window"), NULL, value = 30, min = 10, max = 60, width = "100%"),
+                  span(class = "form-input-unit", "min")
+                )
+              ),
+              div(class = "form-input-row",
+                tags$label("Spike Tolerance", class = "form-input-label"),
+                div(class = "form-input-wrapper",
+                  numericInput(ns("spike_tolerance"), NULL, value = 2, min = 0, max = 10, width = "100%"),
+                  span(class = "form-input-unit", "min")
+                )
+              ),
+              div(class = "form-input-row",
+                tags$label("Spike Stop Level", class = "form-input-label"),
+                div(class = "form-input-wrapper",
+                  numericInput(ns("spike_stoplevel"), NULL, value = 100, min = 0, max = 500, width = "100%"),
+                  span(class = "form-input-unit", "CPM")
+                )
+              ),
+              div(class = "form-checkbox-row",
+                checkboxInput(ns("use_vm"), "Use Vector Magnitude", value = FALSE)
+              )
+            ),
+
+            # Column 2: Validity Criteria
+            div(class = "settings-column",
+              div(class = "settings-column-header",
+                icon("check-circle"), "Validity Criteria"
+              ),
+              div(class = "form-input-row",
+                tags$label("Min Wear per Day", class = "form-input-label"),
+                div(class = "form-input-wrapper",
+                  numericInput(ns("min_wear_day"), NULL, value = 600, min = 0, max = 1440, width = "100%"),
+                  span(class = "form-input-unit", "min")
+                )
+              ),
+              div(class = "form-input-row",
+                tags$label("Min Valid Days", class = "form-input-label"),
+                numericInput(ns("min_valid_days"), NULL, value = 3, min = 0, max = 14, width = "100%")
+              ),
+              div(class = "form-input-row",
+                tags$label("Min Weekdays", class = "form-input-label"),
+                numericInput(ns("min_weekdays"), NULL, value = 0, min = 0, max = 5, width = "100%")
+              ),
+              div(class = "form-input-row",
+                tags$label("Min Weekend Days", class = "form-input-label"),
+                numericInput(ns("min_weekend"), NULL, value = 0, min = 0, max = 2, width = "100%")
+              ),
+              div(class = "form-help-text",
+                icon("info-circle"),
+                span("A valid day has >= 10 hours of wear time by default")
+              )
+            ),
+
+            # Column 3: Additional Options
+            div(class = "settings-column",
+              div(class = "settings-column-header",
+                icon("cog"), "Additional Options"
+              ),
+              div(class = "form-input-row",
+                tags$label("Sleep Period Handling", class = "form-input-label"),
+                selectInput(ns("sleep_option"), NULL,
+                            choices = c("Ignore" = "ignore",
+                                        "Mark As Wear" = "wear",
+                                        "Mark As Non-Wear" = "nonwear"),
+                            selected = "nonwear", width = "100%")
+              ),
+              div(class = "form-checkbox-row",
+                checkboxInput(ns("use_ignore_short"), "Ignore short wear periods", value = FALSE)
+              ),
+              conditionalPanel(
+                condition = sprintf("input['%s'] == true", ns("use_ignore_short")),
+                div(class = "form-input-row",
+                  tags$label("Ignore periods shorter than", class = "form-input-label"),
+                  div(class = "form-input-wrapper",
+                    numericInput(ns("ignore_short_min"), NULL, value = 30, min = 0, max = 60, width = "100%"),
+                    span(class = "form-input-unit", "min")
+                  )
+                )
+              ),
+              div(class = "form-divider",
+                actionButton(ns("load_defaults"), span(icon("undo"), " Reset to Defaults"),
+                             class = "btn-default btn-full")
               )
             )
           )
@@ -35,198 +168,115 @@ mod_wear_time_ui <- function(id) {
       )
     ),
 
-    # Summary Statistics at top
-    fluidRow(
-      valueBoxOutput(ns("vb_files_validated"), width = 3),
-      valueBoxOutput(ns("vb_total_valid_days"), width = 3),
-      valueBoxOutput(ns("vb_avg_wear_time"), width = 3),
-      valueBoxOutput(ns("vb_avg_wear_pct"), width = 3)
+    # Processing Indicator
+    shinyjs::hidden(
+      div(id = ns("processing_indicator"), class = "processing-indicator",
+        icon("spinner", class = "fa-spin fa-2x"),
+        p(class = "processing-text", "Processing files..."),
+        p(id = ns("processing_status"), class = "processing-detail", "Please wait")
+      )
     ),
 
+    # Hero Chart - Daily Wear Time (Full Width)
     fluidRow(
-      # Left column - Parameters
-      column(
-        width = 4,
-
-        # Algorithm Selection
-        box(
-          title = span(icon("cogs", style = "margin-right: 8px;"), "Algorithm Selection"),
-          status = "primary", solidHeader = TRUE, width = NULL,
-          div(
-            style = "background: rgba(35,97,146,0.05); border-radius: 8px; padding: 12px; margin-bottom: 10px;",
-            selectInput(ns("algorithm"), "Detection Algorithm:",
-                        choices = c("Choi (2011)" = "choi",
-                                    "Troiano (2008)" = "troiano",
-                                    "CANHR (2025)" = "canhr"),
-                        selected = "choi")
-          ),
-          radioButtons(ns("param_mode"), "Parameters:",
-                       choices = c("Default", "Custom"),
-                       selected = "Default", inline = TRUE)
-        ),
-
-        # Define Non-Wear Period
-        box(
-          title = span(icon("ban", style = "margin-right: 8px;"), "Non-Wear Definition"),
-          status = "info", width = NULL,
-
-          div(
-            style = "font-size: 12px;",
-            fluidRow(
-              column(6, tags$label("Minimum Length:", style = "line-height: 34px;")),
-              column(4, numericInput(ns("min_length"), NULL, value = 90, min = 30, max = 180, width = "100%")),
-              column(2, tags$span("min", style = "line-height: 34px; color: #666;"))
+      column(12,
+        div(class = "hero-chart-container",
+          div(class = "hero-chart-header",
+            div(class = "hero-chart-title",
+              icon("chart-bar"), "Daily Wear Time Summary"
             ),
-
-            fluidRow(
-              column(6, tags$label("Small Window:", style = "line-height: 34px;")),
-              column(4, numericInput(ns("small_window"), NULL, value = 30, min = 10, max = 60, width = "100%")),
-              column(2, tags$span("min", style = "line-height: 34px; color: #666;"))
-            ),
-
-            fluidRow(
-              column(6, tags$label("Spike Tolerance:", style = "line-height: 34px;")),
-              column(4, numericInput(ns("spike_tolerance"), NULL, value = 2, min = 0, max = 10, width = "100%")),
-              column(2, tags$span("min", style = "line-height: 34px; color: #666;"))
-            ),
-
-            fluidRow(
-              column(6, tags$label("Spike Stop Level:", style = "line-height: 34px;")),
-              column(4, numericInput(ns("spike_stoplevel"), NULL, value = 100, min = 0, max = 500, width = "100%")),
-              column(2, tags$span("CPM", style = "line-height: 34px; color: #666;"))
-            ),
-
-            hr(style = "margin: 10px 0; border-color: #e8f4fc;"),
-            checkboxInput(ns("use_vm"), span(icon("cube"), " Use Vector Magnitude"), value = FALSE)
-          )
-        ),
-
-        # Optional Screen Parameters
-        box(
-          title = span(icon("filter", style = "margin-right: 8px;"), "Validity Criteria"),
-          status = "warning", width = NULL, collapsible = TRUE,
-
-          div(
-            style = "font-size: 11px;",
-            fluidRow(
-              column(1, checkboxInput(ns("use_ignore_short"), NULL, value = FALSE)),
-              column(5, tags$label("Ignore wear < :", style = "line-height: 34px;")),
-              column(4, numericInput(ns("ignore_short_min"), NULL, value = 0, min = 0, max = 60, width = "100%")),
-              column(2, tags$span("min", style = "line-height: 34px; color: #666;"))
-            ),
-
-            fluidRow(
-              column(1, checkboxInput(ns("use_min_wear"), NULL, value = TRUE)),
-              column(5, tags$label("Min wear/day:", style = "line-height: 34px;")),
-              column(4, numericInput(ns("min_wear_day"), NULL, value = 600, min = 0, max = 1440, width = "100%")),
-              column(2, tags$span("min", style = "line-height: 34px; color: #666;"))
-            ),
-
-            conditionalPanel(
-              condition = sprintf("input['%s'] == true", ns("use_min_wear")),
-              div(
-                style = "background: rgba(255,205,0,0.1); border-radius: 6px; padding: 10px; margin-top: 10px;",
-                fluidRow(
-                  column(6, tags$label("Min valid days:", style = "padding-left: 10px; line-height: 34px;")),
-                  column(6, numericInput(ns("min_valid_days"), NULL, value = 3, min = 0, max = 14, width = "100%"))
-                ),
-                fluidRow(
-                  column(6, tags$label("Min weekdays:", style = "padding-left: 10px; line-height: 34px;")),
-                  column(6, numericInput(ns("min_weekdays"), NULL, value = 0, min = 0, max = 5, width = "100%"))
-                ),
-                fluidRow(
-                  column(6, tags$label("Min weekend:", style = "padding-left: 10px; line-height: 34px;")),
-                  column(6, numericInput(ns("min_weekend"), NULL, value = 0, min = 0, max = 2, width = "100%"))
-                )
-              )
-            ),
-
-            hr(style = "margin: 10px 0; border-color: #e8f4fc;"),
-
-            fluidRow(
-              column(5, tags$label("Sleep Period Options", style = "line-height: 34px;")),
-              column(7, selectInput(ns("sleep_option"), NULL,
-                                    choices = c("Ignore" = "ignore",
-                                                "Mark As Wear Time" = "wear",
-                                                "Mark As Non Wear Time" = "nonwear"),
-                                    selected = "nonwear", width = "100%"))
+            div(style = "min-width: 180px;",
+              selectInput(ns("chart_file"), NULL,
+                          choices = c("All Files" = "all"), width = "100%")
             )
+          ),
+          div(class = "chart-summary-bar",
+            uiOutput(ns("chart_summary"))
+          ),
+          conditionalPanel(
+            condition = "output.has_wear_results == false", ns = ns,
+            chart_empty_state(
+              title = "No Wear Time Data",
+              message = "Select an algorithm and click 'Run Validation' to analyze wear patterns",
+              show_icon = FALSE
+            )
+          ),
+          conditionalPanel(
+            condition = "output.has_wear_results == true", ns = ns,
+            plotOutput(ns("daily_chart"), height = "380px")
           )
-        ),
+        )
+      )
+    ),
 
-        # Run Analysis button
+    # File Status Table and Hourly Pattern
+    fluidRow(
+      # Files Table (Left)
+      column(7,
         box(
-          width = NULL,
-          style = "background: linear-gradient(135deg, #f8fafc 0%, #e8f4fc 100%);",
-          actionButton(ns("run_btn"), span(icon("check-circle"), " Validate Wear Time"),
-                       class = "btn-success btn-block btn-lg",
-                       style = "font-size: 16px; padding: 15px; background: linear-gradient(135deg, #236192 0%, #1a4a6f 100%); border: none;"),
-          hr(style = "border-color: #b8d4e8; margin: 12px 0;"),
-          actionButton(ns("load_defaults"), span(icon("undo"), " Reset Defaults"),
-                       class = "btn-default btn-block", style = "font-size: 12px;")
+          title = span(icon("file-alt"), "File Validation Status"),
+          status = "primary", solidHeader = TRUE, width = NULL,
+          collapsible = TRUE,
+          div(class = "table-info",
+            span(class = "status-text", textOutput(ns("files_loaded_text"), inline = TRUE)),
+            span(class = "table-tip", icon("info-circle"), " Click row to view details")
+          ),
+          DT::dataTableOutput(ns("files_table"))
         )
       ),
 
-      # Right column - Results
-      column(
-        width = 8,
-
-        # Files table with validation status
+      # Hourly Pattern (Right)
+      column(5,
         box(
-          title = span(icon("list-alt", style = "margin-right: 8px;"), "Files & Validation Status"),
-          status = "primary", solidHeader = TRUE, width = NULL,
-          fluidRow(
-            column(9, tags$span(textOutput(ns("files_loaded_text")),
-                               style = "font-weight: 500; padding-top: 5px; color: #236192;")),
-            column(3, actionButton(ns("validate_selected"), span(icon("check"), " Validate Selected"),
-                                  class = "btn-info btn-sm pull-right",
-                                  style = "background: linear-gradient(135deg, #FFCD00 0%, #e6b800 100%); border: none; color: #0d2137;"))
-          ),
-          hr(style = "margin: 10px 0; border-color: #e8f4fc;"),
-          DT::dataTableOutput(ns("files_table"))
-        ),
-
-        # File selector for all charts
-        box(
-          title = NULL, width = 12,
-          style = "background: linear-gradient(90deg, rgba(35,97,146,0.05) 0%, transparent 100%);",
-          fluidRow(
-            column(4, selectInput(ns("chart_file"), span(icon("eye"), " View File:"),
-                                 choices = c("All Files (Combined)" = "all"))),
-            column(8, tags$div(style = "padding-top: 25px;", uiOutput(ns("chart_summary"))))
-          )
-        ),
-
-        # Main visualization tabs
-        tabBox(
-          title = NULL, width = 12, id = ns("viz_tabs"),
-
-          # Tab 1: Daily Summary
-          tabPanel(
-            title = tagList(icon("chart-bar"), " Daily Summary"),
-            value = "daily",
-            div(style = "background: white; border-radius: 8px; padding: 10px;",
-              plotOutput(ns("daily_chart"), height = "350px")
-            )
-          ),
-
-          # Tab 2: Hourly Pattern
-          tabPanel(
-            title = tagList(icon("chart-line"), " Hourly Pattern"),
-            value = "hourly",
-            div(style = "background: white; border-radius: 8px; padding: 10px;",
-              plotOutput(ns("hourly_pattern"), height = "300px")
+          title = span(icon("clock"), "Hourly Wear Pattern"),
+          status = "info", solidHeader = TRUE, width = NULL,
+          collapsible = TRUE,
+          div(class = "chart-container",
+            conditionalPanel(
+              condition = "output.has_wear_results == false", ns = ns,
+              chart_empty_state(
+                title = "Hourly Wear Pattern",
+                message = "Run validation to see hourly patterns",
+                show_icon = FALSE
+              )
+            ),
+            conditionalPanel(
+              condition = "output.has_wear_results == true", ns = ns,
+              plotOutput(ns("hourly_pattern"), height = "280px")
             )
           )
-        ),
+        )
+      )
+    ),
 
-        # Detailed Results Tables
-        tabBox(
-          title = NULL, width = 12,
-          tabPanel(tagList(icon("clock"), " Wear Periods"),
-                   DT::dataTableOutput(ns("wear_periods_table"))),
-          tabPanel(tagList(icon("calendar"), " Daily Summary"),
-                   DT::dataTableOutput(ns("daily_summary_table")))
+    # Detailed Results Tabs
+    fluidRow(
+      column(12,
+        div(class = "hero-chart-container results-tabs",
+          tabsetPanel(
+            id = ns("detail_tabs"),
+            type = "tabs",
+            tabPanel(
+              title = "Daily Summary",
+              value = "daily_tab",
+              DT::dataTableOutput(ns("daily_summary_table"))
+            ),
+            tabPanel(
+              title = "Wear Periods",
+              value = "periods_tab",
+              fluidRow(
+                column(8,
+                  DT::dataTableOutput(ns("wear_periods_table"))
+                ),
+                column(4,
+                  div(class = "periods-summary",
+                    h5("Wear Period Statistics"),
+                    uiOutput(ns("periods_stats"))
+                  )
+                )
+              )
+            )
+          )
         )
       )
     )
@@ -239,16 +289,24 @@ mod_wear_time_server <- function(id, shared) {
 
     results <- reactiveVal(list())
 
+    # Output for conditional panel
+    output$has_wear_results <- reactive({
+      length(results()) > 0
+    })
+    outputOptions(output, "has_wear_results", suspendWhenHidden = FALSE)
+
+    # Toggle advanced settings panel
+    observeEvent(input$toggle_advanced, {
+      shinyjs::toggle("advanced_panel")
+    })
+
     # Load default parameters based on algorithm
     observeEvent(input$algorithm, {
-      if (input$param_mode == "Default") {
-        load_algorithm_defaults()
-      }
+      load_algorithm_defaults()
     })
 
     observeEvent(input$load_defaults, {
       load_algorithm_defaults()
-      updateRadioButtons(session, "param_mode", selected = "Default")
     })
 
     load_algorithm_defaults <- function() {
@@ -287,146 +345,219 @@ mod_wear_time_server <- function(id, shared) {
 
     # Files loaded text
     output$files_loaded_text <- renderText({
-      paste("Files loaded:", shared$file_count)
+      paste(shared$file_count, "file(s) loaded")
     })
 
-    # Helper function to format duration as "D H M S" like ActiLife
-    format_duration <- function(total_seconds) {
-      if (is.na(total_seconds) || total_seconds == 0) return("0 0 0 0")
-      days <- floor(total_seconds / 86400)
-      hours <- floor((total_seconds %% 86400) / 3600)
-      mins <- floor((total_seconds %% 3600) / 60)
-      secs <- floor(total_seconds %% 60)
-      paste(days, hours, mins, secs)
-    }
+    # Summary strip outputs (matching Activity/Sleep tab pattern)
+    output$sum_files <- renderText({
+      res <- results()
+      as.character(length(res))
+    })
 
-    # Files table - ActiLife style with all columns
+    output$total_files <- renderText({
+      as.character(shared$file_count)
+    })
+
+    # Clear results handler
+    observeEvent(input$clear_results, {
+      results(list())
+      showNotification("Wear time results cleared", type = "message", duration = 2)
+    })
+
+    output$sum_valid_days <- renderText({
+      res <- results()
+      if (length(res) == 0) return("--")
+      total <- sum(sapply(res, function(r) r$valid_days))
+      paste0(total)
+    })
+
+    output$sum_avg_wear <- renderText({
+      res <- results()
+      if (length(res) == 0) return("--")
+      avg <- mean(sapply(res, function(r) r$avg_wear), na.rm = TRUE)
+      if (is.na(avg)) return("--")
+      paste0(round(avg, 1), "h")
+    })
+
+    output$sum_wear_pct <- renderText({
+      res <- results()
+      if (length(res) == 0) return("--")
+      avg <- mean(sapply(res, function(r) r$wear_pct), na.rm = TRUE)
+      paste0(round(avg, 1), "%")
+    })
+
+    # Validation status badge for header
+    output$validation_status_badge <- renderUI({
+      res <- results()
+      n <- length(res)
+      if (n > 0) {
+        valid_total <- sum(sapply(res, function(r) r$valid_days))
+        status_badge(paste(n, "files |", valid_total, "valid days"), "success")
+      } else {
+        status_badge("Not validated", "pending")
+      }
+    })
+
+    # Chart summary
+    output$chart_summary <- renderUI({
+      res <- results()
+      sel <- input$chart_file
+      if (length(res) == 0 || sel == "none") {
+        return(tags$span(class = "chart-summary-text",
+                         icon("info-circle"), " Select algorithm and click 'Run Validation' to begin"))
+      }
+
+      min_wear_hours <- input$min_wear_day / 60
+
+      if (sel == "all") {
+        total_valid <- sum(sapply(res, function(r) r$valid_days))
+        total_days <- sum(sapply(res, function(r) r$total_days))
+        meets_count <- sum(sapply(res, function(r) r$meets_criteria))
+
+        tagList(
+          tags$span(class = "chart-summary-stat",
+            tags$strong(total_valid), " / ", total_days, " valid days"
+          ),
+          tags$span(class = "chart-summary-divider", "|"),
+          tags$span(class = "chart-summary-stat",
+            icon("check-circle"), meets_count, " subjects meet criteria"
+          ),
+          tags$span(class = "chart-summary-divider", "|"),
+          tags$span(class = "chart-summary-stat",
+            "Min: ", min_wear_hours, "h/day"
+          )
+        )
+      } else if (sel %in% names(res)) {
+        r <- res[[sel]]
+        criteria_icon <- if (r$meets_criteria) icon("check-circle", class = "text-success")
+                         else icon("times-circle", class = "text-warning")
+        tagList(
+          tags$span(class = "chart-summary-stat",
+            tags$strong(r$valid_days), " / ", r$total_days, " valid days"
+          ),
+          tags$span(class = "chart-summary-divider", "|"),
+          tags$span(class = "chart-summary-stat",
+            r$valid_weekdays, " weekdays | ", r$valid_weekend, " weekend"
+          ),
+          tags$span(class = "chart-summary-divider", "|"),
+          tags$span(class = "chart-summary-stat",
+            criteria_icon, if (r$meets_criteria) " Meets criteria" else " Does not meet criteria"
+          )
+        )
+      }
+    })
+
+    # Files table - Clean, essential columns with badges
     output$files_table <- DT::renderDataTable({
       if (shared$file_count == 0) {
-        return(DT::datatable(data.frame(Message = "No files loaded. Go to Data Upload tab."), rownames = FALSE))
+        return(DT::datatable(
+          data.frame(Message = "No files loaded. Go to Data Upload tab."),
+          rownames = FALSE,
+          options = list(dom = 't')
+        ))
       }
 
       res <- results()
 
       df <- data.frame(
         file_id = names(shared$files),
-        subject_name = sapply(shared$files, function(f) f$subject_info$id %||% "N/A"),
-        serial_number = sapply(shared$files, function(f) f$device_info$serial_number %||% "N/A"),
-        validated = sapply(names(shared$files), function(fid) {
+        Subject = sapply(shared$files, function(f) f$subject_info$id %||% "N/A"),
+        Status = sapply(names(shared$files), function(fid) {
           if (fid %in% names(res)) {
-            paste0("Yes (", format(res[[fid]]$validated_at, "%m/%d/%Y"), ")")
-          } else "No"
+            if (res[[fid]]$meets_criteria) "Valid" else "Incomplete"
+          } else "Pending"
         }),
-        has_wear_sensor = sapply(shared$files, function(f) {
-          if (!is.null(f$device_info$has_wear_sensor) && f$device_info$has_wear_sensor) "Yes" else "No"
-        }),
-        wear_periods = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res) && !is.null(res[[fid]]$wear_periods)) nrow(res[[fid]]$wear_periods) else NA
-        }),
-        nonwear_periods = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res)) res[[fid]]$n_nonwear_periods else NA
-        }),
-        total_length = sapply(names(shared$files), function(fid) {
-          f <- shared$files[[fid]]
-          total_sec <- f$n_epochs * f$epoch_length
-          format_duration(total_sec)
-        }),
-        wear_length = sapply(names(shared$files), function(fid) {
+        Valid_Days = sapply(names(shared$files), function(fid) {
           if (fid %in% names(res)) {
-            f <- shared$files[[fid]]
-            wear_sec <- res[[fid]]$wear_epochs * f$epoch_length
-            format_duration(wear_sec)
-          } else "N/A"
+            paste0(res[[fid]]$valid_days, "/", res[[fid]]$total_days)
+          } else "--"
         }),
-        nonwear_length = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res)) {
-            f <- shared$files[[fid]]
-            nonwear_sec <- res[[fid]]$nonwear_epochs * f$epoch_length
-            format_duration(nonwear_sec)
-          } else "N/A"
+        Wear_Pct = sapply(names(shared$files), function(fid) {
+          if (fid %in% names(res)) paste0(round(res[[fid]]$wear_pct, 1), "%") else "--"
         }),
-        avg_wear_period = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res)) {
-            format_duration(res[[fid]]$avg_wear_period_sec)
-          } else "N/A"
+        Avg_Wear = sapply(names(shared$files), function(fid) {
+          if (fid %in% names(res) && !is.na(res[[fid]]$avg_wear)) {
+            paste0(round(res[[fid]]$avg_wear, 1), "h")
+          } else "--"
         }),
-        avg_nonwear_period = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res)) {
-            format_duration(res[[fid]]$avg_nonwear_period_sec)
-          } else "N/A"
-        }),
-        wear_pct = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res)) round(res[[fid]]$wear_pct, 1) else NA
-        }),
-        nonwear_pct = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res)) round(100 - res[[fid]]$wear_pct, 1) else NA
-        }),
-        avg_wear_per_total = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res) && res[[fid]]$total_days > 0) {
-            avg_sec <- (res[[fid]]$total_wear * 3600) / res[[fid]]$total_days
-            format_duration(avg_sec)
-          } else "N/A"
-        }),
-        avg_wear_per_wear_days = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res) && res[[fid]]$days_with_wear > 0) {
-            avg_sec <- (res[[fid]]$total_wear * 3600) / res[[fid]]$days_with_wear
-            format_duration(avg_sec)
-          } else "N/A"
-        }),
-        avg_nonwear_per_total = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res) && res[[fid]]$total_days > 0) {
-            avg_sec <- (res[[fid]]$total_nonwear * 3600) / res[[fid]]$total_days
-            format_duration(avg_sec)
-          } else "N/A"
-        }),
-        avg_nonwear_per_wear_days = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res) && res[[fid]]$days_with_wear > 0) {
-            avg_sec <- (res[[fid]]$total_nonwear * 3600) / res[[fid]]$days_with_wear
-            format_duration(avg_sec)
-          } else "N/A"
-        }),
-        calendar_days_wear = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res)) res[[fid]]$days_with_wear else NA
-        }),
-        calendar_weekdays_wear = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res)) res[[fid]]$weekdays_with_wear else NA
-        }),
-        calendar_weekend_wear = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res)) res[[fid]]$weekend_with_wear else NA
+        Algorithm = sapply(names(shared$files), function(fid) {
+          if (fid %in% names(res)) toupper(res[[fid]]$algorithm) else "--"
         }),
         stringsAsFactors = FALSE
       )
 
       DT::datatable(
-        df[, -1],  # Hide file_id column
+        df[, -1],  # Remove file_id from display
         selection = "multiple",
-        options = list(pageLength = 10, scrollX = TRUE, autoWidth = FALSE,
-                       columnDefs = list(list(width = '80px', targets = "_all"))),
+        options = list(
+          pageLength = 8,
+          dom = 'tip',
+          scrollX = FALSE,
+          columnDefs = list(
+            list(width = '120px', targets = 0),
+            list(width = '80px', targets = 1),
+            list(width = '90px', targets = 2),
+            list(width = '80px', targets = 3),
+            list(width = '80px', targets = 4),
+            list(width = '80px', targets = 5)
+          )
+        ),
         rownames = FALSE,
-        colnames = c("Subject Name", "Serial Number", "Validated?", "Has Wear Sensor?",
-                     "Wear Periods", "Non-Wear Periods", "Total Length", "Wear Length",
-                     "Non-Wear Length", "Avg Wear Period", "Avg Non-Wear Period",
-                     "Wear %", "Non-Wear %", "Avg Wear/Total Days", "Avg Wear/Wear Days",
-                     "Avg Non-Wear/Total Days", "Avg Non-Wear/Wear Days",
-                     "Days With Wear", "Weekdays With Wear", "Weekend Days With Wear")
+        colnames = c("Subject", "Status", "Valid Days", "Wear %", "Avg Wear", "Algorithm")
       ) %>%
-        DT::formatStyle("validated",
-                        color = DT::styleEqual("No", "#c0392b"),
-                        fontWeight = DT::styleEqual("No", "bold"))
+        DT::formatStyle(
+          "Status",
+          backgroundColor = DT::styleEqual(
+            c("Valid", "Incomplete", "Pending"),
+            c("#d4edda", "#fff3cd", "#f8f9fa")
+          ),
+          color = DT::styleEqual(
+            c("Valid", "Incomplete", "Pending"),
+            c("#155724", "#856404", "#6c757d")
+          ),
+          fontWeight = "bold"
+        )
     })
 
     # Run validation on all files
     observeEvent(input$run_btn, {
       req(shared$data_loaded, shared$file_count > 0)
-      run_validation(names(shared$files))
+
+      shinyjs::disable("run_btn")
+      shinyjs::disable("validate_selected")
+      shinyjs::show("processing_indicator")
+
+      shinyjs::delay(100, {
+        tryCatch({
+          run_validation(names(shared$files))
+        }, finally = {
+          shinyjs::hide("processing_indicator")
+          shinyjs::enable("run_btn")
+          shinyjs::enable("validate_selected")
+        })
+      })
     })
 
     # Validate selected files only
     observeEvent(input$validate_selected, {
       selected <- input$files_table_rows_selected
       req(selected)
+
+      shinyjs::disable("run_btn")
+      shinyjs::disable("validate_selected")
+      shinyjs::show("processing_indicator")
+
       file_ids <- names(shared$files)[selected]
-      run_validation(file_ids)
+
+      shinyjs::delay(100, {
+        tryCatch({
+          run_validation(file_ids)
+        }, finally = {
+          shinyjs::hide("processing_indicator")
+          shinyjs::enable("run_btn")
+          shinyjs::enable("validate_selected")
+        })
+      })
     })
 
     # Helper: Format ETA
@@ -441,13 +572,10 @@ mod_wear_time_server <- function(id, shared) {
       all_results <- results()
       n_files <- length(file_ids)
 
-      # Get counts column to use
       count_col <- if (input$use_vm) "vector_magnitude" else "axis1"
-
-      # Convert min wear per day from minutes to hours
       min_wear_hours <- input$min_wear_day / 60
-
       start_time <- Sys.time()
+      progress_interval <- max(1, min(5, ceiling(n_files / 10)))
 
       withProgress(message = "Validating wear time...", value = 0, {
         for (i in seq_along(file_ids)) {
@@ -455,23 +583,20 @@ mod_wear_time_server <- function(id, shared) {
           f <- shared$files[[fid]]
           data <- f$data
 
-          # Calculate ETA
-          if (i > 1) {
+          if (i == 1 || i == n_files || i %% progress_interval == 0) {
             elapsed <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
-            avg_time <- elapsed / (i - 1)
-            eta <- format_eta(avg_time * (n_files - i + 1))
-            detail_msg <- paste0(f$subject_info$id, " (", i, "/", n_files, " | ETA: ", eta, ")")
-          } else {
-            detail_msg <- paste0(f$subject_info$id, " (", i, "/", n_files, ")")
+            if (i > 1) {
+              avg_time <- elapsed / (i - 1)
+              eta <- format_eta(avg_time * (n_files - i + 1))
+              detail_msg <- paste0("Processing ", i, "/", n_files, " | ETA: ", eta)
+            } else {
+              detail_msg <- paste0("Processing ", i, "/", n_files)
+            }
+            setProgress(value = i / n_files, detail = detail_msg)
           }
-          setProgress(value = i / n_files, detail = detail_msg)
 
-          # Get counts data
           counts <- if (count_col %in% names(data)) data[[count_col]] else data$axis1
-
-          # Convert parameters from minutes to epochs based on epoch length
-          # The wear algorithms assume 1-minute epochs, so we need to convert
-          epoch_minutes <- f$epoch_length / 60  # Convert epoch length to minutes
+          epoch_minutes <- f$epoch_length / 60
           non_wear_epochs <- as.integer(input$min_length / epoch_minutes)
           spike_tol_epochs <- as.integer(input$spike_tolerance / epoch_minutes)
           if (spike_tol_epochs < 1) spike_tol_epochs <- 1
@@ -479,14 +604,22 @@ mod_wear_time_server <- function(id, shared) {
 
           wear <- tryCatch({
             if (input$algorithm == "troiano") {
-              wear.troiano(
+              canhrActi::wear.troiano(
                 counts_per_minute = counts,
                 non_wear_window = non_wear_epochs,
                 spike_tolerance = spike_tol_epochs,
                 spike_stoplevel = input$spike_stoplevel
               )
             } else if (input$algorithm == "choi") {
-              wear.choi(
+              canhrActi::wear.choi(
+                counts_per_minute = counts,
+                non_wear_window = non_wear_epochs,
+                spike_tolerance = spike_tol_epochs,
+                spike_stoplevel = input$spike_stoplevel,
+                min_window_len = small_window_epochs
+              )
+            } else if (input$algorithm == "canhr") {
+              canhrActi::wear.CANHR2025(
                 counts_per_minute = counts,
                 non_wear_window = non_wear_epochs,
                 spike_tolerance = spike_tol_epochs,
@@ -494,7 +627,7 @@ mod_wear_time_server <- function(id, shared) {
                 min_window_len = small_window_epochs
               )
             } else {
-              wear.CANHR2025(
+              canhrActi::wear.CANHR2025(
                 counts_per_minute = counts,
                 non_wear_window = non_wear_epochs,
                 spike_tolerance = spike_tol_epochs,
@@ -503,17 +636,18 @@ mod_wear_time_server <- function(id, shared) {
               )
             }
           }, error = function(e) {
-            showNotification(paste("Error in", f$name, ":", e$message), type = "error")
+            showNotification(paste0("Wear validation skipped for ", f$name), type = "error")
             return(NULL)
           })
 
           if (is.null(wear)) next
 
-          # Daily summary
           daily <- NULL
           hourly <- NULL
           wear_periods <- NULL
           nonwear_periods <- NULL
+          valid_weekdays <- 0
+          valid_weekend <- 0
 
           if ("timestamp" %in% names(data)) {
             temp <- data
@@ -523,7 +657,6 @@ mod_wear_time_server <- function(id, shared) {
             temp$weekday <- weekdays(temp$timestamp)
             temp$is_weekend <- temp$weekday %in% c("Saturday", "Sunday")
 
-            # Daily aggregation
             daily <- aggregate(wear ~ date, temp, sum)
             daily$wear_hours <- daily$wear * f$epoch_length / 3600
             daily$wear_min <- daily$wear_hours * 60
@@ -531,19 +664,14 @@ mod_wear_time_server <- function(id, shared) {
             daily$weekday <- weekdays(as.Date(daily$date))
             daily$is_weekend <- daily$weekday %in% c("Saturday", "Sunday")
 
-            # Count valid weekdays and weekend days
             valid_weekdays <- sum(daily$valid & !daily$is_weekend)
             valid_weekend <- sum(daily$valid & daily$is_weekend)
 
-            # Hourly wear pattern
             hourly <- aggregate(wear ~ hour, temp, mean)
             hourly$wear_pct <- hourly$wear * 100
 
-            # Detect wear periods using the package function for consistency
-            # Use get.wear.periods() which matches command-line results
-            wear_periods <- get.wear.periods(wear, temp$timestamp, epoch_length = f$epoch_length)
+            wear_periods <- canhrActi::get.wear.periods(wear, temp$timestamp, epoch_length = f$epoch_length)
 
-            # Apply optional filtering if user enabled "ignore short periods"
             if (input$use_ignore_short && input$ignore_short_min > 0) {
               wear_periods <- wear_periods[wear_periods$duration_minutes >= input$ignore_short_min, ]
               if (nrow(wear_periods) > 0) {
@@ -551,24 +679,17 @@ mod_wear_time_server <- function(id, shared) {
               }
             }
 
-            # Detect non-wear periods (use the non-wear window as minimum duration)
-            # ActiLife counts non-wear periods that meet the algorithm's non-wear window criteria
             nonwear_periods <- detect_wear_periods(temp$timestamp, !wear, f$epoch_length, input$min_length)
           }
 
-          # Check minimum requirements
           valid_days <- if (!is.null(daily)) sum(daily$valid) else 0
           total_days <- if (!is.null(daily)) nrow(daily) else 0
 
-          # Calculate days with meaningful wear time
-          # Use the user's "Minimum wear time per day" setting to match ActiLife behavior
-          # ActiLife's "Calendar Days With Wear Time" counts days meeting the minimum threshold
-          min_wear_for_day <- input$min_wear_day  # Use user's configured minimum
+          min_wear_for_day <- input$min_wear_day
           days_with_wear <- if (!is.null(daily)) sum(daily$wear_min >= min_wear_for_day) else 0
           weekdays_with_wear <- if (!is.null(daily)) sum(daily$wear_min >= min_wear_for_day & !daily$is_weekend) else 0
           weekend_with_wear <- if (!is.null(daily)) sum(daily$wear_min >= min_wear_for_day & daily$is_weekend) else 0
 
-          # Calculate average wear/non-wear period durations
           n_wear_periods <- if (!is.null(wear_periods) && nrow(wear_periods) > 0) nrow(wear_periods) else 0
           n_nonwear_periods <- if (!is.null(nonwear_periods) && nrow(nonwear_periods) > 0) nrow(nonwear_periods) else 0
 
@@ -581,11 +702,9 @@ mod_wear_time_server <- function(id, shared) {
           } else 0
 
           meets_criteria <- TRUE
-          if (input$use_min_wear) {
-            if (valid_days < input$min_valid_days) meets_criteria <- FALSE
-            if (valid_weekdays < input$min_weekdays) meets_criteria <- FALSE
-            if (valid_weekend < input$min_weekend) meets_criteria <- FALSE
-          }
+          if (valid_days < input$min_valid_days) meets_criteria <- FALSE
+          if (valid_weekdays < input$min_weekdays) meets_criteria <- FALSE
+          if (valid_weekend < input$min_weekend) meets_criteria <- FALSE
 
           all_results[[fid]] <- list(
             file_id = fid,
@@ -612,8 +731,8 @@ mod_wear_time_server <- function(id, shared) {
             nonwear_epochs = sum(!wear),
             total_days = total_days,
             valid_days = valid_days,
-            valid_weekdays = if (exists("valid_weekdays")) valid_weekdays else 0,
-            valid_weekend = if (exists("valid_weekend")) valid_weekend else 0,
+            valid_weekdays = valid_weekdays,
+            valid_weekend = valid_weekend,
             days_with_wear = days_with_wear,
             weekdays_with_wear = weekdays_with_wear,
             weekend_with_wear = weekend_with_wear,
@@ -628,18 +747,16 @@ mod_wear_time_server <- function(id, shared) {
           )
         }
 
-        # Memory cleanup
         gc(verbose = FALSE)
       })
 
       results(all_results)
       shared$results$wear_time <- all_results
 
-      showNotification(paste("Wear time validation complete for", length(file_ids), "files!"), type = "message")
+      showNotification(paste("Wear time validation complete for", length(file_ids), "files"), type = "message")
     }
 
     # Helper function to detect continuous wear periods
-    # min_duration_min: minimum duration in minutes for a period to be counted
     detect_wear_periods <- function(timestamps, wear, epoch_length, min_duration_min = 0) {
       if (length(wear) == 0) return(data.frame())
 
@@ -654,7 +771,6 @@ mod_wear_time_server <- function(id, shared) {
         } else if (!wear[i] && in_wear) {
           in_wear <- FALSE
           duration <- (i - start_idx) * epoch_length / 60
-          # Only add periods that meet minimum duration
           if (duration >= min_duration_min) {
             periods <- rbind(periods, data.frame(
               start = timestamps[start_idx],
@@ -665,7 +781,6 @@ mod_wear_time_server <- function(id, shared) {
         }
       }
 
-      # Handle case where wear continues to end
       if (in_wear) {
         duration <- (length(timestamps) - start_idx + 1) * epoch_length / 60
         if (duration >= min_duration_min) {
@@ -680,61 +795,7 @@ mod_wear_time_server <- function(id, shared) {
       return(periods)
     }
 
-    # Value boxes
-    output$vb_files_validated <- renderValueBox({
-      res <- results()
-      n <- length(res)
-      valueBox(n, "Files Validated", icon = icon("check-circle"), color = if (n > 0) "green" else "red")
-    })
-
-    output$vb_total_valid_days <- renderValueBox({
-      res <- results()
-      if (length(res) == 0) {
-        valueBox("--", "Total Valid Days", icon = icon("calendar-check"), color = "blue")
-      } else {
-        total <- sum(sapply(res, function(r) r$valid_days))
-        valueBox(total, "Total Valid Days", icon = icon("calendar-check"), color = "blue")
-      }
-    })
-
-    output$vb_avg_wear_time <- renderValueBox({
-      res <- results()
-      if (length(res) == 0) {
-        valueBox("--", "Avg Wear Time", icon = icon("clock"), color = "yellow")
-      } else {
-        avg <- mean(sapply(res, function(r) r$avg_wear), na.rm = TRUE)
-        valueBox(paste0(round(avg, 1), "h"), "Avg Wear Time", icon = icon("clock"), color = "yellow")
-      }
-    })
-
-    output$vb_avg_wear_pct <- renderValueBox({
-      res <- results()
-      if (length(res) == 0) {
-        valueBox("--", "Avg Wear %", icon = icon("percent"), color = "purple")
-      } else {
-        avg <- mean(sapply(res, function(r) r$wear_pct), na.rm = TRUE)
-        valueBox(paste0(round(avg, 1), "%"), "Avg Wear %", icon = icon("percent"), color = "purple")
-      }
-    })
-
-    # Chart summary
-    output$chart_summary <- renderUI({
-      res <- results()
-      sel <- input$chart_file
-      if (length(res) == 0 || sel == "none") return(NULL)
-
-      if (sel == "all") {
-        total_valid <- sum(sapply(res, function(r) r$valid_days))
-        total_days <- sum(sapply(res, function(r) r$total_days))
-        tags$span(paste0(total_valid, " / ", total_days, " valid days across all files"))
-      } else if (sel %in% names(res)) {
-        r <- res[[sel]]
-        tags$span(paste0(r$valid_days, " / ", r$total_days, " valid days | ",
-                        r$valid_weekdays, " weekdays | ", r$valid_weekend, " weekend days"))
-      }
-    })
-
-    # Daily chart (Enhanced with weekday/weekend distinction)
+    # Daily chart - Hero visualization
     output$daily_chart <- renderPlot({
       res <- results()
       req(length(res) > 0)
@@ -743,7 +804,6 @@ mod_wear_time_server <- function(id, shared) {
       min_wear_hours <- input$min_wear_day / 60
 
       if (sel == "all" || sel == "none") {
-        # Combine all daily data
         all_daily <- data.frame()
         for (r in res) {
           if (!is.null(r$daily)) {
@@ -754,173 +814,69 @@ mod_wear_time_server <- function(id, shared) {
         }
         req(nrow(all_daily) > 0)
 
-        # Add day labels
         all_daily$day_label <- format(all_daily$date, "%a\n%m/%d")
         all_daily$day_type <- ifelse(all_daily$is_weekend, "Weekend", "Weekday")
+        all_daily$status <- ifelse(all_daily$valid, "Valid", "Invalid")
 
-        ggplot(all_daily, aes(x = date, y = wear_hours, fill = interaction(valid, day_type))) +
+        ggplot(all_daily, aes(x = date, y = wear_hours, fill = interaction(status, day_type))) +
           geom_bar(stat = "identity", color = "white", linewidth = 0.3) +
-          geom_hline(yintercept = min_wear_hours, linetype = "dashed", color = "#c0392b", linewidth = 1.2) +
+          geom_hline(yintercept = min_wear_hours, linetype = "dashed", color = "#236192", linewidth = 1) +
           annotate("text", x = min(all_daily$date), y = min_wear_hours + 0.5,
-                   label = paste0(min_wear_hours, "h minimum"), hjust = 0, size = 3, color = "#c0392b") +
+                   label = paste0(min_wear_hours, "h threshold"), hjust = 0, size = 3.5, color = "#236192", fontface = "bold") +
           scale_fill_manual(
-            values = c("TRUE.Weekday" = "#27ae60", "FALSE.Weekday" = "#95a5a6",
-                       "TRUE.Weekend" = "#2980b9", "FALSE.Weekend" = "#bdc3c7"),
-            labels = c("TRUE.Weekday" = "Valid Weekday", "FALSE.Weekday" = "Invalid Weekday",
-                       "TRUE.Weekend" = "Valid Weekend", "FALSE.Weekend" = "Invalid Weekend"),
+            values = c("Valid.Weekday" = "#17a589", "Invalid.Weekday" = "#e2e8f0",
+                       "Valid.Weekend" = "#236192", "Invalid.Weekend" = "#f1f5f9"),
+            labels = c("Valid.Weekday" = "Valid Weekday", "Invalid.Weekday" = "Invalid Weekday",
+                       "Valid.Weekend" = "Valid Weekend", "Invalid.Weekend" = "Invalid Weekend"),
             name = "") +
           scale_y_continuous(limits = c(0, 26), breaks = seq(0, 24, 4),
                              sec.axis = sec_axis(~./24*100, name = "% of Day", breaks = seq(0, 100, 25))) +
-          facet_wrap(~subject, scales = "free_x", ncol = 2) +
-          labs(title = "Daily Wear Time Summary",
-               subtitle = paste("Minimum valid day:", min_wear_hours, "hours"),
-               x = "", y = "Wear Time (hours)") +
-          theme_minimal(base_size = 12) +
-          theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
+          facet_wrap(~subject, scales = "free_x", ncol = min(length(unique(all_daily$subject)), 3)) +
+          labs(title = NULL, x = "", y = "Wear Time (hours)") +
+          canhrActi::theme_canhrActi() +
+          theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
                 legend.position = "top",
                 legend.box = "horizontal",
-                strip.background = element_rect(fill = "#34495e", color = NA),
+                legend.text = element_text(size = 10),
+                strip.background = element_rect(fill = "#236192", color = NA),
                 strip.text = element_text(color = "white", face = "bold", size = 11),
                 panel.grid.minor = element_blank(),
-                plot.title = element_text(face = "bold", size = 14),
-                plot.subtitle = element_text(color = "#7f8c8d"))
+                panel.grid.major.x = element_blank())
 
       } else if (sel %in% names(res)) {
         r <- res[[sel]]
         daily <- r$daily
         req(daily)
 
-        # Add day labels
         daily$day_label <- paste0(format(daily$date, "%a"), "\n", format(daily$date, "%m/%d"))
         daily$day_type <- ifelse(daily$is_weekend, "Weekend", "Weekday")
+        daily$status <- ifelse(daily$valid, "Valid", "Invalid")
 
         ggplot(daily, aes(x = factor(day_label, levels = day_label), y = wear_hours,
-                          fill = interaction(valid, day_type))) +
+                          fill = interaction(status, day_type))) +
           geom_bar(stat = "identity", width = 0.75, color = "white", linewidth = 0.5) +
-          geom_hline(yintercept = min_wear_hours, linetype = "dashed", color = "#c0392b", linewidth = 1.2) +
-          geom_text(aes(label = sprintf("%.1fh", wear_hours)), vjust = -0.3, size = 3.5, fontface = "bold") +
+          geom_hline(yintercept = min_wear_hours, linetype = "dashed", color = "#236192", linewidth = 1.2) +
+          geom_text(aes(label = sprintf("%.1fh", wear_hours)), vjust = -0.3, size = 4, fontface = "bold") +
           scale_fill_manual(
-            values = c("TRUE.Weekday" = "#27ae60", "FALSE.Weekday" = "#95a5a6",
-                       "TRUE.Weekend" = "#2980b9", "FALSE.Weekend" = "#bdc3c7"),
-            labels = c("TRUE.Weekday" = "Valid Weekday", "FALSE.Weekday" = "Invalid Weekday",
-                       "TRUE.Weekend" = "Valid Weekend", "FALSE.Weekend" = "Invalid Weekend"),
+            values = c("Valid.Weekday" = "#17a589", "Invalid.Weekday" = "#e2e8f0",
+                       "Valid.Weekend" = "#236192", "Invalid.Weekend" = "#f1f5f9"),
+            labels = c("Valid.Weekday" = "Valid Weekday", "Invalid.Weekday" = "Invalid Weekday",
+                       "Valid.Weekend" = "Valid Weekend", "Invalid.Weekend" = "Invalid Weekend"),
             name = "") +
           scale_y_continuous(limits = c(0, 28), breaks = seq(0, 24, 4),
                              sec.axis = sec_axis(~./24*100, name = "% of Day", breaks = seq(0, 100, 25))) +
-          labs(title = paste("Daily Wear Time -", r$subject_id),
-               subtitle = paste("Algorithm:", toupper(r$algorithm), "| Minimum:", min_wear_hours, "hours |",
-                               sum(daily$valid), "of", nrow(daily), "days valid"),
+          labs(title = paste("Subject:", r$subject_id),
+               subtitle = paste("Algorithm:", toupper(r$algorithm), " | ",
+                                sum(daily$valid), "of", nrow(daily), "days valid"),
                x = "", y = "Wear Time (hours)") +
-          theme_minimal(base_size = 13) +
-          theme(axis.text.x = element_text(size = 10),
+          canhrActi::theme_canhrActi() +
+          theme(axis.text.x = element_text(size = 13),
                 legend.position = "top",
+                legend.text = element_text(size = 10),
                 panel.grid.minor = element_blank(),
                 panel.grid.major.x = element_blank(),
                 plot.title = element_text(face = "bold", size = 15),
-                plot.subtitle = element_text(color = "#7f8c8d"))
-      }
-    })
-
-    # Wear periods table
-    output$wear_periods_table <- DT::renderDataTable({
-      res <- results()
-      sel <- input$chart_file
-
-      if (length(res) == 0) {
-        return(DT::datatable(data.frame(Message = "Run validation first"), rownames = FALSE))
-      }
-
-      if (sel == "all" || sel == "none") {
-        # Combine all wear periods
-        all_periods <- data.frame()
-        for (r in res) {
-          if (!is.null(r$wear_periods) && nrow(r$wear_periods) > 0) {
-            p <- r$wear_periods
-            p$subject <- r$subject_id
-            all_periods <- rbind(all_periods, p)
-          }
-        }
-        if (nrow(all_periods) == 0) {
-          return(DT::datatable(data.frame(Message = "No wear periods detected"), rownames = FALSE))
-        }
-        # Format for display (get.wear.periods returns start_time, end_time, duration_minutes)
-        display_df <- data.frame(
-          subject = all_periods$subject,
-          start = format(all_periods$start_time, "%Y-%m-%d %H:%M"),
-          end = format(all_periods$end_time, "%Y-%m-%d %H:%M"),
-          duration_min = round(all_periods$duration_minutes, 1),
-          stringsAsFactors = FALSE
-        )
-
-        DT::datatable(display_df,
-                      options = list(pageLength = 15, scrollX = TRUE),
-                      rownames = FALSE,
-                      colnames = c("Subject", "Start", "End", "Duration (min)"))
-      } else if (sel %in% names(res)) {
-        periods <- res[[sel]]$wear_periods
-        if (is.null(periods) || nrow(periods) == 0) {
-          return(DT::datatable(data.frame(Message = "No wear periods detected"), rownames = FALSE))
-        }
-        # Format for display (get.wear.periods returns start_time, end_time, duration_minutes)
-        display_df <- data.frame(
-          period = periods$period,
-          start = format(periods$start_time, "%Y-%m-%d %H:%M"),
-          end = format(periods$end_time, "%Y-%m-%d %H:%M"),
-          duration_min = round(periods$duration_minutes, 1),
-          stringsAsFactors = FALSE
-        )
-
-        DT::datatable(display_df,
-                      options = list(pageLength = 15, scrollX = TRUE),
-                      rownames = FALSE,
-                      colnames = c("Period", "Start", "End", "Duration (min)"))
-      }
-    })
-
-    # Daily summary table
-    output$daily_summary_table <- DT::renderDataTable({
-      res <- results()
-      sel <- input$chart_file
-
-      if (length(res) == 0) {
-        return(DT::datatable(data.frame(Message = "Run validation first"), rownames = FALSE))
-      }
-
-      if (sel == "all" || sel == "none") {
-        all_daily <- data.frame()
-        for (r in res) {
-          if (!is.null(r$daily)) {
-            d <- r$daily
-            d$subject <- r$subject_id
-            all_daily <- rbind(all_daily, d)
-          }
-        }
-        if (nrow(all_daily) == 0) {
-          return(DT::datatable(data.frame(Message = "No daily data"), rownames = FALSE))
-        }
-        all_daily$date <- format(all_daily$date, "%Y-%m-%d")
-        all_daily$wear_hours <- round(all_daily$wear_hours, 2)
-        all_daily$wear_min <- round(all_daily$wear_min, 0)
-        all_daily$valid <- ifelse(all_daily$valid, "Yes", "No")
-
-        DT::datatable(all_daily[, c("subject", "date", "weekday", "wear_hours", "wear_min", "valid")],
-                      options = list(pageLength = 15, scrollX = TRUE),
-                      rownames = FALSE,
-                      colnames = c("Subject", "Date", "Day", "Wear (h)", "Wear (min)", "Valid"))
-      } else if (sel %in% names(res)) {
-        daily <- res[[sel]]$daily
-        if (is.null(daily)) {
-          return(DT::datatable(data.frame(Message = "No daily data"), rownames = FALSE))
-        }
-        daily$date <- format(daily$date, "%Y-%m-%d")
-        daily$wear_hours <- round(daily$wear_hours, 2)
-        daily$wear_min <- round(daily$wear_min, 0)
-        daily$valid <- ifelse(daily$valid, "Yes", "No")
-
-        DT::datatable(daily[, c("date", "weekday", "wear_hours", "wear_min", "valid")],
-                      options = list(pageLength = 15, scrollX = TRUE),
-                      rownames = FALSE,
-                      colnames = c("Date", "Day", "Wear (h)", "Wear (min)", "Valid"))
+                plot.subtitle = element_text(color = "#64748b", size = 11))
       }
     })
 
@@ -944,31 +900,206 @@ mod_wear_time_server <- function(id, shared) {
         avg_hourly <- aggregate(wear_pct ~ hour, all_hourly, mean, na.rm = TRUE)
 
         ggplot(avg_hourly, aes(x = hour, y = wear_pct)) +
-          geom_bar(stat = "identity", fill = "#3498db", alpha = 0.8) +
-          geom_line(aes(group = 1), color = "#2c3e50", linewidth = 1) +
-          scale_x_continuous(breaks = seq(0, 23, 2), labels = sprintf("%02d", seq(0, 23, 2))) +
-          scale_y_continuous(limits = c(0, 100)) +
-          labs(title = "Average Hourly Wear Pattern (All Files)",
+          geom_area(fill = "#236192", alpha = 0.2) +
+          geom_line(color = "#236192", linewidth = 1.5) +
+          geom_point(color = "#FFCD00", size = 2.5) +
+          scale_x_continuous(breaks = seq(0, 23, 3), labels = sprintf("%02d", seq(0, 23, 3))) +
+          scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 25)) +
+          labs(title = "Average Hourly Wear Pattern",
+               subtitle = paste(length(res), "files"),
                x = "Hour of Day", y = "Wear (%)") +
-          theme_minimal(base_size = 12)
+          canhrActi::theme_canhrActi() +
+          theme(plot.title = element_text(face = "bold", size = 16),
+                plot.subtitle = element_text(color = "#64748b"),
+                panel.grid.minor = element_blank())
 
       } else if (sel %in% names(res)) {
         hourly <- res[[sel]]$hourly
         req(hourly)
 
         ggplot(hourly, aes(x = hour, y = wear_pct)) +
-          geom_bar(stat = "identity", fill = "#3498db", alpha = 0.8) +
-          geom_line(aes(group = 1), color = "#2c3e50", linewidth = 1) +
-          scale_x_continuous(breaks = seq(0, 23, 2), labels = sprintf("%02d", seq(0, 23, 2))) +
-          scale_y_continuous(limits = c(0, 100)) +
-          labs(title = paste("Hourly Wear Pattern -", res[[sel]]$subject_id),
+          geom_area(fill = "#236192", alpha = 0.2) +
+          geom_line(color = "#236192", linewidth = 1.5) +
+          geom_point(color = "#FFCD00", size = 2.5) +
+          scale_x_continuous(breaks = seq(0, 23, 3), labels = sprintf("%02d", seq(0, 23, 3))) +
+          scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 25)) +
+          labs(title = paste("Hourly Pattern -", res[[sel]]$subject_id),
                x = "Hour of Day", y = "Wear (%)") +
-          theme_minimal(base_size = 12)
+          canhrActi::theme_canhrActi() +
+          theme(plot.title = element_text(face = "bold", size = 16),
+                panel.grid.minor = element_blank())
+      }
+    })
+
+    # Wear periods table
+    output$wear_periods_table <- DT::renderDataTable({
+      res <- results()
+      sel <- input$chart_file
+
+      if (length(res) == 0) {
+        return(DT::datatable(data.frame(Message = "Run validation first"), rownames = FALSE, options = list(dom = 't')))
+      }
+
+      if (sel == "all" || sel == "none") {
+        all_periods <- data.frame()
+        for (r in res) {
+          if (!is.null(r$wear_periods) && nrow(r$wear_periods) > 0) {
+            p <- r$wear_periods
+            p$subject <- r$subject_id
+            all_periods <- rbind(all_periods, p)
+          }
+        }
+        if (nrow(all_periods) == 0) {
+          return(DT::datatable(data.frame(Message = "No wear periods detected"), rownames = FALSE, options = list(dom = 't')))
+        }
+        display_df <- data.frame(
+          Subject = all_periods$subject,
+          Date = format(all_periods$start_time, "%Y-%m-%d"),
+          Start = format(all_periods$start_time, "%H:%M"),
+          End = format(all_periods$end_time, "%H:%M"),
+          Duration = paste0(round(all_periods$duration_minutes / 60, 1), "h"),
+          stringsAsFactors = FALSE
+        )
+
+        DT::datatable(display_df,
+                      options = list(pageLength = 10, dom = 'tip', scrollX = FALSE),
+                      rownames = FALSE)
+      } else if (sel %in% names(res)) {
+        periods <- res[[sel]]$wear_periods
+        if (is.null(periods) || nrow(periods) == 0) {
+          return(DT::datatable(data.frame(Message = "No wear periods detected"), rownames = FALSE, options = list(dom = 't')))
+        }
+        display_df <- data.frame(
+          Period = periods$period,
+          Date = format(periods$start_time, "%Y-%m-%d"),
+          Start = format(periods$start_time, "%H:%M"),
+          End = format(periods$end_time, "%H:%M"),
+          Duration = paste0(round(periods$duration_minutes / 60, 1), "h"),
+          stringsAsFactors = FALSE
+        )
+
+        DT::datatable(display_df,
+                      options = list(pageLength = 10, dom = 'tip', scrollX = FALSE),
+                      rownames = FALSE)
+      }
+    })
+
+    # Periods statistics summary
+    output$periods_stats <- renderUI({
+      res <- results()
+      sel <- input$chart_file
+
+      if (length(res) == 0) {
+        return(empty_state(
+          title = NULL,
+          message = "Run validation first",
+          small = TRUE,
+          show_icon = FALSE,
+          include_base = FALSE
+        ))
+      }
+
+      if (sel == "all" || sel == "none") {
+        total_wear_periods <- sum(sapply(res, function(r) {
+          if (!is.null(r$wear_periods)) nrow(r$wear_periods) else 0
+        }))
+        total_nonwear_periods <- sum(sapply(res, function(r) r$n_nonwear_periods))
+        avg_wear_dur <- mean(sapply(res, function(r) r$avg_wear_period_sec / 60), na.rm = TRUE)
+        avg_nonwear_dur <- mean(sapply(res, function(r) r$avg_nonwear_period_sec / 60), na.rm = TRUE)
+      } else if (sel %in% names(res)) {
+        r <- res[[sel]]
+        total_wear_periods <- if (!is.null(r$wear_periods)) nrow(r$wear_periods) else 0
+        total_nonwear_periods <- r$n_nonwear_periods
+        avg_wear_dur <- r$avg_wear_period_sec / 60
+        avg_nonwear_dur <- r$avg_nonwear_period_sec / 60
+      } else {
+        return(NULL)
+      }
+
+      tagList(
+        div(class = "stat-row",
+          span(class = "stat-label", "Wear Periods:"),
+          span(class = "stat-value", total_wear_periods)
+        ),
+        div(class = "stat-row",
+          span(class = "stat-label", "Non-Wear Periods:"),
+          span(class = "stat-value", total_nonwear_periods)
+        ),
+        div(class = "stat-row",
+          span(class = "stat-label", "Avg Wear Duration:"),
+          span(class = "stat-value", paste0(round(avg_wear_dur, 0), " min"))
+        ),
+        div(class = "stat-row",
+          span(class = "stat-label", "Avg Non-Wear Duration:"),
+          span(class = "stat-value", paste0(round(avg_nonwear_dur, 0), " min"))
+        )
+      )
+    })
+
+    # Daily summary table
+    output$daily_summary_table <- DT::renderDataTable({
+      res <- results()
+      sel <- input$chart_file
+
+      if (length(res) == 0) {
+        return(DT::datatable(data.frame(Message = "Run validation first"), rownames = FALSE, options = list(dom = 't')))
+      }
+
+      if (sel == "all" || sel == "none") {
+        all_daily <- data.frame()
+        for (r in res) {
+          if (!is.null(r$daily)) {
+            d <- r$daily
+            d$subject <- r$subject_id
+            all_daily <- rbind(all_daily, d)
+          }
+        }
+        if (nrow(all_daily) == 0) {
+          return(DT::datatable(data.frame(Message = "No daily data"), rownames = FALSE, options = list(dom = 't')))
+        }
+        display_df <- data.frame(
+          Subject = all_daily$subject,
+          Date = format(all_daily$date, "%Y-%m-%d"),
+          Day = all_daily$weekday,
+          Wear_Hours = round(all_daily$wear_hours, 1),
+          Status = ifelse(all_daily$valid, "Valid", "Invalid"),
+          stringsAsFactors = FALSE
+        )
+
+        DT::datatable(display_df,
+                      options = list(pageLength = 10, dom = 'tip', scrollX = FALSE),
+                      rownames = FALSE,
+                      colnames = c("Subject", "Date", "Day", "Wear (h)", "Status")) %>%
+          DT::formatStyle(
+            "Status",
+            backgroundColor = DT::styleEqual(c("Valid", "Invalid"), c("#d4edda", "#f8f9fa")),
+            color = DT::styleEqual(c("Valid", "Invalid"), c("#155724", "#6c757d"))
+          )
+      } else if (sel %in% names(res)) {
+        daily <- res[[sel]]$daily
+        if (is.null(daily)) {
+          return(DT::datatable(data.frame(Message = "No daily data"), rownames = FALSE, options = list(dom = 't')))
+        }
+        display_df <- data.frame(
+          Date = format(daily$date, "%Y-%m-%d"),
+          Day = daily$weekday,
+          Wear_Hours = round(daily$wear_hours, 1),
+          Wear_Min = round(daily$wear_min, 0),
+          Status = ifelse(daily$valid, "Valid", "Invalid"),
+          stringsAsFactors = FALSE
+        )
+
+        DT::datatable(display_df,
+                      options = list(pageLength = 10, dom = 'tip', scrollX = FALSE),
+                      rownames = FALSE,
+                      colnames = c("Date", "Day", "Wear (h)", "Wear (min)", "Status")) %>%
+          DT::formatStyle(
+            "Status",
+            backgroundColor = DT::styleEqual(c("Valid", "Invalid"), c("#d4edda", "#f8f9fa")),
+            color = DT::styleEqual(c("Valid", "Invalid"), c("#155724", "#6c757d"))
+          )
       }
     })
 
   })
 }
-
-# Null coalesce
-`%||%` <- function(a, b) if (is.null(a) || (length(a) == 1 && is.na(a))) b else a

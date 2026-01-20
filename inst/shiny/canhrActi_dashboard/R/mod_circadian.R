@@ -1,149 +1,160 @@
-# Module
+# Circadian Rhythm Analysis Module
+# Clean, professional design with hero visualization and organized metrics
 
 mod_circadian_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
     # Page Header
-    fluidRow(
-      column(
-        width = 12,
-        div(
-          style = "background: linear-gradient(135deg, #236192 0%, #1a4a6f 100%); color: white; padding: 20px 25px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(35, 97, 146, 0.3);",
-          fluidRow(
-            column(
-              width = 8,
-              h3(style = "margin: 0 0 8px 0; font-weight: 600;",
-                 icon("sun", style = "margin-right: 10px;"),
-                 "Circadian Rhythm Analysis"),
-              p(style = "margin: 0; opacity: 0.9; font-size: 13px;",
-                "Analyze 24-hour activity patterns and circadian rhythm metrics: L5, M10, relative amplitude, and stability.")
-            ),
-            column(
-              width = 4,
-              div(
-                style = "text-align: right;",
-                textOutput(ns("analysis_status"))
-              )
-            )
+    page_header(
+      icon_name = "sun",
+      title = "Circadian Rhythm Analysis",
+      subtitle = "24-hour activity patterns and rhythm metrics",
+      status_output_id = ns("analysis_status_badge")
+    ),
+
+    # Control Bar - File selector and Run button
+    div(class = "circadian-control-bar",
+      div(class = "circadian-controls-left",
+        div(class = "circadian-file-select",
+          tags$label("Subject", class = "circadian-label"),
+          selectInput(ns("file_select"), NULL,
+                      choices = c("All Files (Average)" = "all"), width = "220px")
+        )
+      ),
+      div(class = "circadian-controls-right",
+        actionButton(ns("run_btn"), "Run Analysis",
+                    class = "btn-primary circadian-run-btn"),
+        # Settings toggle
+        actionButton(ns("toggle_settings"), NULL,
+                    class = "btn-default circadian-settings-toggle",
+                    icon = icon("sliders-h"))
+      )
+    ),
+
+    # Collapsible Settings Panel
+    shinyjs::hidden(
+      div(id = ns("settings_panel"), class = "circadian-settings-panel",
+        div(class = "circadian-settings-grid",
+          div(class = "circadian-setting-item",
+            tags$label("Activity Metric", class = "circadian-label"),
+            selectInput(ns("metric"), NULL,
+                        choices = c("Axis 1 (Vertical)" = "axis1",
+                                    "Vector Magnitude" = "vm"),
+                        selected = "axis1", width = "100%")
+          ),
+          div(class = "circadian-setting-item",
+            tags$label("Options", class = "circadian-label"),
+            checkboxInput(ns("use_wear_time"), "Apply Wear Time Filter", value = TRUE)
           )
         )
       )
     ),
 
-    # Key metrics at top - Non-parametric metrics
-    fluidRow(
-      valueBoxOutput(ns("vb_l5"), width = 2),
-      valueBoxOutput(ns("vb_m10"), width = 3),
-      valueBoxOutput(ns("vb_ra"), width = 3),
-      valueBoxOutput(ns("vb_is"), width = 2),
-      valueBoxOutput(ns("vb_iv"), width = 2)
-    ),
+    # Core Metrics Strip - key metrics only
+    uiOutput(ns("core_metrics_panel")),
 
-    # Cosinor metrics row
+    # Main Content Area
     fluidRow(
-      column(
-        width = 12,
-        div(
-          style = "background: linear-gradient(135deg, #6f42c1 0%, #4a2c7a 100%); color: white; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px;",
-          span(icon("wave-square"), " ", strong("Cosinor Analysis"), " - Parametric rhythm fitting")
-        )
-      )
-    ),
-    fluidRow(
-      valueBoxOutput(ns("vb_mesor"), width = 4),
-      valueBoxOutput(ns("vb_amplitude"), width = 4),
-      valueBoxOutput(ns("vb_acrophase"), width = 4)
-    ),
-
-    fluidRow(
-      # Left column - Settings
-      column(
-        width = 3,
-        box(
-          title = span(icon("cogs", style = "margin-right: 8px;"), "Settings"),
-          status = "primary", solidHeader = TRUE, width = NULL,
-
-          div(
-            style = "background: rgba(35,97,146,0.05); border-radius: 8px; padding: 12px; margin-bottom: 12px;",
-            selectInput(ns("metric"), span(icon("chart-line"), " Activity Metric"),
-                        choices = c("Axis 1 (Vertical)" = "axis1",
-                                    "Vector Magnitude" = "vm"),
-                        selected = "axis1")
+      # Left: Hero Chart
+      column(8,
+        # Tabbed Chart Panel
+        div(class = "circadian-chart-panel",
+          div(class = "circadian-chart-tabs",
+            tags$button(id = ns("tab_profile"), class = "circadian-tab active",
+                       onclick = paste0("Shiny.setInputValue('", ns("active_tab"), "', 'profile', {priority: 'event'})"),
+                       "24-Hour Profile"),
+            tags$button(id = ns("tab_actogram"), class = "circadian-tab",
+                       onclick = paste0("Shiny.setInputValue('", ns("active_tab"), "', 'actogram', {priority: 'event'})"),
+                       "Actogram"),
+            tags$button(id = ns("tab_cosinor"), class = "circadian-tab",
+                       onclick = paste0("Shiny.setInputValue('", ns("active_tab"), "', 'cosinor', {priority: 'event'})"),
+                       "Cosinor Fit")
           ),
-
-          div(
-            style = "background: rgba(255,205,0,0.1); border-radius: 8px; padding: 12px; margin-bottom: 12px;",
-            checkboxInput(ns("use_wear_time"), span(icon("check-circle"), " Apply Wear Time Filter"), value = TRUE)
-          ),
-
-          hr(style = "border-color: #e8f4fc; margin: 15px 0;"),
-
-          actionButton(ns("run_btn"), span(icon("play"), " Run Analysis"),
-                      class = "btn-primary btn-block",
-                      style = "background: linear-gradient(135deg, #236192 0%, #1a4a6f 100%); border: none; padding: 12px;"),
-
-          hr(style = "border-color: #e8f4fc; margin: 15px 0;"),
-
-          downloadButton(ns("dl_csv"), span(icon("download"), " Export CSV"),
-                        class = "btn-success btn-block", style = "font-size: 12px;")
-        ),
-
-        # Metric definitions
-        box(
-          title = span(icon("info-circle", style = "margin-right: 8px;"), "Metric Definitions"),
-          status = "info", width = NULL, collapsible = TRUE, collapsed = TRUE,
-          div(
-            style = "font-size: 11px; line-height: 1.8;",
-            tags$p(tags$strong("Non-Parametric Metrics:")),
-            tags$p(tags$span(style = "color: #236192; font-weight: 600;", "L5:"),
-                  " Avg activity during least active 5 hours"),
-            tags$p(tags$span(style = "color: #236192; font-weight: 600;", "M10:"),
-                  " Avg activity during most active 10 hours"),
-            tags$p(tags$span(style = "color: #FFCD00; font-weight: 600;", "RA:"),
-                  " Relative amplitude = (M10-L5)/(M10+L5)"),
-            tags$p(tags$span(style = "color: #28a745; font-weight: 600;", "IS:"),
-                  " Interdaily stability (0-1, higher = consistent)"),
-            tags$p(tags$span(style = "color: #dc3545; font-weight: 600;", "IV:"),
-                  " Intradaily variability (lower = smoother)"),
-            tags$hr(style = "margin: 8px 0;"),
-            tags$p(tags$strong("Cosinor Parameters:")),
-            tags$p(tags$span(style = "color: #6f42c1; font-weight: 600;", "MESOR:"),
-                  " Midline estimating statistic of rhythm (mean level)"),
-            tags$p(tags$span(style = "color: #6f42c1; font-weight: 600;", "Amplitude:"),
-                  " Half peak-to-trough difference (rhythm strength)"),
-            tags$p(tags$span(style = "color: #6f42c1; font-weight: 600;", "Acrophase:"),
-                  " Time of peak activity (hours from midnight)")
+          div(class = "circadian-chart-content",
+            conditionalPanel(
+              condition = "output.has_circadian_results == false",
+              ns = ns,
+              chart_empty_state(
+                title = "No Data",
+                message = "Click 'Run Analysis' to generate circadian visualizations",
+                show_icon = FALSE
+              )
+            ),
+            conditionalPanel(
+              condition = "output.has_circadian_results == true",
+              ns = ns,
+              plotOutput(ns("main_chart"), height = "420px")
+            )
           )
         )
       ),
 
-      # Right column - Results
-      column(
-        width = 9,
-
-        # File selector row
-        box(
-          title = NULL, width = 12,
-          style = "background: linear-gradient(90deg, rgba(35,97,146,0.05) 0%, transparent 100%);",
-          selectInput(ns("file_select"), span(icon("eye"), " View Results For:"),
-                     choices = c("All Files (Average)" = "all"), width = "100%")
+      # Right: Cosinor Results Card
+      column(4,
+        # Pattern Classification Card
+        div(class = "circadian-pattern-card",
+          uiOutput(ns("pattern_card"))
         ),
 
-        # Main visualization - 24-Hour Activity Profile
-        box(
-          title = span(icon("chart-area", style = "margin-right: 8px;"), "24-Hour Activity Profile"),
-          status = "primary", solidHeader = TRUE, width = 12,
-          div(style = "background: white; border-radius: 8px; padding: 10px;",
-            plotOutput(ns("profile_plot"), height = "320px")
-          )
+        # Cosinor Parameters Card
+        div(class = "circadian-cosinor-card",
+          div(class = "circadian-card-header", "Cosinor Analysis"),
+          uiOutput(ns("cosinor_panel"))
         ),
 
-        # Summary table
-        box(
-          title = span(icon("table", style = "margin-right: 8px;"), "Circadian Summary"),
-          status = "success", solidHeader = FALSE, width = 12,
+        # Export
+        div(class = "circadian-export-section",
+          downloadButton(ns("dl_csv"), "Export Results (CSV)",
+                        class = "btn-default btn-block circadian-export-btn")
+        )
+      )
+    ),
+
+    # Summary Table (collapsed by default)
+    div(class = "circadian-table-section",
+      tags$details(class = "circadian-details",
+        tags$summary("View Full Data Table"),
+        div(class = "circadian-table-wrapper",
           DT::dataTableOutput(ns("summary_table"))
+        )
+      )
+    ),
+
+    # Reference Panel (collapsed)
+    div(class = "circadian-reference-section",
+      tags$details(class = "circadian-details",
+        tags$summary("Metric Definitions"),
+        div(class = "circadian-reference-content",
+          div(class = "circadian-ref-grid",
+            div(class = "circadian-ref-group",
+              h4("Non-Parametric Metrics"),
+              tags$dl(
+                tags$dt("L5"), tags$dd("Average activity during least active 5-hour window"),
+                tags$dt("M10"), tags$dd("Average activity during most active 10-hour window"),
+                tags$dt("RA"), tags$dd("Relative Amplitude: (M10-L5)/(M10+L5). Range 0-1, higher = stronger rhythm"),
+                tags$dt("IS"), tags$dd("Interdaily Stability: consistency of rhythm across days (0-1)"),
+                tags$dt("IV"), tags$dd("Intradaily Variability: fragmentation within days (lower = smoother)")
+              )
+            ),
+            div(class = "circadian-ref-group",
+              h4("Cosinor Parameters"),
+              tags$dl(
+                tags$dt("MESOR"), tags$dd("Midline Estimating Statistic of Rhythm (24h mean)"),
+                tags$dt("Amplitude"), tags$dd("Half the peak-to-trough difference"),
+                tags$dt("Acrophase"), tags$dd("Time of peak activity"),
+                tags$dt("R-squared"), tags$dd("Proportion of variance explained by the model")
+              )
+            ),
+            div(class = "circadian-ref-group",
+              h4("Pattern Classification"),
+              tags$dl(
+                tags$dt("Unimodal"), tags$dd("Single daily peak, typical healthy pattern"),
+                tags$dt("Bimodal"), tags$dd("Two distinct peaks (morning/evening)"),
+                tags$dt("Mixed"), tags$dd("Complex pattern with multiple components")
+              )
+            )
+          )
         )
       )
     )
@@ -155,6 +166,30 @@ mod_circadian_server <- function(id, shared) {
     ns <- session$ns
 
     results <- reactiveVal(list())
+    active_tab <- reactiveVal("profile")
+
+    # Output for conditional panel
+    output$has_circadian_results <- reactive({
+      length(results()) > 0
+    })
+    outputOptions(output, "has_circadian_results", suspendWhenHidden = FALSE)
+
+    # Toggle settings panel
+    observeEvent(input$toggle_settings, {
+      shinyjs::toggle("settings_panel")
+    })
+
+    # Handle tab clicks
+    observeEvent(input$active_tab, {
+      active_tab(input$active_tab)
+      # Update tab styling via JS
+      shinyjs::runjs(sprintf("
+        document.querySelectorAll('.circadian-tab').forEach(function(t) {
+          t.classList.remove('active');
+        });
+        document.getElementById('%s').classList.add('active');
+      ", ns(paste0("tab_", input$active_tab))))
+    })
 
     # Update file selector
     observe({
@@ -170,7 +205,7 @@ mod_circadian_server <- function(id, shared) {
       }
     })
 
-    # Run analysis
+    # Run Analysis
     observeEvent(input$run_btn, {
       req(shared$data_loaded, shared$file_count > 0)
 
@@ -186,6 +221,7 @@ mod_circadian_server <- function(id, shared) {
           setProgress(value = i / n_files, detail = paste("File:", f$name))
 
           # Activity metric
+      req(input$metric)
           activity <- if (input$metric == "vm" && all(c("axis1", "axis2", "axis3") %in% names(data))) {
             sqrt(data$axis1^2 + data$axis2^2 + data$axis3^2)
           } else {
@@ -203,20 +239,43 @@ mod_circadian_server <- function(id, shared) {
               counts = activity,
               timestamps = data$timestamp,
               wear_time = wear_time,
-              epoch_length = f$epoch_length
+              epoch_length = f$epoch_length,
+              use_cpp = TRUE
             )
           }, error = function(e) {
-            showNotification(paste("Error in", f$name, ":", e$message), type = "error")
+            showNotification(paste0("Circadian analysis incomplete for ", f$name), type = "error")
             return(NULL)
           })
 
           if (is.null(res)) next
 
-          # Extract cosinor results (note: MESOR is uppercase in circadian.rhythm output)
-          cosinor <- res$cosinor
-          mesor <- if (!is.null(cosinor)) cosinor$MESOR else NA
-          amplitude <- if (!is.null(cosinor)) cosinor$amplitude else NA
-          acrophase <- if (!is.null(cosinor)) cosinor$acrophase else NA
+          # Run multi-component cosinor analysis (24h + 12h harmonics)
+          cosinor_ext <- tryCatch({
+            canhrActi::cosinor.extended(
+              counts = activity,
+              timestamps = data$timestamp,
+              harmonics = c(24, 12),
+              wear_time = wear_time
+            )
+          }, error = function(e) {
+            showNotification(
+              paste0("Cosinor analysis incomplete for ", f$name, ": ", e$message),
+              type = "warning",
+              duration = 5
+            )
+            NULL
+          })
+
+          # Extract 12h component data
+          h12_amplitude <- NA_real_
+          h12_power <- NA_real_
+          if (!is.null(cosinor_ext) && !is.null(cosinor_ext$components)) {
+            h12_row <- cosinor_ext$components[cosinor_ext$components$period == 12, ]
+            if (nrow(h12_row) > 0) {
+              h12_amplitude <- h12_row$amplitude[1]
+              h12_power <- h12_row$relative_power[1]
+            }
+          }
 
           all_results[[fid]] <- list(
             file_id = fid,
@@ -229,9 +288,19 @@ mod_circadian_server <- function(id, shared) {
             RA = res$RA,
             IS = res$IS,
             IV = res$IV,
-            mesor = mesor,
-            amplitude = amplitude,
-            acrophase = acrophase,
+            phi = res$phi,
+            coverage_percent = res$coverage_percent,
+            mesor = if (!is.null(cosinor_ext)) cosinor_ext$mesor else NA_real_,
+            amplitude = if (!is.null(cosinor_ext)) cosinor_ext$amplitude else NA_real_,
+            acrophase = if (!is.null(cosinor_ext)) cosinor_ext$acrophase else NA_real_,
+            acrophase_time = if (!is.null(cosinor_ext)) cosinor_ext$acrophase_time else NA_character_,
+            r_squared = if (!is.null(cosinor_ext)) cosinor_ext$r_squared else NA_real_,
+            pattern_type = if (!is.null(cosinor_ext)) cosinor_ext$pattern_type else NA_character_,
+            is_bimodal = if (!is.null(cosinor_ext)) cosinor_ext$is_bimodal else NA,
+            h12_amplitude = h12_amplitude,
+            h12_power = h12_power,
+            r_squared_improvement = if (!is.null(cosinor_ext)) cosinor_ext$r_squared_improvement else NA_real_,
+            r_squared_single = if (!is.null(cosinor_ext)) cosinor_ext$r_squared_single else NA_real_,
             hourly_profile = res$hourly_profile
           )
         }
@@ -240,12 +309,16 @@ mod_circadian_server <- function(id, shared) {
       results(all_results)
       shared$results$circadian <- all_results
 
-      showNotification(paste("Circadian analysis complete for", length(all_results), "files"), type = "message")
+      showNotification(paste("Rhythm patterns analyzed for", length(all_results), "files"), type = "message")
     })
 
-    output$analysis_status <- renderText({
+    output$analysis_status_badge <- renderUI({
       n <- length(results())
-      if (n == 0) "Not analyzed" else paste(n, "files analyzed")
+      if (n > 0) {
+        status_badge(paste(n, "analyzed"), "success")
+      } else {
+        status_badge("Not analyzed", "pending")
+      }
     })
 
     # Current view data
@@ -256,6 +329,9 @@ mod_circadian_server <- function(id, shared) {
       sel <- input$file_select
 
       if (sel == "all" || sel == "none") {
+        pattern_counts <- table(sapply(res, function(r) r$pattern_type))
+        dominant_pattern <- if (length(pattern_counts) > 0) names(which.max(pattern_counts)) else NA_character_
+
         list(
           mode = "all",
           results = res,
@@ -264,9 +340,27 @@ mod_circadian_server <- function(id, shared) {
           RA = mean(sapply(res, function(r) r$RA), na.rm = TRUE),
           IS = mean(sapply(res, function(r) r$IS), na.rm = TRUE),
           IV = mean(sapply(res, function(r) r$IV), na.rm = TRUE),
+          phi = mean(sapply(res, function(r) r$phi), na.rm = TRUE),
+          coverage_percent = mean(sapply(res, function(r) r$coverage_percent), na.rm = TRUE),
           mesor = mean(sapply(res, function(r) r$mesor), na.rm = TRUE),
           amplitude = mean(sapply(res, function(r) r$amplitude), na.rm = TRUE),
-          acrophase = mean(sapply(res, function(r) r$acrophase), na.rm = TRUE)
+          acrophase = {
+            # Use circular mean for acrophase (time is circular 0-24h)
+            acro_vals <- sapply(res, function(r) r$acrophase)
+            acro_vals <- acro_vals[!is.na(acro_vals)]
+            if (length(acro_vals) == 0) NA_real_ else {
+              radians <- acro_vals * 2 * pi / 24
+              mean_sin <- mean(sin(radians))
+              mean_cos <- mean(cos(radians))
+              ((atan2(mean_sin, mean_cos) * 24 / (2 * pi)) + 24) %% 24
+            }
+          },
+          r_squared = mean(sapply(res, function(r) r$r_squared), na.rm = TRUE),
+          pattern_type = dominant_pattern,
+          h12_amplitude = mean(sapply(res, function(r) r$h12_amplitude), na.rm = TRUE),
+          h12_power = mean(sapply(res, function(r) r$h12_power), na.rm = TRUE),
+          r_squared_improvement = mean(sapply(res, function(r) r$r_squared_improvement), na.rm = TRUE),
+          is_bimodal = any(sapply(res, function(r) isTRUE(r$is_bimodal)))
         )
       } else if (sel %in% names(res)) {
         r <- res[[sel]]
@@ -280,127 +374,387 @@ mod_circadian_server <- function(id, shared) {
           RA = r$RA,
           IS = r$IS,
           IV = r$IV,
+          phi = r$phi,
+          coverage_percent = r$coverage_percent,
           mesor = r$mesor,
           amplitude = r$amplitude,
-          acrophase = r$acrophase
+          acrophase = r$acrophase,
+          acrophase_time = r$acrophase_time,
+          r_squared = r$r_squared,
+          pattern_type = r$pattern_type,
+          h12_amplitude = r$h12_amplitude,
+          h12_power = r$h12_power,
+          r_squared_improvement = r$r_squared_improvement,
+          is_bimodal = r$is_bimodal
         )
       } else {
         NULL
       }
     })
 
-    # Value boxes - 5 key metrics
-    output$vb_l5 <- renderValueBox({
+    # Core metrics strip
+    output$core_metrics_panel <- renderUI({
       cd <- current_data()
-      val <- if (is.null(cd) || is.na(cd$L5)) "--" else round(cd$L5)
-      valueBox(val, "L5", icon = icon("moon"), color = "blue")
-    })
 
-    output$vb_m10 <- renderValueBox({
-      cd <- current_data()
-      val <- if (is.null(cd) || is.na(cd$M10)) "--" else round(cd$M10)
-      valueBox(val, "M10", icon = icon("sun"), color = "yellow")
-    })
-
-    output$vb_ra <- renderValueBox({
-      cd <- current_data()
-      val <- if (is.null(cd) || is.na(cd$RA)) "--" else sprintf("%.3f", cd$RA)
-      valueBox(val, "RA", icon = icon("arrows-alt-h"), color = "green")
-    })
-
-    output$vb_is <- renderValueBox({
-      cd <- current_data()
-      val <- if (is.null(cd) || is.na(cd$IS)) "--" else sprintf("%.2f", cd$IS)
-      valueBox(val, "IS", icon = icon("calendar-check"), color = "aqua")
-    })
-
-    output$vb_iv <- renderValueBox({
-      cd <- current_data()
-      val <- if (is.null(cd) || is.na(cd$IV)) "--" else sprintf("%.2f", cd$IV)
-      valueBox(val, "IV", icon = icon("chart-line"), color = "purple")
-    })
-
-    # Cosinor value boxes
-    output$vb_mesor <- renderValueBox({
-      cd <- current_data()
-      val <- if (is.null(cd) || is.na(cd$mesor)) "--" else round(cd$mesor)
-      valueBox(val, "MESOR (Mean Level)", icon = icon("minus"), color = "purple")
-    })
-
-    output$vb_amplitude <- renderValueBox({
-      cd <- current_data()
-      val <- if (is.null(cd) || is.na(cd$amplitude)) "--" else round(cd$amplitude)
-      valueBox(val, "Amplitude (Rhythm Strength)", icon = icon("arrows-alt-v"), color = "purple")
-    })
-
-    output$vb_acrophase <- renderValueBox({
-      cd <- current_data()
-      if (is.null(cd) || is.na(cd$acrophase)) {
-        val <- "--"
-        subtitle <- "Acrophase (Peak Time)"
-      } else {
-        # Convert decimal hours to HH:MM format
-        hours <- floor(cd$acrophase)
-        minutes <- round((cd$acrophase - hours) * 60)
-        val <- sprintf("%02d:%02d", hours, minutes)
-        subtitle <- "Acrophase (Peak Time)"
+      # Helper to create metric card
+      metric_item <- function(value, name, detail = NULL) {
+        div(class = "metric-card metric-card--inline",
+          div(class = "metric-value", value),
+          div(class = "metric-label", name),
+          if (!is.null(detail)) div(class = "metric-sublabel", detail)
+        )
       }
-      valueBox(val, subtitle, icon = icon("clock"), color = "purple")
+
+      # Format values
+      l5_val <- if (is.null(cd) || is.na(cd$L5)) "--" else format(round(cd$L5), big.mark = ",")
+      m10_val <- if (is.null(cd) || is.na(cd$M10)) "--" else format(round(cd$M10), big.mark = ",")
+      ra_val <- if (is.null(cd) || is.na(cd$RA)) "--" else sprintf("%.3f", cd$RA)
+      is_val <- if (is.null(cd) || is.na(cd$IS)) "--" else sprintf("%.2f", cd$IS)
+
+      # Sublabels
+      l5_detail <- if (!is.null(cd) && !is.null(cd$L5_start) && !is.na(cd$L5_start)) paste("Start:", cd$L5_start) else NULL
+      m10_detail <- if (!is.null(cd) && !is.null(cd$M10_start) && !is.na(cd$M10_start)) paste("Start:", cd$M10_start) else NULL
+
+      div(class = "metrics-strip metrics-strip--transparent",
+        metric_item(l5_val, "L5", l5_detail),
+        metric_item(m10_val, "M10", m10_detail),
+        metric_item(ra_val, "RA", "Relative Amplitude"),
+        metric_item(is_val, "IS", "Stability")
+      )
     })
 
-    # Profile plot
-    output$profile_plot <- renderPlot({
+    # Pattern classification card
+    output$pattern_card <- renderUI({
       cd <- current_data()
-      req(cd)
 
-      if (cd$mode == "single") {
-        hourly <- cd$result$hourly_profile
-        req(hourly)
+      if (is.null(cd) || is.null(cd$pattern_type) || is.na(cd$pattern_type)) {
+        return(div(class = "circadian-pattern-empty",
+          "Run Analysis to see pattern classification"
+        ))
+      }
 
-        ggplot(hourly, aes(x = hour, y = mean_counts)) +
-          geom_ribbon(aes(ymin = pmax(0, mean_counts - sd_counts),
-                          ymax = mean_counts + sd_counts),
-                      fill = "#3c8dbc", alpha = 0.2) +
-          geom_line(color = "#3c8dbc", linewidth = 1.2) +
-          geom_point(color = "#3c8dbc", size = 2.5) +
-          scale_x_continuous(breaks = seq(0, 23, 3), labels = sprintf("%02d:00", seq(0, 23, 3))) +
-          labs(title = paste("Activity Profile -", cd$result$subject_id),
-               subtitle = sprintf("L5=%d (start %s)  |  M10=%d (start %s)  |  RA=%.3f",
-                                  round(cd$L5), cd$L5_start, round(cd$M10), cd$M10_start, cd$RA),
-               x = "Hour of Day", y = "Mean Activity (counts/min)") +
-          theme_minimal(base_size = 13) +
-          theme(plot.title = element_text(face = "bold"),
-                panel.grid.minor = element_blank())
+      # Get interpretation based on pattern
+      interpretation <- switch(cd$pattern_type,
+        "Strong 24h" = "Excellent circadian rhythm with dominant 24-hour cycle",
+        "Moderate 24h" = "Good circadian rhythm with clear 24-hour pattern",
+        "Bimodal" = "Two distinct activity peaks, often morning and evening",
+        "Mixed" = "Complex activity pattern with multiple components",
+        "Complex" = "Multi-component rhythm with 8-hour ultradian pattern",
+        "Irregular" = "Fragmented or weak circadian rhythm",
+        "Normal rhythm pattern"  # Default fallback
+      )
+
+      div(class = "circadian-pattern-display",
+        div(class = "circadian-pattern-label", "Rhythm Pattern"),
+        div(class = "circadian-pattern-value", cd$pattern_type),
+        div(class = "circadian-pattern-interpretation", interpretation)
+      )
+    })
+
+    # Cosinor parameters card
+    output$cosinor_panel <- renderUI({
+      cd <- current_data()
+
+      if (is.null(cd) || is.na(cd$mesor)) {
+        return(div(class = "circadian-cosinor-empty",
+          "Cosinor analysis not available"
+        ))
+      }
+
+      # Format values
+      mesor_val <- format(round(cd$mesor), big.mark = ",")
+      amp_val <- format(round(cd$amplitude), big.mark = ",")
+      acro_val <- if (!is.null(cd$acrophase_time) && !is.na(cd$acrophase_time)) {
+        cd$acrophase_time
+      } else if (!is.na(cd$acrophase)) {
+        sprintf("%.1fh", cd$acrophase)
       } else {
-        # Combine hourly profiles from all files
-        all_hourly <- data.frame()
-        for (r in cd$results) {
-          if (!is.null(r$hourly_profile)) {
-            h <- r$hourly_profile
-            h$subject <- r$subject_id
-            all_hourly <- rbind(all_hourly, h)
+        "--"
+      }
+      r2_val <- if (!is.na(cd$r_squared)) sprintf("%.1f%%", cd$r_squared * 100) else "--"
+      r2_pct <- if (!is.na(cd$r_squared)) cd$r_squared * 100 else 0
+
+      tagList(
+        div(class = "circadian-cosinor-grid",
+          div(class = "circadian-cosinor-item",
+            div(class = "circadian-cosinor-value", mesor_val),
+            div(class = "circadian-cosinor-label", "MESOR")
+          ),
+          div(class = "circadian-cosinor-item",
+            div(class = "circadian-cosinor-value", amp_val),
+            div(class = "circadian-cosinor-label", "Amplitude")
+          ),
+          div(class = "circadian-cosinor-item",
+            div(class = "circadian-cosinor-value", acro_val),
+            div(class = "circadian-cosinor-label", "Acrophase")
+          ),
+          div(class = "circadian-cosinor-item",
+            div(class = "circadian-cosinor-value", r2_val),
+            div(class = "circadian-cosinor-label", "Model Fit")
+          )
+        ),
+        div(class = "circadian-cosinor-fit",
+          span(class = "circadian-fit-label", "R-squared"),
+          div(class = "circadian-fit-bar",
+            div(class = "circadian-fit-fill", style = sprintf("width: %s%%;", r2_pct))
+          ),
+          span(class = "circadian-fit-value", r2_val)
+        )
+      )
+    })
+
+    # Main chart
+    output$main_chart <- renderPlot({
+      cd <- current_data()
+
+      # User-friendly empty state messaging
+      validate(
+        need(!is.null(cd),
+             "\n\nNo Circadian Data\n\nRun Analysis to see patterns.\nSelect files and configure analysis parameters above."
+        )
+      )
+
+      tab <- active_tab()
+
+      if (tab == "profile") {
+        # 24-hour activity profile
+        if (cd$mode == "single") {
+          hourly <- cd$result$hourly_profile
+          req(hourly)
+
+          ggplot(hourly, aes(x = hour, y = mean_counts)) +
+            geom_ribbon(aes(ymin = pmax(0, mean_counts - sd_counts),
+                            ymax = mean_counts + sd_counts),
+                        fill = "#236192", alpha = 0.15) +
+            geom_line(color = "#236192", linewidth = 1.2) +
+            geom_point(color = "#236192", size = 2) +
+            scale_x_continuous(breaks = seq(0, 23, 3),
+                              labels = sprintf("%02d:00", seq(0, 23, 3)),
+                              expand = c(0.02, 0)) +
+            scale_y_continuous(labels = scales::comma, expand = c(0.02, 0)) +
+            labs(x = NULL, y = "Activity (counts/min)") +
+            canhrActi::theme_canhrActi() +
+            theme(
+              plot.background = element_rect(fill = "white", color = NA),
+              panel.background = element_rect(fill = "white", color = NA),
+              panel.grid.major = element_line(color = "#e2e8f0", linewidth = 0.4),
+              panel.grid.minor = element_blank(),
+              axis.text = element_text(color = "#64748b"),
+              axis.title = element_text(color = "#1a202c")
+            )
+        } else {
+          # Multi-file average
+          all_hourly <- data.frame()
+          for (r in cd$results) {
+            if (!is.null(r$hourly_profile)) {
+              h <- r$hourly_profile
+              h$subject <- r$subject_id
+              all_hourly <- rbind(all_hourly, h)
+            }
           }
+          req(nrow(all_hourly) > 0)
+
+          avg_hourly <- aggregate(mean_counts ~ hour, all_hourly, mean, na.rm = TRUE)
+
+          ggplot() +
+            geom_line(data = all_hourly, aes(x = hour, y = mean_counts, group = subject),
+                      color = "#94a3b8", alpha = 0.4, linewidth = 0.4) +
+            geom_line(data = avg_hourly, aes(x = hour, y = mean_counts),
+                      color = "#236192", linewidth = 1.5) +
+            geom_point(data = avg_hourly, aes(x = hour, y = mean_counts),
+                       color = "#236192", size = 2.5) +
+            scale_x_continuous(breaks = seq(0, 23, 3),
+                              labels = sprintf("%02d:00", seq(0, 23, 3)),
+                              expand = c(0.02, 0)) +
+            scale_y_continuous(labels = scales::comma, expand = c(0.02, 0)) +
+            labs(x = NULL, y = "Activity (counts/min)",
+                 subtitle = sprintf("Average of %d subjects", length(cd$results))) +
+            canhrActi::theme_canhrActi() +
+            theme(
+              plot.background = element_rect(fill = "white", color = NA),
+              panel.background = element_rect(fill = "white", color = NA),
+              panel.grid.major = element_line(color = "#e2e8f0", linewidth = 0.4),
+              panel.grid.minor = element_blank(),
+              axis.text = element_text(color = "#64748b"),
+              axis.title = element_text(color = "#1a202c"),
+              plot.subtitle = element_text(color = "#64748b", size = 11)
+            )
         }
 
-        req(nrow(all_hourly) > 0)
+      } else if (tab == "actogram") {
+        # Actogram - double-plotted style
+        if (cd$mode == "single") {
+          hourly <- cd$result$hourly_profile
+          req(hourly)
 
-        avg_hourly <- aggregate(mean_counts ~ hour, all_hourly, mean, na.rm = TRUE)
+          # Create a simple double-plot actogram
+          hourly_ext <- rbind(
+            transform(hourly, hour = hour),
+            transform(hourly, hour = hour + 24)
+          )
 
-        ggplot() +
-          geom_line(data = all_hourly, aes(x = hour, y = mean_counts, group = subject),
-                    color = "gray70", alpha = 0.5, linewidth = 0.5) +
-          geom_line(data = avg_hourly, aes(x = hour, y = mean_counts),
-                    color = "#3c8dbc", linewidth = 1.5) +
-          geom_point(data = avg_hourly, aes(x = hour, y = mean_counts),
-                     color = "#3c8dbc", size = 2.5) +
-          scale_x_continuous(breaks = seq(0, 23, 3), labels = sprintf("%02d:00", seq(0, 23, 3))) +
-          labs(title = paste("Average Activity Profile -", length(cd$results), "Files"),
-               subtitle = sprintf("Avg: L5=%d  |  M10=%d  |  RA=%.3f  |  IS=%.2f  |  IV=%.2f",
-                                  round(cd$L5), round(cd$M10), cd$RA, cd$IS, cd$IV),
-               x = "Hour of Day", y = "Mean Activity (counts/min)") +
-          theme_minimal(base_size = 13) +
-          theme(plot.title = element_text(face = "bold"),
-                panel.grid.minor = element_blank())
+          ggplot(hourly_ext, aes(x = hour, y = mean_counts)) +
+            geom_area(fill = "#236192", alpha = 0.6) +
+            geom_line(color = "#1a4a6f", linewidth = 0.8) +
+            scale_x_continuous(breaks = seq(0, 48, 6),
+                              labels = rep(sprintf("%02d:00", seq(0, 23, 6)), 2)[1:9],
+                              expand = c(0, 0)) +
+            scale_y_continuous(labels = scales::comma, expand = c(0.02, 0)) +
+            labs(x = NULL, y = "Activity",
+                 subtitle = "Double-plotted 48-hour view") +
+            canhrActi::theme_canhrActi() +
+            theme(
+              plot.background = element_rect(fill = "white", color = NA),
+              panel.background = element_rect(fill = "white", color = NA),
+              panel.grid.major.x = element_line(color = "#e2e8f0", linewidth = 0.4),
+              panel.grid.major.y = element_blank(),
+              panel.grid.minor = element_blank(),
+              axis.text = element_text(color = "#64748b"),
+              plot.subtitle = element_text(color = "#64748b", size = 11)
+            )
+        } else {
+          # Multi-file: show individual profiles stacked
+          all_hourly <- data.frame()
+          for (i in seq_along(cd$results)) {
+            r <- cd$results[[i]]
+            if (!is.null(r$hourly_profile)) {
+              h <- r$hourly_profile
+              h$subject <- r$subject_id
+              h$row <- i
+              all_hourly <- rbind(all_hourly, h)
+            }
+          }
+          req(nrow(all_hourly) > 0)
+
+          ggplot(all_hourly, aes(x = hour, y = row, fill = mean_counts)) +
+            geom_tile() +
+            scale_fill_gradient(low = "white", high = "#236192", name = "Activity") +
+            scale_x_continuous(breaks = seq(0, 23, 3),
+                              labels = sprintf("%02d:00", seq(0, 23, 3)),
+                              expand = c(0, 0)) +
+            scale_y_continuous(breaks = unique(all_hourly$row),
+                              labels = unique(all_hourly$subject),
+                              expand = c(0, 0)) +
+            labs(x = NULL, y = NULL,
+                 subtitle = "Subjects stacked vertically") +
+            canhrActi::theme_canhrActi() +
+            theme(
+              plot.background = element_rect(fill = "white", color = NA),
+              panel.background = element_rect(fill = "white", color = NA),
+              panel.grid = element_blank(),
+              axis.text = element_text(color = "#64748b"),
+              axis.text.y = element_text(size = 10),
+              legend.position = "right",
+              plot.subtitle = element_text(color = "#64748b", size = 11)
+            )
+        }
+
+      } else if (tab == "cosinor") {
+        # Cosinor fit visualization
+        if (cd$mode == "single") {
+          hourly <- cd$result$hourly_profile
+
+          # User-friendly validation instead of silent req() failure
+          validate(
+            need(!is.null(hourly), "Hourly profile data not available"),
+            need(!is.na(cd$mesor), "Cosinor analysis failed - MESOR could not be calculated.\nThis may indicate irregular or insufficient activity data."),
+            need(!is.na(cd$amplitude), "Cosinor analysis failed - amplitude could not be calculated.\nCheck that the data has sufficient variability."),
+            need(!is.na(cd$acrophase), "Cosinor analysis failed - acrophase could not be calculated.")
+          )
+
+          # Generate cosinor fit curve
+          hours_fine <- seq(0, 24, by = 0.1)
+          acro_rad <- (cd$acrophase / 24) * 2 * pi
+          fitted <- cd$mesor + cd$amplitude * cos(2 * pi * hours_fine / 24 - acro_rad)
+          fit_df <- data.frame(hour = hours_fine, fitted = fitted)
+
+          ggplot() +
+            geom_hline(yintercept = cd$mesor, linetype = "dashed", color = "#FFCD00", linewidth = 0.8) +
+            geom_line(data = fit_df, aes(x = hour, y = fitted),
+                     color = "#236192", linewidth = 1.5) +
+            geom_point(data = hourly, aes(x = hour, y = mean_counts),
+                      color = "#1a202c", fill = "#236192", shape = 21, size = 3, stroke = 0.8) +
+            annotate("text", x = 23, y = cd$mesor, label = "MESOR",
+                    hjust = 1, vjust = -0.5, color = "#FFCD00", fontface = "bold", size = 3.5) +
+            scale_x_continuous(breaks = seq(0, 23, 3),
+                              labels = sprintf("%02d:00", seq(0, 23, 3)),
+                              expand = c(0.02, 0)) +
+            scale_y_continuous(labels = scales::comma, expand = c(0.05, 0)) +
+            labs(x = NULL, y = "Activity (counts/min)",
+                 subtitle = sprintf("R-squared = %.3f | Acrophase = %s",
+                                   cd$r_squared, cd$acrophase_time %||% sprintf("%.1fh", cd$acrophase))) +
+            canhrActi::theme_canhrActi() +
+            theme(
+              plot.background = element_rect(fill = "white", color = NA),
+              panel.background = element_rect(fill = "white", color = NA),
+              panel.grid.major = element_line(color = "#e2e8f0", linewidth = 0.4),
+              panel.grid.minor = element_blank(),
+              axis.text = element_text(color = "#64748b"),
+              axis.title = element_text(color = "#1a202c"),
+              plot.subtitle = element_text(color = "#64748b", size = 11)
+            )
+        } else {
+          # Average cosinor with data points
+          # User-friendly validation instead of silent req() failure
+          validate(
+            need(!is.na(cd$mesor), "Cosinor analysis failed - MESOR could not be calculated.\nInsufficient data across files for cosinor modeling."),
+            need(!is.na(cd$amplitude), "Cosinor analysis failed - amplitude could not be calculated.\nData may lack sufficient circadian variability."),
+            need(!is.na(cd$acrophase), "Cosinor analysis failed - acrophase could not be calculated.")
+          )
+
+          # Collect hourly profiles from all results
+          all_hourly <- data.frame()
+          for (r in cd$results) {
+            if (!is.null(r$hourly_profile)) {
+              h <- r$hourly_profile
+              h$subject <- r$subject_id
+              all_hourly <- rbind(all_hourly, h)
+            }
+          }
+
+          # Calculate average hourly profile
+          avg_hourly <- if (nrow(all_hourly) > 0) {
+            aggregate(mean_counts ~ hour, all_hourly, mean, na.rm = TRUE)
+          } else {
+            NULL
+          }
+
+          hours_fine <- seq(0, 24, by = 0.1)
+          acro_rad <- (cd$acrophase / 24) * 2 * pi
+          fitted <- cd$mesor + cd$amplitude * cos(2 * pi * hours_fine / 24 - acro_rad)
+          fit_df <- data.frame(hour = hours_fine, fitted = fitted)
+
+          p <- ggplot() +
+            geom_hline(yintercept = cd$mesor, linetype = "dashed", color = "#FFCD00", linewidth = 0.8) +
+            geom_line(data = fit_df, aes(x = hour, y = fitted),
+                     color = "#236192", linewidth = 1.5)
+
+          # Add data points if available
+          if (!is.null(avg_hourly) && nrow(avg_hourly) > 0) {
+            p <- p + geom_point(data = avg_hourly, aes(x = hour, y = mean_counts),
+                               color = "#1a202c", fill = "#236192", shape = 21, size = 3, stroke = 0.8)
+          }
+
+          p + annotate("text", x = 23, y = cd$mesor, label = "MESOR",
+                    hjust = 1, vjust = -0.5, color = "#FFCD00", fontface = "bold", size = 3.5) +
+            scale_x_continuous(breaks = seq(0, 23, 3),
+                              labels = sprintf("%02d:00", seq(0, 23, 3)),
+                              expand = c(0.02, 0)) +
+            scale_y_continuous(labels = scales::comma, expand = c(0.05, 0)) +
+            labs(x = NULL, y = "Activity (counts/min)",
+                 subtitle = sprintf("Average cosinor fit (n=%d) | R-squared = %.3f",
+                                   length(cd$results), cd$r_squared)) +
+            canhrActi::theme_canhrActi() +
+            theme(
+              plot.background = element_rect(fill = "white", color = NA),
+              panel.background = element_rect(fill = "white", color = NA),
+              panel.grid.major = element_line(color = "#e2e8f0", linewidth = 0.4),
+              panel.grid.minor = element_blank(),
+              axis.text = element_text(color = "#64748b"),
+              axis.title = element_text(color = "#1a202c"),
+              plot.subtitle = element_text(color = "#64748b", size = 11)
+            )
+        }
       }
     })
 
@@ -408,30 +762,29 @@ mod_circadian_server <- function(id, shared) {
     output$summary_table <- DT::renderDataTable({
       res <- results()
       if (length(res) == 0) {
-        return(DT::datatable(data.frame(Message = "Run analysis to see results"), rownames = FALSE))
+        return(DT::datatable(data.frame(Message = "Run Analysis to see results"),
+                            rownames = FALSE, options = list(dom = 't')))
       }
 
-      # Format acrophase as HH:MM
-      format_acrophase <- function(acro) {
-        if (is.na(acro)) return("--")
-        hours <- floor(acro)
-        minutes <- round((acro - hours) * 60)
-        sprintf("%02d:%02d", hours, minutes)
+      safe_round <- function(x, digits = 0) {
+        if (is.null(x) || length(x) == 0 || is.na(x)) NA_real_ else round(x, digits)
+      }
+      safe_str <- function(x) {
+        if (is.null(x) || length(x) == 0 || is.na(x)) NA_character_ else as.character(x)
       }
 
       df <- data.frame(
-        Subject = sapply(res, function(r) r$subject_id),
-        File = sapply(res, function(r) r$name),
-        L5 = sapply(res, function(r) round(r$L5)),
-        L5_Start = sapply(res, function(r) r$L5_start),
-        M10 = sapply(res, function(r) round(r$M10)),
-        M10_Start = sapply(res, function(r) r$M10_start),
-        RA = sapply(res, function(r) round(r$RA, 3)),
-        IS = sapply(res, function(r) round(r$IS, 3)),
-        IV = sapply(res, function(r) round(r$IV, 3)),
-        MESOR = sapply(res, function(r) if (is.na(r$mesor)) NA else round(r$mesor)),
-        Amplitude = sapply(res, function(r) if (is.na(r$amplitude)) NA else round(r$amplitude)),
-        Acrophase = sapply(res, function(r) format_acrophase(r$acrophase)),
+        Subject = sapply(res, function(r) safe_str(r$subject_id)),
+        L5 = sapply(res, function(r) safe_round(r$L5)),
+        M10 = sapply(res, function(r) safe_round(r$M10)),
+        RA = sapply(res, function(r) safe_round(r$RA, 3)),
+        IS = sapply(res, function(r) safe_round(r$IS, 3)),
+        IV = sapply(res, function(r) safe_round(r$IV, 3)),
+        MESOR = sapply(res, function(r) safe_round(r$mesor)),
+        Amplitude = sapply(res, function(r) safe_round(r$amplitude)),
+        Acrophase = sapply(res, function(r) safe_str(r$acrophase_time)),
+        R2 = sapply(res, function(r) safe_round(r$r_squared, 3)),
+        Pattern = sapply(res, function(r) safe_str(r$pattern_type)),
         stringsAsFactors = FALSE
       )
 
@@ -439,9 +792,6 @@ mod_circadian_server <- function(id, shared) {
         df,
         options = list(pageLength = 10, scrollX = TRUE, dom = 'tip'),
         rownames = FALSE
-      ) |> DT::formatStyle(
-        columns = c("MESOR", "Amplitude", "Acrophase"),
-        backgroundColor = "#f3e8ff"
       )
     })
 
@@ -464,9 +814,19 @@ mod_circadian_server <- function(id, shared) {
           RA = sapply(res, function(r) r$RA),
           IS = sapply(res, function(r) r$IS),
           IV = sapply(res, function(r) r$IV),
+          phi = sapply(res, function(r) r$phi),
           mesor = sapply(res, function(r) r$mesor),
           amplitude = sapply(res, function(r) r$amplitude),
-          acrophase_hours = sapply(res, function(r) r$acrophase),
+          acrophase = sapply(res, function(r) r$acrophase),
+          acrophase_time = sapply(res, function(r) r$acrophase_time),
+          r_squared = sapply(res, function(r) r$r_squared),
+          pattern_type = sapply(res, function(r) r$pattern_type),
+          is_bimodal = sapply(res, function(r) r$is_bimodal),
+          h12_amplitude = sapply(res, function(r) r$h12_amplitude),
+          h12_power = sapply(res, function(r) r$h12_power),
+          r_squared_single = sapply(res, function(r) r$r_squared_single),
+          r_squared_improvement = sapply(res, function(r) r$r_squared_improvement),
+          coverage_percent = sapply(res, function(r) r$coverage_percent),
           stringsAsFactors = FALSE
         )
 

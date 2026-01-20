@@ -1,43 +1,40 @@
-#' Analyze Multiple AGD Files at Once (Batch Processing)
+#' Batch Process Multiple AGD Files
 #'
-#' Process multiple participants with parallel processing support.
-#' Includes memory optimization for large datasets and detailed progress tracking.
+#' Process multiple participants with optional parallel processing.
 #'
-#' @param files Character vector of file paths OR a folder path
-#' @param wear_time_algorithm Wear time detection algorithm (default: "choi")
-#' @param intensity_algorithm Intensity classification algorithm (default: "freedson1998")
+#' @param files Character vector of AGD file paths OR a folder path
+#' @param config Optional config list from batch.config(). If NULL, uses defaults.
+#' @param wear_time_algorithm Wear time algorithm: "choi", "troiano", "CANHR2025"
+#' @param intensity_algorithm Intensity algorithm: "freedson1998", "CANHR"
 #' @param min_wear_hours Minimum hours for valid day (default: 10)
-#' @param axis_to_analyze Which axis to analyze (default: "axis1")
-#' @param calculate_mets Calculate METs and energy expenditure (default: TRUE)
-#' @param mets_algorithm METs prediction algorithm (default: "freedson.vm3")
-#' @param export Logical. Export results to CSV? (default: TRUE)
-#' @param output_folder Where to save CSV files (default: current directory)
-#' @param lfe_mode Logical. Low frequency extension mode (default: FALSE)
-#' @param calculate_fragmentation Logical. Calculate sedentary fragmentation metrics? (default: TRUE)
-#' @param calculate_circadian Logical. Calculate circadian rhythm metrics? (default: TRUE)
-#' @param parallel Logical. Use parallel processing? (default: TRUE for >4 files)
-#' @param n_cores Number of CPU cores to use (default: auto-detect, max 8)
-#' @param verbose Logical. Show detailed progress? (default: TRUE)
-#' @param memory_efficient Logical. Optimize memory for large files? (default: TRUE)
-#' @return List with all results plus a combined summary table
+#' @param axis_to_analyze Axis: "axis1" or "vector_magnitude"
+#' @param calculate_mets Calculate METs? (default: TRUE)
+#' @param mets_algorithm METs algorithm (default: "freedson.vm3")
+#' @param sleep_algorithm Sleep algorithm: "cole_kripke", "sadeh", or NULL
+#' @param participant_age Age for age-specific algorithms
+#' @param export Export CSV? (default: TRUE)
+#' @param output_folder Output folder (default: ".")
+#' @param calculate_fragmentation Calculate fragmentation? (default: TRUE)
+#' @param calculate_circadian Calculate circadian? (default: TRUE)
+#' @param exclude_sleep Exclude sleep from activity? (default: TRUE)
+#' @param parallel Use parallel processing? (default: auto)
+#' @param n_cores CPU cores (default: auto-detect)
+#' @param verbose Show progress? (default: TRUE)
+#' @return List with results and summary table
 #'
 #' @examples
 #' \dontrun{
-#' # Basic usage - folder
-#' results <- canhrActi.batch("C:/My Data Folder")
+#' # Simple usage
+#' results <- canhrActi.batch("C:/Data")
 #'
-#' # Parallel processing with 4 cores
-#' results <- canhrActi.batch("C:/My Data", parallel = TRUE, n_cores = 4)
-#'
-#' # Memory-efficient mode for large datasets
-#' results <- canhrActi.batch("C:/Large Study", memory_efficient = TRUE)
-#'
-#' # View combined summary
-#' print(results$summary)
+#' # With config object
+#' cfg <- batch.config(wear = "CANHR2025", sleep = "cole_kripke")
+#' results <- canhrActi.batch("C:/Data", config = cfg)
 #' }
 #'
 #' @export
 canhrActi.batch <- function(files,
+                         config = NULL,
                          wear_time_algorithm = c("choi", "troiano", "CANHR2025"),
                          intensity_algorithm = c("freedson1998", "CANHR"),
                          min_wear_hours = 10,
@@ -47,15 +44,33 @@ canhrActi.batch <- function(files,
                                             "hendelman.adult", "hendelman.lifestyle", "swartz",
                                             "leenders", "yngve.treadmill", "yngve.overground",
                                             "brooks.overground", "brooks.bm", "freedson.children"),
+                         sleep_algorithm = NULL,
+                         participant_age = NULL,
                          export = TRUE,
                          output_folder = ".",
-                         lfe_mode = FALSE,
                          calculate_fragmentation = TRUE,
                          calculate_circadian = TRUE,
+                         exclude_sleep = TRUE,
                          parallel = NULL,
                          n_cores = NULL,
-                         verbose = TRUE,
-                         memory_efficient = TRUE) {
+                         verbose = TRUE) {
+
+  # Apply config if provided
+  if (!is.null(config)) {
+    if (!is.null(config$wear)) wear_time_algorithm <- config$wear
+    if (!is.null(config$intensity)) intensity_algorithm <- config$intensity
+    if (!is.null(config$min_wear)) min_wear_hours <- config$min_wear
+    if (!is.null(config$axis)) axis_to_analyze <- config$axis
+    if (!is.null(config$mets)) calculate_mets <- config$mets
+    if (!is.null(config$mets_algo)) mets_algorithm <- config$mets_algo
+    if (!is.null(config$sleep)) sleep_algorithm <- config$sleep
+    if (!is.null(config$age)) participant_age <- config$age
+    if (!is.null(config$fragmentation)) calculate_fragmentation <- config$fragmentation
+    if (!is.null(config$circadian)) calculate_circadian <- config$circadian
+    if (!is.null(config$exclude_sleep)) exclude_sleep <- config$exclude_sleep
+    if (!is.null(config$parallel)) parallel <- config$parallel
+    if (!is.null(config$cores)) n_cores <- config$cores
+  }
 
   wear_time_algorithm <- match.arg(wear_time_algorithm)
   intensity_algorithm <- match.arg(intensity_algorithm)
@@ -65,29 +80,18 @@ canhrActi.batch <- function(files,
   # Find files if folder provided
   if (length(files) == 1 && dir.exists(files)) {
     folder <- files
-    agd_files <- list.files(folder, pattern = "\\.agd$", full.names = TRUE, ignore.case = TRUE)
-    gt3x_files <- list.files(folder, pattern = "\\.gt3x$", full.names = TRUE, ignore.case = TRUE)
-    bin_files <- list.files(folder, pattern = "\\.bin$", full.names = TRUE, ignore.case = TRUE)
-    cwa_files <- list.files(folder, pattern = "\\.cwa$", full.names = TRUE, ignore.case = TRUE)
-    csv_files <- list.files(folder, pattern = "\\.csv$", full.names = TRUE, ignore.case = TRUE)
-
-    files <- c(agd_files, gt3x_files, bin_files, cwa_files, csv_files)
+    files <- list.files(folder, pattern = "\\.agd$", full.names = TRUE, ignore.case = TRUE)
 
     if (length(files) == 0) {
-      stop("No supported accelerometer files found in: ", folder, "\n",
-           "Supported formats: .agd, .gt3x, .bin, .cwa, .csv")
+      stop("No AGD files found in: ", folder, "\n",
+           "Only ActiGraph .agd files are supported.")
     }
 
     if (verbose) {
       cat("\n", paste(rep("=", 60), collapse = ""), "\n", sep = "")
       cat("canhrActi Batch Processing\n")
       cat(paste(rep("=", 60), collapse = ""), "\n\n", sep = "")
-      cat("Found accelerometer files:\n")
-      if (length(agd_files) > 0) cat("  ", length(agd_files), " ActiGraph .agd files\n", sep = "")
-      if (length(gt3x_files) > 0) cat("  ", length(gt3x_files), " ActiGraph .gt3x files\n", sep = "")
-      if (length(bin_files) > 0) cat("  ", length(bin_files), " GENEActiv .bin files\n", sep = "")
-      if (length(cwa_files) > 0) cat("  ", length(cwa_files), " Axivity .cwa files\n", sep = "")
-      if (length(csv_files) > 0) cat("  ", length(csv_files), " CSV files\n", sep = "")
+      cat("Found ", length(files), " ActiGraph .agd files\n", sep = "")
     }
   }
 
@@ -108,8 +112,7 @@ canhrActi.batch <- function(files,
   if (verbose) {
     cat("\nProcessing Configuration:\n")
     cat("  Total files: ", n_files, "\n", sep = "")
-    cat("  Parallel: ", if (parallel && n_files > 1) paste0("Yes (", n_cores, " cores)") else "No", "\n", sep = "")
-    cat("  Memory efficient: ", if (memory_efficient) "Yes" else "No", "\n", sep = "")
+    cat("  Parallel: ", if (parallel && n_files > 1) paste0("Yes (", n_cores, " cores)") else "No (sequential)", "\n", sep = "")
     cat("  Wear time: ", wear_time_algorithm, "\n", sep = "")
     cat("  Intensity: ", intensity_algorithm, "\n", sep = "")
     cat("\n")
@@ -138,21 +141,18 @@ canhrActi.batch <- function(files,
       analysis <- .canhrActi.single.internal(
         file_path, wear_time_algorithm, intensity_algorithm,
         min_wear_hours, axis_to_analyze,
-        output_summary = FALSE, lfe_mode = lfe_mode,
+        output_summary = FALSE,
         calculate_mets = calculate_mets, mets_algorithm = mets_algorithm,
+        sleep_algorithm = sleep_algorithm,
+        participant_age = participant_age,
         calculate_fragmentation = calculate_fragmentation,
-        calculate_circadian = calculate_circadian
+        calculate_circadian = calculate_circadian,
+        exclude_sleep = exclude_sleep
       )
 
-      # Build summary row (memory efficient - only keep what we need)
+      # Build summary row
       summary_row <- .build_summary_row(file_path, subject_id, analysis,
                                         intensity_algorithm, axis_to_analyze)
-
-      if (memory_efficient) {
-        # Only keep essential data, discard raw data
-        analysis$raw_data <- NULL
-        analysis$epoch_data <- NULL
-      }
 
       result$analysis <- analysis
       result$summary_row <- summary_row
@@ -181,11 +181,14 @@ canhrActi.batch <- function(files,
       library(RSQLite)
     })
 
-    # Export parameters
+    # Export parameters and data
+    #  Also export 'files', 'n_files', and 'process_single_file' to cluster
+    # These are needed inside the parLapply function
     parallel::clusterExport(cl, c(
       "wear_time_algorithm", "intensity_algorithm", "min_wear_hours",
-      "axis_to_analyze", "calculate_mets", "mets_algorithm", "lfe_mode",
-      "calculate_fragmentation", "calculate_circadian", "memory_efficient"
+      "axis_to_analyze", "calculate_mets", "mets_algorithm",
+      "calculate_fragmentation", "calculate_circadian",
+      "files", "n_files", "process_single_file"
     ), envir = environment())
 
     # Process with progress
@@ -222,6 +225,11 @@ canhrActi.batch <- function(files,
       }
 
       results_list[[i]] <- process_single_file(files[i], i, n_files)
+
+      # Periodic garbage collection
+      if (i %% 5 == 0) {
+        gc(verbose = FALSE, full = TRUE)
+      }
     }
 
     if (verbose) {
@@ -358,55 +366,34 @@ canhrActi.batch <- function(files,
 # Helper: Build summary row for a single file
 .build_summary_row <- function(file_path, subject_id, analysis, intensity_algorithm, axis_to_analyze) {
   tryCatch({
-    ext <- tolower(tools::file_ext(file_path))
+    # Use data from analysis object instead of re-reading file (performance optimization)
+    # The analysis object already contains all needed data from canhrActi()
 
-    # Default values
-    age_val <- 0
-    gender_val <- ""
-    weight_lbs <- 0
-    epoch_len <- 60
+    # Get metadata from analysis object
+    subj_info <- analysis$subject_info
+    age_val <- if (!is.null(subj_info$age) && !is.na(subj_info$age)) subj_info$age else 0
+    gender_val <- if (!is.null(subj_info$sex) && !is.na(subj_info$sex)) {
+      sex <- subj_info$sex
+      ifelse(substr(sex, 1, 1) == "F", "F", ifelse(substr(sex, 1, 1) == "M", "M", ""))
+    } else ""
+    weight_lbs <- if (!is.null(subj_info$weight_lbs) && !is.na(subj_info$weight_lbs)) {
+      subj_info$weight_lbs
+    } else 0
+    epoch_len <- if (!is.null(analysis$parameters$epoch_length)) {
+      analysis$parameters$epoch_length
+    } else 60
 
-    # Try to get metadata
-    if (ext == "agd") {
-      con <- DBI::dbConnect(RSQLite::SQLite(), file_path)
-      on.exit(DBI::dbDisconnect(con), add = TRUE)
+    # Use epoch_data from analysis (already filtered and processed)
+    raw_data <- analysis$epoch_data
+    if (is.null(raw_data) || nrow(raw_data) == 0) {
+      raw_data <- data.frame(axis1 = 0, axis2 = 0, axis3 = 0)
+    }
 
-      tables <- DBI::dbListTables(con)
-      raw_data <- DBI::dbReadTable(con, "data")
-      settings <- DBI::dbReadTable(con, "settings")
-
-      # Apply filters if present
-      if ("filters" %in% tables) {
-        filters <- DBI::dbReadTable(con, "filters")
-        if (nrow(filters) > 0) {
-          filter_cond <- rep(FALSE, nrow(raw_data))
-          for (f in 1:nrow(filters)) {
-            filter_cond <- filter_cond |
-              (raw_data$dataTimestamp >= filters$filterStartTimestamp[f] &
-               raw_data$dataTimestamp <= filters$filterStopTimestamp[f])
-          }
-          raw_data <- raw_data[filter_cond, ]
-        }
-      }
-
-      # Get settings
-      age <- settings$settingValue[settings$settingName == "age"]
-      sex <- settings$settingValue[settings$settingName == "sex"]
-      mass_kg <- settings$settingValue[settings$settingName == "mass"]
-      epoch_len <- as.numeric(settings$settingValue[settings$settingName == "epochlength"])
-
-      age_val <- if (length(age) > 0 && !is.na(age) && age != "") as.numeric(age) else 0
-      gender_val <- if (length(sex) > 0 && !is.na(sex) && sex != "") {
-        ifelse(substr(sex, 1, 1) == "F", "F", ifelse(substr(sex, 1, 1) == "M", "M", ""))
-      } else ""
-      weight_lbs <- if (length(mass_kg) > 0 && !is.na(mass_kg) && mass_kg != "") {
-        round(as.numeric(mass_kg) * 2.20462)
-      } else 0
-
-    } else {
-      # For other file types, use analysis data
-      raw_data <- if (!is.null(analysis$data)) analysis$data else data.frame(axis1 = 0)
-      epoch_len <- if (!is.null(analysis$epoch_length)) analysis$epoch_length else 60
+    # Safe max function that returns 0 instead of -Inf for empty/all-NA vectors
+    safe_max <- function(x) {
+      x <- x[!is.na(x)]
+      if (length(x) == 0) return(0)
+      max(x)
     }
 
     # Calculate axis statistics
@@ -416,9 +403,9 @@ canhrActi.batch <- function(files,
     axis1_avg <- mean(raw_data$axis1, na.rm = TRUE)
     axis2_avg <- if ("axis2" %in% names(raw_data)) mean(raw_data$axis2, na.rm = TRUE) else 0
     axis3_avg <- if ("axis3" %in% names(raw_data)) mean(raw_data$axis3, na.rm = TRUE) else 0
-    axis1_max <- max(raw_data$axis1, na.rm = TRUE)
-    axis2_max <- if ("axis2" %in% names(raw_data)) max(raw_data$axis2, na.rm = TRUE) else 0
-    axis3_max <- if ("axis3" %in% names(raw_data)) max(raw_data$axis3, na.rm = TRUE) else 0
+    axis1_max <- safe_max(raw_data$axis1)
+    axis2_max <- if ("axis2" %in% names(raw_data)) safe_max(raw_data$axis2) else 0
+    axis3_max <- if ("axis3" %in% names(raw_data)) safe_max(raw_data$axis3) else 0
 
     # Vector magnitude
     if (all(c("axis1", "axis2", "axis3") %in% names(raw_data))) {
@@ -428,16 +415,16 @@ canhrActi.batch <- function(files,
     }
     vm_total <- sum(vm, na.rm = TRUE)
     vm_avg <- mean(vm, na.rm = TRUE)
-    vm_max <- max(vm, na.rm = TRUE)
+    vm_max <- safe_max(vm)
 
     # Steps
     steps_total <- if ("steps" %in% names(raw_data)) sum(raw_data$steps, na.rm = TRUE) else 0
     steps_avg <- if ("steps" %in% names(raw_data)) mean(raw_data$steps, na.rm = TRUE) else 0
-    steps_max <- if ("steps" %in% names(raw_data)) max(raw_data$steps, na.rm = TRUE) else 0
+    steps_max <- if ("steps" %in% names(raw_data)) safe_max(raw_data$steps) else 0
 
     # Lux
     lux_avg <- if ("lux" %in% names(raw_data)) mean(raw_data$lux, na.rm = TRUE) else NA
-    lux_max <- if ("lux" %in% names(raw_data)) max(raw_data$lux, na.rm = TRUE) else NA
+    lux_max <- if ("lux" %in% names(raw_data)) safe_max(raw_data$lux) else NA
 
     # Intensity classification - convert counts to CPM first
     counts <- if (axis_to_analyze == "axis1") raw_data$axis1 else vm
@@ -587,4 +574,70 @@ print.canhrActi_batch <- function(x, ...) {
   }
 
   invisible(x)
+}
+
+
+#' Create Batch Processing Configuration
+#'
+#' Helper to create a config object for canhrActi.batch().
+#' Only specify parameters you want to change from defaults.
+#'
+#' @param wear Wear time algorithm: "choi", "troiano", "CANHR2025"
+#' @param intensity Intensity algorithm: "freedson1998", "CANHR"
+#' @param min_wear Minimum wear hours (default: 10)
+#' @param axis Axis: "axis1", "vector_magnitude"
+#' @param mets Calculate METs? (default: TRUE)
+#' @param mets_algo METs algorithm
+#' @param sleep Sleep algorithm: "cole_kripke", "sadeh", NULL
+#' @param age Participant age
+#' @param fragmentation Calculate fragmentation? (default: TRUE)
+#' @param circadian Calculate circadian? (default: TRUE)
+#' @param exclude_sleep Exclude sleep from activity? (default: TRUE)
+#' @param parallel Use parallel? (default: auto)
+#' @param cores Number of CPU cores
+#'
+#' @return Config list for canhrActi.batch()
+#'
+#' @examples
+#' \dontrun{
+#' # Create config for CANHR analysis
+#' cfg <- batch.config(wear = "CANHR2025", intensity = "CANHR")
+#' results <- canhrActi.batch("C:/Data", config = cfg)
+#'
+#' # Config for sleep analysis
+#' cfg <- batch.config(sleep = "cole_kripke", circadian = TRUE)
+#' }
+#'
+#' @export
+batch.config <- function(wear = NULL,
+                         intensity = NULL,
+                         min_wear = NULL,
+                         axis = NULL,
+                         mets = NULL,
+                         mets_algo = NULL,
+                         sleep = NULL,
+                         age = NULL,
+                         fragmentation = NULL,
+                         circadian = NULL,
+                         exclude_sleep = NULL,
+                         parallel = NULL,
+                         cores = NULL) {
+
+  config <- list()
+  if (!is.null(wear)) config$wear <- wear
+  if (!is.null(intensity)) config$intensity <- intensity
+  if (!is.null(min_wear)) config$min_wear <- min_wear
+  if (!is.null(axis)) config$axis <- axis
+  if (!is.null(mets)) config$mets <- mets
+  if (!is.null(mets_algo)) config$mets_algo <- mets_algo
+  if (!is.null(sleep)) config$sleep <- sleep
+  if (!is.null(age)) config$age <- age
+  if (!is.null(fragmentation)) config$fragmentation <- fragmentation
+  if (!is.null(circadian)) config$circadian <- circadian
+  if (!is.null(exclude_sleep)) config$exclude_sleep <- exclude_sleep
+  if (!is.null(parallel)) config$parallel <- parallel
+  if (!is.null(cores)) config$cores <- cores
+
+  class(config) <- c("canhrActi_batch_config", "list")
+  config
 }

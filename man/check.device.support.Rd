@@ -10,6 +10,5 @@ check.device.support()
 Data frame with device types and availability
 }
 \description{
-Lists which accelerometer device formats are supported based on
-installed packages.
+Lists supported accelerometer device formats.
 }

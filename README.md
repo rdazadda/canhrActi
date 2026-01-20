@@ -8,8 +8,8 @@ Developed by the **Center for Alaska Native Health Research (CANHR)**, Universit
 
 - **Physical Activity**: Wear time detection, intensity classification, MVPA, energy expenditure
 - **Sleep Analysis**: Cole-Kripke & Sadeh algorithms with sleep period detection
-- **Circadian Rhythm**: L5, M10, IS, IV, RA, and cosinor analysis
-- **File Support**: ActiGraph .agd, .gt3x, and .csv files
+- **Circadian Rhythm**: L5, M10, IS, IV, RA, and phi analysis
+- **File Support**: ActiGraph .agd files (pre-processed activity counts)
 - **Interactive Dashboard**: Shiny-based GUI for easy analysis
 - **ActiLife Compatible**: Produces results compatible with ActiLife software
 

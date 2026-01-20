@@ -4,81 +4,99 @@
 \alias{circadian.rhythm}
 \title{Circadian Rhythm Analysis}
 \usage{
-circadian.rhythm(counts, timestamps, wear_time = NULL, epoch_length = 60)
+circadian.rhythm(
+  counts,
+  timestamps,
+  sleep_state = NULL,
+  wear_time = NULL,
+  epoch_length = 60,
+  calculate_sri = TRUE,
+  use_cpp = TRUE
+)
 }
 \arguments{
-\item{counts}{Numeric vector of activity counts (typically axis1 or VM)}
+\item{counts}{Numeric vector of activity counts (minute-level recommended for accuracy)}
 
 \item{timestamps}{POSIXct vector of epoch timestamps}
 
-\item{wear_time}{Logical vector indicating wear time (optional)}
+\item{sleep_state}{Optional character vector of sleep states ("S" or "W") for SRI calculation}
+
+\item{wear_time}{Optional logical vector indicating wear time (TRUE = worn)}
 
 \item{epoch_length}{Numeric. Epoch length in seconds (default: 60)}
+
+\item{calculate_sri}{Logical. Calculate Sleep Regularity Index? (default: TRUE if sleep_state provided)}
+
+\item{use_cpp}{Logical. Use C++ backend for faster computation? (default: TRUE)}
 }
 \value{
 List with class 'canhrActi_circadian' containing:
-\itemize{
-\item \code{L5} - Least active 5-hour average
-\item \code{L5_start} - Start time of L5 window
-\item \code{M10} - Most active 10-hour average
-\item \code{M10_start} - Start time of M10 window
-\item \code{RA} - Relative amplitude (M10-L5)/(M10+L5)
-\item \code{IS} - Interdaily stability (0-1)
-\item \code{IV} - Intradaily variability (0-2+)
-\item \code{cosinor} - Cosinor analysis results (MESOR, amplitude, acrophase)
-\item \code{hourly_profile} - Average activity by hour of day
-\item \code{daily_metrics} - Per-day circadian metrics
+\describe{
+\item{L5, L5_start, L5_start_hour}{Least active 5-hour average and timing (sliding window)}
+\item{M10, M10_start, M10_start_hour}{Most active 10-hour average and timing (sliding window)}
+\item{L1, M1}{Least/most active 1-hour for additional granularity}
+\item{RA}{Relative amplitude: (M10-L5)/(M10+L5), range 0-1}
+\item{IS}{Interdaily stability: day-to-day consistency (0-1, higher=more stable)}
+\item{IV}{Intradaily variability: within-day fragmentation (0=sine, ~2=noise)}
+\item{phi}{First-order autocorrelation at 1-hour lag}
+\item{SRI}{Sleep Regularity Index (-100 to 100, higher=more regular)}
+\item{CPD}{Composite Phase Deviation (day-to-day phase variability)}
+\item{hourly_profile}{Mean activity by hour of day}
+\item{daily_metrics}{Per-day L5, M10, RA values}
 }
 }
 \description{
-Comprehensive circadian rhythm analysis including non-parametric (L5, M10, IS, IV, RA)
-and parametric (cosinor) methods for characterizing 24-hour activity patterns.
+Comprehensive circadian analysis using gold-standard non-parametric methods from
+GGIR, ActCR, nparACT, and peer-reviewed literature. Implements proper minute-level
+sliding window for L5/M10, Sleep Regularity Index, and multiple phase metrics.
 }
 \details{
 \strong{Non-Parametric Metrics (van Someren et al., 1999):}
+
+This implementation uses the gold-standard \strong{minute-level sliding window}
+method for L5/M10 calculation, NOT hourly aggregation. This provides more accurate
+timing estimates (to the minute rather than hour).
+
 \itemize{
 \item \strong{L5} = Average activity during the least active 5 consecutive hours.
-Typically corresponds to nighttime/sleep.
+Uses sliding window across minute-level data for precise timing.
 \item \strong{M10} = Average activity during the most active 10 consecutive hours.
-Typically corresponds to daytime activity.
 \item \strong{RA} = Relative amplitude = (M10 - L5) / (M10 + L5).
-Higher values indicate stronger day-night differences.
-\item \strong{IS} = Interdaily stability. Measures consistency of activity patterns
-across days. Ranges 0-1, higher = more stable rhythm.
-\item \strong{IV} = Intradaily variability. Measures fragmentation of activity.
-Approaches 0 for perfect sine wave, 2 for Gaussian noise.
+Range 0-1, higher values indicate stronger day-night amplitude.
+\item \strong{IS} = Interdaily stability. Quantifies coupling of rhythm to
+stable zeitgebers. Range 0 (Gaussian noise) to 1 (perfect stability).
+\item \strong{IV} = Intradaily variability. Measures rhythm fragmentation.
+~0 for perfect sine wave, ~2 for Gaussian noise, can exceed 2 with ultradian rhythms.
 }
 
-\strong{Cosinor Analysis:}
-Fits: Y(t) = MESOR + Amplitude * cos(2\emph{pi}t/24 + Acrophase)
-\itemize{
-\item \strong{MESOR} = Midline Estimating Statistic Of Rhythm (rhythm-adjusted mean)
-\item \strong{Amplitude} = Half the peak-to-trough difference
-\item \strong{Acrophase} = Time of peak activity (hours from midnight)
-}
+\strong{Sleep Regularity Index (Phillips et al., 2017):}
+
+SRI = probability of being in same sleep/wake state at any two time points
+24 hours apart. Range -100 to +100, with 100 indicating perfect regularity.
 }
 \examples{
 \dontrun{
+# Basic analysis
 results <- canhrActi("participant.agd")
-circadian <- circadian.rhythm(results$epoch_data$axis1,
-                              results$epoch_data$timestamp,
-                              results$epoch_data$wear_time)
+circadian <- circadian.rhythm(
+  results$epoch_data$axis1,
+  results$epoch_data$timestamp,
+  results$epoch_data$wear_time
+)
 print(circadian)
+plot(circadian)
 
-# Plot 24-hour activity profile
-plot(circadian$hourly_profile$hour, circadian$hourly_profile$mean_counts,
-     type = "l", xlab = "Hour", ylab = "Mean Counts")
+# With sleep state for SRI calculation
+sleep_state <- sleep.cole.kripke(results$epoch_data$axis1)
+circadian <- circadian.rhythm(
+  results$epoch_data$axis1,
+  results$epoch_data$timestamp,
+  sleep_state = sleep_state
+)
 }
 
 }
-\references{
-Witting W, et al. (1990). Alterations in the circadian rest-activity rhythm
-in aging and Alzheimer's disease. Biol Psychiatry, 27(6):563-572.
-
-Van Someren EJ, et al. (1999). Bright light therapy: improved sensitivity to
-its effects on rest-activity rhythms in Alzheimer patients by application
-of nonparametric methods. Chronobiol Int, 16(4):505-518.
-
-Nelson W, et al. (1979). Methods for cosinor-rhythmometry.
-Chronobiologia, 6(4):305-323.
+\seealso{
+\code{\link{sleep.regularity.index}} for standalone SRI calculation,
+\code{\link{social.jet.lag}} for social jet lag calculation
 }

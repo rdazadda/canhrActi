@@ -8,20 +8,37 @@ detect.sedentary.bouts(
   intensity,
   timestamps,
   wear_time = NULL,
+  sleep_mask = NULL,
   min_bout_length = 1,
-  epoch_length = 60
+  epoch_length = 60,
+  min_break_length = 1
 )
 }
 \arguments{
 \item{intensity}{Factor or character vector of intensity classifications}
 
-\item{timestamps}{POSIXct vector of timestamps (same length as intensity)}
+\item{timestamps}{POSIXct vector of timestamps}
 
 \item{wear_time}{Optional logical vector indicating wear time (TRUE = worn)}
+
+\item{sleep_mask}{Optional vector indicating sleep status. Can be:
+\itemize{
+\item Logical vector (TRUE = asleep, FALSE = awake)
+\item Character vector ("S" or "sleep" = asleep, anything else = awake)
+When provided, sleep periods are EXCLUDED from sedentary analysis per
+SBRN consensus that sedentary behavior is "waking behavior" only.
+Reference: Tremblay et al. (2017) SBRN Terminology Consensus Project.
+}}
 
 \item{min_bout_length}{Minimum bout length in minutes to include (default 1)}
 
 \item{epoch_length}{Epoch length in seconds (default 60)}
+
+\item{min_break_length}{Minimum break duration in minutes for a break to count (default 1).
+Active periods shorter than or equal to this are "bridged" - treated as continued
+sedentary time. Based on Healy et al. (2008) and GGIR methodology, recommended
+values are 5-10 minutes to filter noise and fidgeting. Lower values (1-2 min)
+will result in higher break counts that may include non-meaningful movements.}
 }
 \value{
 A data frame with columns:
@@ -34,10 +51,6 @@ A data frame with columns:
 }
 \description{
 Identifies continuous periods of sedentary behavior from intensity classifications.
-}
-\examples{
-intensity <- factor(c(rep("sedentary", 30), rep("light", 10), rep("sedentary", 20)),
-                    levels = c("sedentary", "light", "moderate", "vigorous", "very_vigorous"))
-timestamps <- seq(as.POSIXct("2024-01-01 08:00:00"), by = "1 min", length.out = 60)
-bouts <- detect.sedentary.bouts(intensity, timestamps)
+Uses gap bridging methodology from GGIR and literature (Chastin 2015, Winkler 2012)
+to filter out brief movements/fidgeting that don't represent true breaks.
 }

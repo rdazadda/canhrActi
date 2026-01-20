@@ -4,18 +4,34 @@
 \alias{plot.canhrActi_fragmentation}
 \title{Plot Sedentary Fragmentation}
 \usage{
-\method{plot}{canhrActi_fragmentation}(x, type = "distribution", ...)
+\method{plot}{canhrActi_fragmentation}(
+  x,
+  type = "distribution",
+  show_metrics = TRUE,
+  show_powerlaw = TRUE,
+  show_reference = TRUE,
+  colorblind_safe = FALSE,
+  ...
+)
 }
 \arguments{
 \item{x}{A canhrActi_fragmentation object}
 
-\item{type}{Type of plot: "distribution" (default), "accumulation", or "timeline"}
+\item{type}{Type of plot: "distribution" (default), "survival", "accumulation", "histogram"}
 
-\item{...}{Additional arguments passed to plotting functions}
+\item{show_metrics}{Logical; whether to display metrics on the plot (default TRUE)}
+
+\item{show_powerlaw}{Logical; whether to show power-law fit line (default TRUE)}
+
+\item{show_reference}{Logical; whether to show reference lines (default TRUE)}
+
+\item{colorblind_safe}{Logical; whether to use colorblind-friendly palette (default FALSE)}
+
+\item{...}{Additional arguments}
 }
 \value{
 A ggplot2 object
 }
 \description{
-Creates visualizations of sedentary bout patterns.
+Creates publication-quality visualizations of sedentary bout patterns.
 }

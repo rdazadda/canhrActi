@@ -4,21 +4,35 @@
 \alias{theme_canhrActi}
 \title{canhrActi ggplot2 Theme}
 \usage{
-theme_canhrActi(base_size = 12, base_family = "", grid = TRUE)
+theme_canhrActi(base_size = 14, base_family = "", grid = TRUE, dark = FALSE)
 }
 \arguments{
-\item{base_size}{Numeric. Base font size in points (default: 12)}
+\item{base_size}{Numeric. Base font size in points (default: 14)}
 
 \item{base_family}{Character. Base font family (default: "")}
 
 \item{grid}{Logical. Show major grid lines? (default: TRUE)}
+
+\item{dark}{Logical. Use dark mode? (default: FALSE)}
 }
 \value{
 A ggplot2 theme object
 }
 \description{
 A clean, professional theme for canhrActi visualizations.
-Publication-ready with excellent readability.
+Publication-ready with excellent readability and consistent with
+the dashboard's 6-size typography system.
+}
+\details{
+Typography sizes (matching CSS):
+\itemize{
+\item Caption/footnotes: 11px (0.79x base)
+\item Labels/metadata: 12px (0.86x base)
+\item Body text: 14px (base_size)
+\item Emphasis/titles: 16px (1.14x base)
+\item Section headings: 20px (1.43x base)
+\item Page titles: 24px (1.71x base)
+}
 }
 \examples{
 \dontrun{

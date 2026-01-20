@@ -18,23 +18,27 @@ List with IS and IV values
 }
 \description{
 IS measures consistency of activity patterns across days.
-IV measures fragmentation of the activity rhythm.
+IV measures fragmentation of the activity rhythm within days.
 }
 \details{
-IS Formula: IS = n * sum((Xh - X_mean)^2) / (p * sum((Xi - X_mean)^2))
-IV Formula: IV = n * sum((Xi - Xi-1)^2) / ((n-1) * sum((Xi - X_mean)^2))
+\strong{IS Formula (Witting et al., 1990):}
+IS = (n * sum((Xh - Xmean)^2)) / (p * sum((Xi - Xmean)^2))
 
 Where:
 \itemize{
-\item n = total number of data points
-\item p = number of data points per day (typically 24 for hourly data)
+\item n = total number of hourly data points
+\item p = number of hours per day (24)
 \item Xh = mean activity for hour h across all days
-\item Xi = activity at data point i
-\item X_mean = overall mean activity
+\item Xmean = overall mean activity
 }
+
+\strong{IV Formula (Witting et al., 1990):}
+IV = (n * sum((Xi - Xi-1)^2)) / ((n-1) * sum((Xi - Xmean)^2))
 }
 \references{
 Witting W, et al. (1990). Alterations in the circadian rest-activity rhythm
 in aging and Alzheimer's disease. Biol Psychiatry, 27(6):563-572.
+
+van Someren EJ, et al. (1999). Chronobiol Int, 16(4):505-518.
 }
 \keyword{internal}

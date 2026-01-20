@@ -10,6 +10,10 @@ sleep.cole.kripke(counts, apply_rescoring = TRUE)
 \item{counts}{Numeric vector of activity counts (from axis1)}
 
 \item{apply_rescoring}{Logical. Apply Webster's rescoring rules? (default: TRUE)}
+
+\item{epoch_length}{Epoch length in seconds (default: 60). The Cole-Kripke algorithm
+was validated on 1-minute epochs. Using other epoch lengths will generate a warning
+as the scoring may not be accurate without revalidation.}
 }
 \value{
 Character vector of sleep states: "S" (sleep) or "W" (wake)

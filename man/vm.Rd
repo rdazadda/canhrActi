@@ -17,5 +17,5 @@ vm(counts_x, counts_y, counts_z)
 Vector magnitude counts
 }
 \description{
-Vector Magnitude
+Calculate vector magnitude from triaxial activity counts.
 }

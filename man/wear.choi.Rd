@@ -33,7 +33,7 @@ Logical vector where TRUE indicates wear time, FALSE indicates non-wear
 Choi et al. (2011) algorithm with upstream/downstream window validation.
 The Choi algorithm extends Troiano by requiring that any spike of activity
 within a non-wear period must be surrounded by consecutive zero-count windows
-of at least 30 minutes on at least one side.
+of at least 30 minutes on BOTH sides (upstream AND downstream).
 }
 \references{
 Choi L, et al. (2011). Validation of accelerometer wear and nonwear time

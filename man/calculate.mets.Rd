@@ -10,6 +10,7 @@ calculate.mets(
     "hendelman.lifestyle", "swartz", "leenders", "yngve.treadmill", "yngve.overground",
     "brooks.overground", "brooks.bm", "freedson.children"),
   subject_info = NULL,
+  epoch_length = 60,
   verbose = FALSE
 )
 }
@@ -19,6 +20,9 @@ calculate.mets(
 \item{algorithm}{Character. METs prediction algorithm (see Details)}
 
 \item{subject_info}{List with age and body_mass (required for some algorithms)}
+
+\item{epoch_length}{Epoch length in seconds (default: 60). Counts are automatically
+scaled to CPM (counts per minute) if epoch_length != 60.}
 
 \item{verbose}{Logical. Print processing messages? (default: FALSE)}
 }

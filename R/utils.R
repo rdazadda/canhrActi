@@ -1,3 +1,45 @@
+# Input Validation Helpers
+
+#' Validate and Clean Activity Counts
+#' @param counts Numeric vector
+#' @param name Name for error messages (default: "counts")
+#' @param replace_na Replace NA with 0? (default: TRUE)
+#' @return Cleaned numeric vector
+#' @keywords internal
+validate_counts <- function(counts, name = "counts", replace_na = TRUE) {
+  if (length(counts) == 0) stop(name, " vector is empty")
+  if (replace_na && any(is.na(counts))) {
+    n_na <- sum(is.na(counts))
+    warning(n_na, " NA values in ", name, ". Replacing with 0.")
+    counts[is.na(counts)] <- 0
+  }
+  counts
+}
+
+#' Validate Vector Lengths Match
+#' @param ... Named vectors to check
+#' @keywords internal
+validate_lengths <- function(...) {
+  args <- list(...)
+  lens <- sapply(args, length)
+  if (length(unique(lens)) > 1) {
+    msg <- paste(names(args), "=", lens, collapse = ", ")
+    stop("Length mismatch: ", msg)
+  }
+  invisible(TRUE)
+}
+
+#' Validate Timestamps
+#' @param ts Timestamps to validate
+#' @keywords internal
+validate_timestamps <- function(ts) {
+  if (!inherits(ts, "POSIXct") && !inherits(ts, "POSIXt")) {
+    stop("timestamps must be POSIXct class")
+  }
+  invisible(TRUE)
+}
+
+
 #' Generate Synthetic Accelerometer Data
 #'
 #' @param duration.hours Numeric. Duration of data in hours (default: 24)
@@ -125,9 +167,10 @@ quality <- function(accel.data) {
 #' @param timestamps Vector of POSIXct timestamps
 #' @param wear_time Logical vector indicating wear time
 #' @param min.wear.hours Minimum hours of wear time for a valid day (default: 10)
+#' @param epoch_length Numeric. Epoch length in seconds (default: 60)
 #' @return List with valid.days, daily.summary, n.valid.days, and valid.day.index
 #' @export
-valid.days <- function(timestamps, wear_time, min.wear.hours = 10) {
+valid.days <- function(timestamps, wear_time, min.wear.hours = 10, epoch_length = 60) {
 
   if (length(timestamps) != length(wear_time)) {
     stop("timestamps and wear_time must have the same length")
@@ -137,6 +180,9 @@ valid.days <- function(timestamps, wear_time, min.wear.hours = 10) {
     stop("timestamps must be POSIXct or POSIXt class")
   }
 
+  # Calculate minutes per epoch based on epoch_length
+ minutes_per_epoch <- epoch_length / 60
+
   dates <- as.Date(timestamps)
   unique.dates <- unique(dates)
 
@@ -144,7 +190,7 @@ valid.days <- function(timestamps, wear_time, min.wear.hours = 10) {
     date = character(),
     total.epochs = integer(),
     wear.epochs = integer(),
-    wear.minutes = integer(),
+    wear.minutes = numeric(),
     wear.hours = numeric(),
     is.valid = logical(),
     stringsAsFactors = FALSE
@@ -156,7 +202,7 @@ valid.days <- function(timestamps, wear_time, min.wear.hours = 10) {
 
     total.epochs <- sum(day_idx)
     wear.epochs <- sum(wear_time[day_idx])
-    wear.minutes <- wear.epochs
+    wear.minutes <- wear.epochs * minutes_per_epoch
     wear.hours <- wear.minutes / 60
     is.valid <- wear.hours >= min.wear.hours
 

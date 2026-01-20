@@ -4,16 +4,40 @@
 \alias{agd.counts}
 \title{Extract Counts from .agd Data}
 \usage{
-agd.counts(agd_data, convert.timestamps = TRUE)
+agd.counts(agd_data, convert.timestamps = TRUE, include_inclinometer = TRUE)
 }
 \arguments{
 \item{agd_data}{List returned from read.agd()}
 
 \item{convert.timestamps}{Logical. Convert ActiGraph timestamps to POSIXct (default: TRUE)}
+
+\item{include_inclinometer}{Logical. Include inclinometer data if available? (default: TRUE)}
 }
 \value{
-Data frame with counts per minute and timestamps
+Data frame with counts per minute, timestamps, and optional inclinometer data:
+\itemize{
+\item \code{timestamp} - POSIXct timestamp (if convert.timestamps = TRUE)
+\item \code{axis1} - Vertical axis counts (Y-axis)
+\item \code{axis2} - Horizontal axis counts (X-axis)
+\item \code{axis3} - Anterior-posterior axis counts (Z-axis)
+\item \code{steps} - Step counts
+\item \code{lux} - Light intensity (if available)
+\item \code{inclineOff} - Off-body indicator (if available)
+\item \code{inclineStanding} - Standing indicator (if available)
+\item \code{inclineSitting} - Sitting indicator (if available)
+\item \code{inclineLying} - Lying indicator (if available)
+}
 }
 \description{
-Extract Counts from .agd Data
+Extracts activity counts, timestamps, steps, and inclinometer data (if available)
+from AGD file data. Inclinometer data can be used to enhance sleep detection
+for AGD files that lack raw acceleration.
+}
+\details{
+Inclinometer data is particularly useful for sleep detection in AGD files:
+\itemize{
+\item \code{inclineLying = 1} indicates the device detected lying posture
+\item Combined with low activity (Cole-Kripke sleep), this provides better specificity
+\item Not all AGD files contain inclinometer data (depends on ActiLife processing settings)
+}
 }

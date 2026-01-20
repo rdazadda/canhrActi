@@ -4,18 +4,18 @@
 \alias{plot.canhrActi_circadian}
 \title{Plot Circadian Rhythm Profile}
 \usage{
-\method{plot}{canhrActi_circadian}(x, show_cosinor = TRUE, ...)
+\method{plot}{canhrActi_circadian}(x, type = "profile", ...)
 }
 \arguments{
 \item{x}{canhrActi_circadian object from circadian.rhythm()}
 
-\item{show_cosinor}{Logical. Overlay cosinor fit? (default: TRUE)}
+\item{type}{Type of plot: "profile" (default), "daily", or "all"}
 
-\item{...}{Additional arguments passed to plot functions}
+\item{...}{Additional arguments passed to plotting functions}
 }
 \value{
-ggplot object
+ggplot object (or list of ggplot objects if type="all")
 }
 \description{
-Creates a 24-hour activity profile plot with L5/M10 windows highlighted.
+Creates publication-quality visualizations of circadian rhythm analysis.
 }

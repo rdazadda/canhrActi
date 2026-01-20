@@ -35,8 +35,8 @@
 .read.agd.participant.metadata <- function(file_path) {
   tryCatch({
     con <- DBI::dbConnect(RSQLite::SQLite(), file_path)
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
     settings <- DBI::dbReadTable(con, "settings")
-    DBI::dbDisconnect(con)
 
     # Helper to safely get settings
     get_setting <- function(name, default = "") {
@@ -138,7 +138,7 @@
 
     # Get algorithm names
     sleep.algorithm <- params$sleep_algorithm
-    algorithm.display <- if (sleep.algorithm == "cole.kripke") {
+    algorithm.display <- if (sleep.algorithm == "cole_kripke") {
       "Cole-Kripke"
     } else if (sleep.algorithm == "sadeh") {
       "Sadeh"
@@ -238,7 +238,7 @@
 
     # Get algorithm names
     sleep.algorithm <- params$sleep_algorithm
-    algorithm.display <- if (sleep.algorithm == "cole.kripke") {
+    algorithm.display <- if (sleep.algorithm == "cole_kripke") {
       "Cole-Kripke"
     } else if (sleep.algorithm == "sadeh") {
       "Sadeh"
@@ -382,6 +382,13 @@
   # Convert back to hours and minutes
   avg.hour <- floor(avg.minutes / 60) %% 24
   avg.min <- round(avg.minutes %% 60)
+
+  #  Handle edge case where round() returns 60
+  # This happens when avg.minutes %% 60 is >= 59.5
+  if (avg.min >= 60) {
+    avg.min <- 0
+    avg.hour <- (avg.hour + 1) %% 24
+  }
 
   # Format as H:MM AM/PM
   if (avg.hour == 0) {

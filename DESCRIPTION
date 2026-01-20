@@ -10,36 +10,34 @@ Authors@R: c(
            role = "aut"),
     person("KyungSook", "Lee",
            email = "klee98@alaska.edu",
-           role = "aut")
-    )
-Author: Raymond Dacosta Azadda [aut, cre],
-    Andrew Grogan-Kaylor [aut],
-    KyungSook Lee [aut]
+           role = "aut"))
+Author: Raymond Dacosta Azadda [aut, cre], Andrew Grogan-Kaylor [aut], KyungSook Lee [aut]
 Maintainer: Raymond Dacosta Azadda <rdazadda@alaska.edu>
 Description: Comprehensive accelerometer data analysis suite developed by the Center
     for Alaska Native Health Research (CANHR). Implements scientifically validated
-    algorithms including the official ActiGraph activity counts algorithm (Neishabouri
-    et al., 2022), Choi (2011) and Troiano (2007) wear time detection, Freedson (1998)
+    algorithms including Choi (2011) and Troiano (2007) wear time detection, Freedson (1998)
     intensity cut points, Cole-Kripke and Sadeh sleep scoring, and 12 METs prediction
     algorithms. Features unique wake period inversion (sleepwaker methodology) for
     separating sleep from waking sedentary behavior. Includes circadian rhythm analysis
-    (L5, M10, IS, IV, cosinor), sedentary fragmentation metrics, and auto-calibration
-    for raw data. Supports ActiGraph (.agd, .gt3x), GENEActiv (.bin), Axivity (.cwa),
-    and generic CSV files. Produces results compatible with ActiLife software.
+    (L5, M10, IS, IV, RA, phi) and sedentary fragmentation metrics. Supports ActiGraph
+    AGD files with pre-processed activity counts. Produces results compatible with
+    ActiLife software.
 License: MIT + file LICENSE
 URL: https://github.com/rdazadda/canhrActi
 BugReports: https://github.com/rdazadda/canhrActi/issues
 Depends: R (>= 4.1)
 Imports:
-    gsignal,
     stats,
     utils,
     tools,
     DBI,
     RSQLite,
-    read.gt3x,
-    agcounts,
-    ggplot2
+    ggplot2,
+    scales,
+    tidyr,
+    Rcpp (>= 1.0.0)
+LinkingTo: Rcpp, RcppArmadillo
+SystemRequirements: C++17
 Suggests:
     knitr,
     rmarkdown,
@@ -47,15 +45,18 @@ Suggests:
     patchwork,
     plotly,
     gridExtra,
-    GENEAread,
-    GGIRread,
-    read.cwa,
+    cowplot,
+    ggridges,
     shiny (>= 1.7.0),
     bslib (>= 0.5.0),
     bsicons,
     DT,
     shinyjs,
-    shinycssloaders
+    shinycssloaders,
+    shinydashboard,
+    openxlsx,
+    future,
+    promises
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3

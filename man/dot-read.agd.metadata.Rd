@@ -10,7 +10,7 @@
 \item{filepath}{Path to .agd file}
 }
 \value{
-List with file info
+List with file info including tables, settings, and row counts
 }
 \description{
 Quickly reads just the metadata/settings from an AGD file without loading data.

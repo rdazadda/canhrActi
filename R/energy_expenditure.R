@@ -152,17 +152,22 @@ ee.freedson <- function(counts_data, body_mass, epoch_length) {
 
 
 ee.freedson.combination <- function(counts_data, body_mass, epoch_length) {
-  cpm <- counts_data$axis1
-  scale <- 1  # default
+  # Freedson Combination (1998) - uses Freedson equation for MVPA, Williams for light
+  # Reference: Freedson PS et al. (1998). Med Sci Sports Exerc. 30(5):777-781
+  #
+  # For CPM > 1951: kcal/min = 0.00094*CPM + 0.1346*mass - 7.37418
+  # For CPM <= 1951: kcal/min = 0.0000191*CPM*mass (Williams Work-Energy)
 
+  cpm <- counts_data$axis1
+
+  # Convert to counts per minute if epoch != 60 seconds
   if (epoch_length != 60) {
-    scale <- 60 / epoch_length
-    cpm <- cpm * scale
+    cpm <- cpm * (60 / epoch_length)
   }
 
-  # Vectorized calculation
+  # Vectorized calculation - cpm is now in CPM (counts per minute)
   kcal_per_min <- ifelse(cpm > 1951,
-                          scale * (0.00094 * cpm + (0.1346 * body_mass - 7.37418)),
+                          (0.00094 * cpm) + (0.1346 * body_mass) - 7.37418,
                           cpm * 0.0000191 * body_mass)
 
   kcal_per_min[kcal_per_min < 0] <- 0
@@ -180,8 +185,9 @@ ee.freedson.vm3 <- function(counts_data, body_mass, epoch_length) {
     vmcpm <- vm * scale
   }
 
+  # Use vmcpm (scaled to CPM) for the calculation, not raw vm
   kcal_per_min <- ifelse(vmcpm > 2453,
-                          0.001064 * vm + 0.087512 * body_mass - 5.500229,
+                          0.001064 * vmcpm + 0.087512 * body_mass - 5.500229,
                           0)
 
   kcal_per_min[kcal_per_min < 0] <- 0
@@ -201,9 +207,9 @@ ee.freedson.vm3.combination <- function(counts_data, body_mass, epoch_length) {
     cpm <- cpm * scale
   }
 
-  # Vectorized calculation
+  # Vectorized calculation - use vmcpm (scaled to CPM) for the calculation
   kcal_per_min <- ifelse(vmcpm > 2453,
-                          0.001064 * vm + 0.087512 * body_mass - 5.500229,
+                          0.001064 * vmcpm + 0.087512 * body_mass - 5.500229,
                           cpm * 0.0000191 * body_mass)
 
   kcal_per_min[kcal_per_min < 0] <- 0
@@ -232,7 +238,12 @@ summarize.energy.expenditure <- function(kcal_per_epoch, intensity, wear_time) {
   ee_summary <- aggregate(kcal_wear ~ intensity_wear, FUN = sum, na.rm = TRUE)
   names(ee_summary) <- c("intensity", "total_kcal")
 
-  ee_summary$percent_kcal <- round(100 * ee_summary$total_kcal / total_kcal, 2)
+  # Guard against division by zero
+  ee_summary$percent_kcal <- if (total_kcal > 0) {
+    round(100 * ee_summary$total_kcal / total_kcal, 2)
+  } else {
+    rep(NA_real_, nrow(ee_summary))
+  }
 
   intensity_order <- c("sedentary", "light", "moderate", "vigorous", "very_vigorous")
   ee_summary$intensity <- factor(ee_summary$intensity, levels = intensity_order)

@@ -4,16 +4,18 @@
 \alias{intensity}
 \title{Summarize Activity Intensity}
 \usage{
-intensity(intensity_levels, wear_time = NULL)
+intensity(intensity_levels, wear_time = NULL, epoch_seconds = 60)
 }
 \arguments{
-\item{intensity_levels}{Factor vector from freedson}
+\item{intensity_levels}{Factor vector from any cut-point function}
 
 \item{wear_time}{Logical vector indicating wear time (optional)}
+
+\item{epoch_seconds}{Epoch length in seconds (default: 60)}
 }
 \value{
 Data frame with minutes and percentage in each category
 }
 \description{
-Summarize Activity Intensity
+Calculate time spent in each intensity category.
 }

@@ -5,6 +5,8 @@
 #' @param counts_data Data frame from agd.counts() with axis1, axis2, axis3, timestamp
 #' @param algorithm Character. METs prediction algorithm (see Details)
 #' @param subject_info List with age and body_mass (required for some algorithms)
+#' @param epoch_length Epoch length in seconds (default: 60). Counts are automatically
+#'   scaled to CPM (counts per minute) if epoch_length != 60.
 #' @param verbose Logical. Print processing messages? (default: FALSE)
 #'
 #' @return Numeric vector of METs values for each epoch
@@ -36,6 +38,7 @@ calculate.mets <- function(counts_data,
                                        "leenders", "yngve.treadmill", "yngve.overground",
                                        "brooks.overground", "brooks.bm", "freedson.children"),
                            subject_info = NULL,
+                           epoch_length = 60,
                            verbose = FALSE) {
 
   algorithm <- match.arg(algorithm)
@@ -53,6 +56,21 @@ calculate.mets <- function(counts_data,
 
   if (nrow(counts_data) == 0) {
     stop("counts_data is empty (0 rows)")
+  }
+
+  # Scale counts to CPM (counts per minute) if epoch_length != 60
+  # Most METs algorithms were validated using 1-minute (60-second) epochs
+  scale_factor <- 60 / epoch_length
+  if (scale_factor != 1) {
+    counts_data <- data.frame(
+      axis1 = counts_data$axis1 * scale_factor,
+      axis2 = counts_data$axis2 * scale_factor,
+      axis3 = counts_data$axis3 * scale_factor,
+      timestamp = counts_data$timestamp
+    )
+    if (verbose) {
+      cat("Scaling counts to CPM (factor:", scale_factor, ")\n")
+    }
   }
 
   if (verbose) {
@@ -84,8 +102,24 @@ calculate.mets <- function(counts_data,
 
 
 mets.freedson.vm3 <- function(counts_data) {
+  # Freedson VM3 METs equation from Sasaki et al. (2011)
+  # Reference: Sasaki JE, John D, Freedson PS. Validation and comparison of
+  # ActiGraph activity monitors. J Sci Med Sport. 2011;14(5):411-416.
+  #
+  # This uses the SIMPLIFIED equation (no body mass):
+  #   METs = 0.001064 × VM CPM + 0.6569
+  #
+  # The full equation from Sasaki 2011 includes body mass:
+  #   METs = 0.001064 × VM + 0.087512 × BM - 5.500229
+  #
+  # Design decision: We use the simplified form for:
+  # 1. Compatibility with ActiLife software output
+  # 2. Applicability when body mass is not available
+  # 3. Consistency with most published accelerometry studies
+  #
+  # Use freedson.adult or brooks.bm algorithms for body-mass adjusted METs
   vm <- vm(counts_data$axis1, counts_data$axis2, counts_data$axis3)
-  mets <- 0.000863 * vm + 0.668876
+  mets <- 0.001064 * vm + 0.6569
   return(mets)
 }
 

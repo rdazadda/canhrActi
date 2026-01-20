@@ -2,51 +2,37 @@
 % Please edit documentation in R/read_devices.R
 \name{read.accelerometer}
 \alias{read.accelerometer}
-\title{Read Multi-Brand Accelerometer Data}
+\title{Read ActiGraph Accelerometer Data}
 \usage{
-read.accelerometer(filepath, epoch_length = 60, verbose = TRUE, ...)
+read.accelerometer(filepath, verbose = TRUE, ...)
 }
 \arguments{
-\item{filepath}{Path to accelerometer data file}
-
-\item{epoch_length}{Epoch length in seconds for count calculation (default: 60)}
+\item{filepath}{Path to ActiGraph AGD file}
 
 \item{verbose}{Logical. Print progress messages? (default: TRUE)}
 
-\item{...}{Additional arguments passed to device-specific readers}
+\item{...}{Additional arguments (unused, for compatibility)}
 }
 \value{
 List with standardized structure:
 \itemize{
 \item \code{data} - Data frame with timestamp, axis1, axis2, axis3, steps
 \item \code{settings} - Device and subject metadata
-\item \code{device_type} - Character. Device brand detected
-\item \code{file_type} - Character. File format
+\item \code{device_type} - Character. Device brand ("ActiGraph")
+\item \code{file_type} - Character. File format ("agd")
 }
 }
 \description{
-Unified function to read accelerometer data from multiple device brands.
-Automatically detects file format and dispatches to appropriate reader.
+Reads accelerometer data from ActiGraph AGD files (pre-processed epoch data).
 }
 \details{
-\strong{Supported Formats:}
-\itemize{
-\item \strong{ActiGraph}: .agd (processed), .gt3x (raw)
-\item \strong{GENEActiv}: .bin (raw)
-\item \strong{Axivity}: .cwa (raw)
-\item \strong{Generic CSV}: .csv (with x, y, z columns)
-}
-
-All raw formats are converted to activity counts using the ActiGraph
-algorithm (Neishabouri et al., 2022) for consistent analysis.
+This function reads ActiGraph AGD files which contain pre-processed activity
+counts from ActiLife software.
 }
 \examples{
 \dontrun{
-# Read any supported file
+# Read AGD file
 data <- read.accelerometer("participant.agd")
-data <- read.accelerometer("participant.gt3x")
-data <- read.accelerometer("participant.bin")  # GENEActiv
-data <- read.accelerometer("participant.cwa")  # Axivity
 
 # Access standardized data
 counts <- data$data

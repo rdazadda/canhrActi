@@ -17,4 +17,7 @@ Numeric. Relative amplitude (0-1)
 \description{
 RA = (M10 - L5) / (M10 + L5)
 }
+\references{
+van Someren EJ, et al. (1999). Chronobiol Int, 16(4):505-518.
+}
 \keyword{internal}

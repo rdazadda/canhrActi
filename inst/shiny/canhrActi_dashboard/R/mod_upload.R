@@ -76,10 +76,10 @@ mod_upload_ui <- function(id) {
           )
         ),
 
-        # Demo button - prominent for first-time users
+        # Example data button
         actionButton(
           ns("demo_btn"),
-          span(icon("play-circle"), "Try Demo Data"),
+          span(icon("database"), "Load Example Data"),
           class = "btn-upload-action btn-demo"
         )
       ),
@@ -463,74 +463,43 @@ mod_upload_server <- function(id, shared) {
       showNotification(paste(loaded, "of", n_files, "files loaded from directory"), type = "message")
     })
 
-    # Demo files
+    # Load example AGD files
     observeEvent(input$demo_btn, {
-      withProgress(message = "Generating demo data...", value = 0, {
-        for (i in 1:3) {
-          setProgress(value = i / 3, detail = paste("Demo subject", i))
+      withProgress(message = "Loading example data...", value = 0, {
+        example_files <- example_agd("list")
+        n_files <- length(example_files)
 
-          n <- 4320 + sample(-500:500, 1)
-          start_date <- as.POSIXct("2024-01-01 00:00:00") + (i - 1) * 86400 * 3
-          ts <- seq(from = start_date, by = 60, length.out = n)
-          hour <- as.numeric(format(ts, "%H"))
+        for (i in seq_along(example_files)) {
+          setProgress(value = i / n_files, detail = example_files[i])
 
-          base_activity <- 400 + i * 50
-          base <- ifelse(hour >= 7 & hour <= 22, base_activity, 30 + i * 10)
+          filepath <- example_agd(i)
+          agd_result <- tryCatch({
+            read.agd(filepath, verbose = FALSE)
+          }, error = function(e) {
+            showNotification(paste("Error loading:", example_files[i]), type = "error")
+            return(NULL)
+          })
 
-          a1 <- pmax(0, round(base + rnorm(n, 0, 200)))
-          a2 <- pmax(0, round(base * 0.8 + rnorm(n, 0, 150)))
-          a3 <- pmax(0, round(base * 0.6 + rnorm(n, 0, 100)))
+          if (is.null(agd_result)) next
 
-          demo_data <- data.frame(
-            timestamp = ts,
-            axis1 = a1,
-            axis2 = a2,
-            axis3 = a3,
-            vector_magnitude = round(sqrt(a1^2 + a2^2 + a3^2), 1),
-            steps = rpois(n, ifelse(hour >= 7 & hour <= 22, 5 + i, 0.5))
-          )
+          counts_data <- agd.counts(agd_result, convert.timestamps = TRUE)
+          subject_info <- extract.subject.info(agd_result$settings)
+          device_info <- .extract.device.info(agd_result$settings)
+          epoch_length <- .get.epoch.length(agd_result$settings)
 
           file_id <- paste0("file_", local$next_id)
 
           shared$files[[file_id]] <- list(
             id = file_id,
-            name = paste0("demo_subject_", i, ".agd"),
-            original_path = NA,
-            data = demo_data,
-            settings = NULL,
-            device_info = list(
-              device_type = "Demo Device",
-              serial_number = paste0("DEMO", sprintf("%05d", i)),
-              firmware = "1.0.0",
-              battery = "4.2V",
-              filter = "Normal",
-              software = "canhrActi Demo",
-              software_version = as.character(packageVersion("canhrActi")),
-              epoch_length = 60,
-              start_datetime = NA,
-              stop_datetime = NA,
-              download_datetime = NA,
-              sample_rate = "30",
-              acceleration_scale = NA,
-              acceleration_min = NA,
-              acceleration_max = NA,
-              modes = "Axis1, Axis2, Axis3, Steps"
-            ),
-            subject_info = list(
-              id = paste0("DEMO_", sprintf("%03d", i)),
-              sex = if (i %% 2 == 1) "Male" else "Female",
-              age = 25 + i * 5,
-              date_of_birth = NA,
-              height = 165 + i * 5,
-              mass = 65 + i * 5,
-              limb = "Wrist",
-              side = "Right",
-              dominance = "Dominant",
-              race = NA
-            ),
-            epoch_length = 60,
-            duration_hrs = n / 60,
-            n_epochs = n
+            name = basename(filepath),
+            original_path = filepath,
+            data = counts_data,
+            settings = agd_result$settings,
+            device_info = device_info,
+            subject_info = subject_info,
+            epoch_length = epoch_length,
+            duration_hrs = nrow(counts_data) * epoch_length / 3600,
+            n_epochs = nrow(counts_data)
           )
 
           local$next_id <- local$next_id + 1
@@ -544,7 +513,7 @@ mod_upload_server <- function(id, shared) {
         shared$data_loaded <- TRUE
       })
 
-      showNotification("3 demo files added!", type = "message")
+      showNotification(paste(length(example_agd("list")), "example files loaded!"), type = "message")
     })
 
     # Clear all files

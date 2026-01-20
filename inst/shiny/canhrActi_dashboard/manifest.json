@@ -2460,6 +2460,12 @@
     "app.R": {
       "checksum": "e9c85e69a4305a0c275746e9ee5bd649"
     },
+    "data/MOS2E39230594 (2025-10-14)60sec.agd": {
+      "checksum": "d75816b42f64a908c48fed831fabe6d9"
+    },
+    "data/MOS2E3923063660sec.agd": {
+      "checksum": "ff3fe6a64969773dd282a4627a7ddba6"
+    },
     "DESCRIPTION": {
       "checksum": "f60f27f6d658f1da412c3d0224857fa9"
     },
@@ -2485,7 +2491,7 @@
       "checksum": "a5d7e760ce7f442f03b8c388e1728cce"
     },
     "R/mod_upload.R": {
-      "checksum": "eccae2c644d03de929adcd521b9c327d"
+      "checksum": "cc4fba83d7851eac9a46b87a0703da36"
     },
     "R/mod_wear_time.R": {
       "checksum": "d6cb72cbe83c0d6fc7d196c48180d167"

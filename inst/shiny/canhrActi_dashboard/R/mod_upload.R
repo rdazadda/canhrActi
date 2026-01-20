@@ -466,15 +466,16 @@ mod_upload_server <- function(id, shared) {
     # Load example AGD files
     observeEvent(input$demo_btn, {
       withProgress(message = "Loading example data...", value = 0, {
-        example_files <- example_agd("list")
+        data_dir <- "data"
+        example_files <- list.files(data_dir, pattern = "\\.agd$", full.names = FALSE)
         n_files <- length(example_files)
         loaded <- 0
 
         for (i in seq_along(example_files)) {
           setProgress(value = i / n_files, detail = example_files[i])
 
-          filepath <- example_agd(i)
-          result <- load_single_file(filepath, basename(filepath))
+          filepath <- file.path(data_dir, example_files[i])
+          result <- load_single_file(filepath, example_files[i])
 
           if (!result$success) {
             showNotification(paste("Error:", example_files[i]), type = "error")
@@ -485,7 +486,7 @@ mod_upload_server <- function(id, shared) {
 
           shared$files[[file_id]] <- list(
             id = file_id,
-            name = result$name %||% basename(filepath),
+            name = result$name %||% example_files[i],
             original_path = filepath,
             data = result$data,
             settings = result$settings,
@@ -508,7 +509,7 @@ mod_upload_server <- function(id, shared) {
         shared$data_loaded <- TRUE
       })
 
-      showNotification(paste(length(example_agd("list")), "example files loaded!"), type = "message")
+      showNotification(paste(loaded, "example files loaded!"), type = "message")
     })
 
     # Clear all files

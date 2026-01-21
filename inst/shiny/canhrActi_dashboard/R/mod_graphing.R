@@ -15,19 +15,29 @@ mod_graphing_ui <- function(id) {
       status_output_id = ns("data_status")
     ),
 
-    # Quick Charts Bar
-    div(class = "quick-charts-bar",
-      span(class = "quick-charts-label", icon("bolt"), "Quick Charts:"),
-      actionButton(ns("quick_timeline"), span(icon("chart-line"), "Activity Timeline"),
+    # Quick Charts Bar with Generate button on right
+    div(style = "display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;",
+      # Quick charts on left
+      span(style = "font-weight: 500; color: #64748b; margin-right: 4px;", "Quick Charts:"),
+      actionButton(ns("quick_timeline"), "Activity Timeline",
                    class = "quick-chart-btn"),
-      actionButton(ns("quick_hypnogram"), span(icon("bed"), "Sleep Hypnogram"),
+      actionButton(ns("quick_hypnogram"), "Sleep Hypnogram",
                    class = "quick-chart-btn"),
-      actionButton(ns("quick_circadian"), span(icon("sun"), "Circadian Profile"),
+      actionButton(ns("quick_circadian"), "Circadian Profile",
                    class = "quick-chart-btn"),
-      actionButton(ns("quick_heatmap"), span(icon("th"), "Activity Heatmap"),
+      actionButton(ns("quick_heatmap"), "Activity Heatmap",
                    class = "quick-chart-btn"),
-      actionButton(ns("quick_intensity"), span(icon("chart-pie"), "Intensity Breakdown"),
-                   class = "quick-chart-btn")
+      actionButton(ns("quick_intensity"), "Intensity Breakdown",
+                   class = "quick-chart-btn"),
+
+      # Spacer to push Generate/Reset to right
+      div(style = "flex: 1;"),
+
+      # Generate and Reset on right
+      actionButton(ns("generate_btn"), span(icon("play"), "Generate Chart"),
+                   class = "btn-primary"),
+      actionButton(ns("clear_chart"), span(icon("redo"), "Reset"),
+                   class = "btn-default")
     ),
 
     fluidRow(
@@ -138,12 +148,6 @@ mod_graphing_ui <- function(id) {
             )
           ),
 
-          # Generate Button
-          div(class = "p-4",
-            actionButton(ns("generate_btn"),
-                         span(icon("magic"), " Generate Chart"),
-                         class = "btn-primary btn-block btn-lg")
-          )
         )
       )
     ),
@@ -242,30 +246,66 @@ mod_graphing_server <- function(id, shared) {
       }
     })
 
-    # Update file selection
+    # Files count for metrics strip
+    output$files_count <- renderText({
+      as.character(shared$file_count)
+    })
+
+    # Clear chart handler
+    observeEvent(input$clear_chart, {
+      current_plot(NULL)
+      showNotification("Chart cleared", type = "message", duration = 2)
+    })
+
+    # Charts that support "All Participants" aggregation
+    all_supported_charts <- c("intensity_pie", "polar", "daily_bars", "weekend_weekday")
+
+    # Update file selection with "All Participants" option
     observe({
       req(shared$file_count > 0)
-      choices <- setNames(names(shared$files),
+      file_choices <- setNames(names(shared$files),
                           sapply(shared$files, function(f) f$subject_info$id %||% f$name))
+      # Add "All Participants" at the beginning
+      choices <- c("All Participants" = "all", file_choices)
       updateSelectInput(session, "selected_file", choices = choices)
     })
 
     # File info compact display
     output$file_info_compact <- renderUI({
-      req(input$selected_file, shared$files[[input$selected_file]])
-      f <- shared$files[[input$selected_file]]
+      req(input$selected_file)
+      sel <- input$selected_file
 
-      div(class = "file-info-box",
-        tags$table(class = "info-table text-sm",
-          tags$tr(tags$td("Subject"), tags$td(f$subject_info$id %||% "N/A")),
-          tags$tr(tags$td("Epoch"), tags$td(paste(f$epoch_length, "sec"))),
-          tags$tr(tags$td("Days"), tags$td({
-            if ("timestamp" %in% names(f$data)) {
-              length(unique(as.Date(f$data$timestamp)))
-            } else "N/A"
-          }))
+      if (sel == "all") {
+        # Show aggregate info for all participants
+        total_days <- sum(sapply(shared$files, function(f) {
+          if ("timestamp" %in% names(f$data)) {
+            length(unique(as.Date(f$data$timestamp)))
+          } else 0
+        }))
+
+        div(class = "file-info-box",
+          tags$table(class = "info-table text-sm",
+            tags$tr(tags$td("Participants"), tags$td(shared$file_count)),
+            tags$tr(tags$td("Total Days"), tags$td(total_days)),
+            tags$tr(tags$td("Note"), tags$td(tags$small("Aggregated view")))
+          )
         )
-      )
+      } else {
+        req(shared$files[[sel]])
+        f <- shared$files[[sel]]
+
+        div(class = "file-info-box",
+          tags$table(class = "info-table text-sm",
+            tags$tr(tags$td("Subject"), tags$td(f$subject_info$id %||% "N/A")),
+            tags$tr(tags$td("Epoch"), tags$td(paste(f$epoch_length, "sec"))),
+            tags$tr(tags$td("Days"), tags$td({
+              if ("timestamp" %in% names(f$data)) {
+                length(unique(as.Date(f$data$timestamp)))
+              } else "N/A"
+            }))
+          )
+        )
+      }
     })
 
     # Quick chart buttons
@@ -371,85 +411,224 @@ mod_graphing_server <- function(id, shared) {
 
     # Generate plot
     observeEvent(input$generate_btn, {
-      req(input$selected_file, shared$files[[input$selected_file]])
-
-      f <- shared$files[[input$selected_file]]
-      data <- f$data
+      req(input$selected_file)
+      sel <- input$selected_file
       chart <- input$chart_select %||% "daily_timeline"
-      subject_id <- f$subject_info$id %||% f$name
 
-      # Auto-generate title
-      chart_title <- paste(chart_names[chart] %||% "Chart", "-", subject_id)
+      # Handle "All Participants" selection
+      if (sel == "all") {
+        # Check if chart supports "All Participants"
+        if (!(chart %in% all_supported_charts)) {
+          showNotification(
+            paste0("'", chart_names[chart], "' doesn't support All Participants view. Using first participant."),
+            type = "warning", duration = 4
+          )
+          # Fall back to first participant
+          sel <- names(shared$files)[1]
+        }
+      }
+
+      # For individual participant or fallback
+      if (sel != "all") {
+        req(shared$files[[sel]])
+        f <- shared$files[[sel]]
+        data <- f$data
+        subject_id <- f$subject_info$id %||% f$name
+        chart_title <- paste(chart_names[chart] %||% "Chart", "-", subject_id)
+      } else {
+        # All Participants - aggregate title
+        chart_title <- paste(chart_names[chart] %||% "Chart", "- All Participants")
+      }
 
       p <- tryCatch({
-        switch(chart,
-          "daily_timeline" = {
-            canhrActi::plot_daily_timeline(
-              data = data,
-              show_axes = input$show_axes %||% "axis1",
-              show_cutpoints = input$show_cutpoints %||% TRUE,
-              title = chart_title
-            )
-          },
+        # Handle "All Participants" for supported charts
+        if (sel == "all") {
+          switch(chart,
+            "intensity_pie" = {
+              # Aggregate intensity data across all participants
+              total_sedentary <- 0
+              total_light <- 0
+              total_moderate <- 0
+              total_vigorous <- 0
 
-          "heatmap" = {
-            canhrActi::plot_activity_heatmap(
-              data = data,
-              metric = input$heatmap_metric %||% "axis1",
-              normalize = input$heatmap_normalize %||% FALSE,
-              show_weekends = input$heatmap_weekends %||% TRUE,
-              color_palette = "viridis",
-              title = chart_title
-            )
-          },
+              activity_results <- shared$results$activity
+              if (!is.null(activity_results) && length(activity_results) > 0) {
+                for (r in activity_results) {
+                  if (!is.null(r$daily)) {
+                    total_sedentary <- total_sedentary + sum(r$daily$sedentary_hrs * 60, na.rm = TRUE)
+                    total_light <- total_light + sum(r$daily$light_hrs * 60, na.rm = TRUE)
+                    total_moderate <- total_moderate + sum(r$daily$moderate_hrs * 60, na.rm = TRUE)
+                    vig_hrs <- if ("vigorous_hrs" %in% names(r$daily)) r$daily$vigorous_hrs else 0
+                    vvig_hrs <- if ("very_vigorous_hrs" %in% names(r$daily)) r$daily$very_vigorous_hrs else 0
+                    total_vigorous <- total_vigorous + sum((vig_hrs + vvig_hrs) * 60, na.rm = TRUE)
+                  }
+                }
+              }
 
-          "intensity_pie" = {
-            activity_data <- shared$results$activity[[input$selected_file]]
-            if (!is.null(activity_data) && !is.null(activity_data$sedentary_min)) {
+              if (total_sedentary + total_light + total_moderate + total_vigorous == 0) {
+                showNotification("No activity data. Run Activity Analysis first.", type = "warning")
+                return(NULL)
+              }
+
               intensity_minutes <- data.frame(
                 intensity = factor(c("Sedentary", "Light", "Moderate", "Vigorous"),
                                    levels = c("Sedentary", "Light", "Moderate", "Vigorous")),
-                minutes = c(
-                  activity_data$sedentary_min %||% 0,
-                  activity_data$light_min %||% 0,
-                  activity_data$moderate_min %||% 0,
-                  activity_data$vigorous_min %||% 0
-                )
+                minutes = c(total_sedentary, total_light, total_moderate, total_vigorous)
               )
               canhrActi::plot_intensity_pie_from_summary(
                 intensity_summary = intensity_minutes,
-                cutpoints = activity_data$parameters$cut_points %||% "freedson",
-                show_labels = input$pie_labels %||% TRUE,
-                title = chart_title
-              )
-            } else {
-              canhrActi::plot_intensity_pie(
-                data = data,
                 cutpoints = input$pie_cutpoints %||% "freedson",
                 show_labels = input$pie_labels %||% TRUE,
-                donut_style = input$pie_donut %||% TRUE,
                 title = chart_title
               )
+            },
+
+            "polar" = {
+              # Combine all participant data for circadian polar
+              all_data <- do.call(rbind, lapply(shared$files, function(f) {
+                d <- f$data
+                if ("timestamp" %in% names(d) && "axis1" %in% names(d)) {
+                  data.frame(timestamp = d$timestamp, axis1 = d$axis1)
+                } else NULL
+              }))
+
+              if (is.null(all_data) || nrow(all_data) == 0) {
+                showNotification("No valid data for polar chart.", type = "warning")
+                return(NULL)
+              }
+
+              if (!inherits(all_data$timestamp, "POSIXct")) {
+                all_data$timestamp <- as.POSIXct(all_data$timestamp)
+              }
+
+              canhrActi::plot_circadian_polar(
+                data = all_data,
+                show_ribbon = input$polar_ribbon %||% TRUE,
+                by_day_type = input$polar_daytype %||% FALSE,
+                show_L5M10 = FALSE,  # No L5/M10 for aggregated view
+                title = chart_title
+              )
+            },
+
+            "daily_bars" = {
+              # Combine daily summaries across all participants
+              all_daily <- do.call(rbind, lapply(names(shared$results$activity), function(fid) {
+                r <- shared$results$activity[[fid]]
+                if (!is.null(r$daily)) {
+                  d <- r$daily
+                  d$participant <- fid
+                  d
+                } else NULL
+              }))
+
+              if (is.null(all_daily) || nrow(all_daily) == 0) {
+                showNotification("No activity data. Run Activity Analysis first.", type = "warning")
+                return(NULL)
+              }
+
+              # Create aggregated daily bars using average per day across participants
+              canhrActi::plot_daily_summary_bars(
+                data = NULL,
+                daily_summary = all_daily,
+                title = chart_title
+              )
+            },
+
+            "weekend_weekday" = {
+              # Combine all data for weekend/weekday comparison
+              all_data <- do.call(rbind, lapply(shared$files, function(f) {
+                d <- f$data
+                if ("timestamp" %in% names(d) && "axis1" %in% names(d)) {
+                  data.frame(timestamp = d$timestamp, axis1 = d$axis1)
+                } else NULL
+              }))
+
+              if (is.null(all_data) || nrow(all_data) == 0) {
+                showNotification("No valid data for weekend/weekday comparison.", type = "warning")
+                return(NULL)
+              }
+
+              canhrActi::plot_weekend_weekday(
+                data = all_data,
+                title = chart_title
+              )
+            },
+
+            {
+              showNotification("Chart not supported for All Participants.", type = "warning")
+              NULL
             }
-          },
+          )
+        } else {
+          # Individual participant charts
+          switch(chart,
+            "daily_timeline" = {
+              canhrActi::plot_daily_timeline(
+                data = data,
+                show_axes = input$show_axes %||% "axis1",
+                show_cutpoints = input$show_cutpoints %||% TRUE,
+                title = chart_title
+              )
+            },
 
-          "intensity_area" = {
-            canhrActi::plot_intensity_area(
-              data = data,
-              cutpoints = input$pie_cutpoints %||% "freedson",
-              title = chart_title
-            )
-          },
+            "heatmap" = {
+              canhrActi::plot_activity_heatmap(
+                data = data,
+                metric = input$heatmap_metric %||% "axis1",
+                normalize = input$heatmap_normalize %||% FALSE,
+                show_weekends = input$heatmap_weekends %||% TRUE,
+                color_palette = "viridis",
+                title = chart_title
+              )
+            },
 
-          "activity_clock" = {
-            canhrActi::plot_activity_clock(
-              data = data,
-              title = chart_title
-            )
-          },
+            "intensity_pie" = {
+              activity_data <- shared$results$activity[[sel]]
+              if (!is.null(activity_data) && !is.null(activity_data$sedentary_min)) {
+                intensity_minutes <- data.frame(
+                  intensity = factor(c("Sedentary", "Light", "Moderate", "Vigorous"),
+                                     levels = c("Sedentary", "Light", "Moderate", "Vigorous")),
+                  minutes = c(
+                    activity_data$sedentary_min %||% 0,
+                    activity_data$light_min %||% 0,
+                    activity_data$moderate_min %||% 0,
+                    activity_data$vigorous_min %||% 0
+                  )
+                )
+                canhrActi::plot_intensity_pie_from_summary(
+                  intensity_summary = intensity_minutes,
+                  cutpoints = activity_data$parameters$cut_points %||% "freedson",
+                  show_labels = input$pie_labels %||% TRUE,
+                  title = chart_title
+                )
+              } else {
+                canhrActi::plot_intensity_pie(
+                  data = data,
+                  cutpoints = input$pie_cutpoints %||% "freedson",
+                  show_labels = input$pie_labels %||% TRUE,
+                  donut_style = input$pie_donut %||% TRUE,
+                  title = chart_title
+                )
+              }
+            },
+
+            "intensity_area" = {
+              canhrActi::plot_intensity_area(
+                data = data,
+                cutpoints = input$pie_cutpoints %||% "freedson",
+                title = chart_title
+              )
+            },
+
+            "activity_clock" = {
+              canhrActi::plot_activity_clock(
+                data = data,
+                title = chart_title
+              )
+            },
 
           "hypnogram" = {
-            sleep_data <- shared$results$sleep[[input$selected_file]]
+            sleep_data <- shared$results$sleep[[sel]]
             sleep_state <- NULL
 
             if (!is.null(sleep_data)) {
@@ -495,7 +674,7 @@ mod_graphing_server <- function(id, shared) {
           },
 
           "sleep_quality" = {
-            sleep_data <- shared$results$sleep[[input$selected_file]]
+            sleep_data <- shared$results$sleep[[sel]]
             if (is.null(sleep_data) || is.null(sleep_data$periods) || nrow(sleep_data$periods) == 0) {
               showNotification("No sleep data. Run Sleep Analysis first.", type = "warning")
               return(NULL)
@@ -520,7 +699,7 @@ mod_graphing_server <- function(id, shared) {
               data$timestamp <- as.POSIXct(data$timestamp)
             }
 
-            circadian_data <- shared$results$circadian[[input$selected_file]]
+            circadian_data <- shared$results$circadian[[sel]]
             tryCatch({
               canhrActi::plot_circadian_polar(
                 data = data,
@@ -551,7 +730,7 @@ mod_graphing_server <- function(id, shared) {
               data$timestamp <- as.POSIXct(data$timestamp)
             }
 
-            circadian_data <- shared$results$circadian[[input$selected_file]]
+            circadian_data <- shared$results$circadian[[sel]]
             canhrActi::plot_is_iv(
               data = data,
               is_value = if (!is.null(circadian_data)) circadian_data$IS else NULL,
@@ -561,7 +740,7 @@ mod_graphing_server <- function(id, shared) {
           },
 
           "daily_bars" = {
-            activity_data <- shared$results$activity[[input$selected_file]]
+            activity_data <- shared$results$activity[[sel]]
             if (!is.null(activity_data) && !is.null(activity_data$daily)) {
               canhrActi::plot_daily_summary_bars(
                 data = data,
@@ -607,12 +786,16 @@ mod_graphing_server <- function(id, shared) {
             NULL
           }
         )
+        }
       }, error = function(e) {
         showNotification(paste("Error:", e$message), type = "error", duration = 10)
         NULL
       })
 
       current_plot(p)
+      if (!is.null(p)) {
+        shared$visualization_complete <- TRUE
+      }
     })
 
     # Chart output

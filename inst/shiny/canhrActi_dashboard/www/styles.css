@@ -3589,6 +3589,16 @@ table.dataTable.table-striped tbody tr:nth-child(even):hover td {
   margin: 0 0 var(--space-4) 0;
 }
 
+.next-steps-grid {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.next-steps-grid > .next-step-card {
+  flex: 1;
+  min-width: 0;
+}
+
 .next-step-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
@@ -4194,6 +4204,44 @@ table.dataTable.table-striped tbody tr:nth-child(even):hover td {
 
 .hero-chart-title i {
   color: var(--color-primary);
+}
+
+.hero-chart-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.hero-chart-controls .form-group {
+  margin-bottom: 0 !important;
+  display: flex;
+  align-items: center;
+}
+
+.hero-chart-controls .shiny-input-container {
+  margin-bottom: 0 !important;
+  width: auto !important;
+}
+
+.hero-chart-controls .selectize-control {
+  min-width: 180px;
+  vertical-align: middle;
+}
+
+.hero-chart-controls .shiny-input-container {
+  margin-bottom: 0 !important;
+}
+
+.hero-chart-controls .selectize-input {
+  min-height: 34px;
+  padding: 6px 12px;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.hero-chart-controls .selectize-input.focus {
+  border-color: #236192;
+  box-shadow: 0 0 0 2px rgba(35, 97, 146, 0.2);
 }
 
 .controls-panel {

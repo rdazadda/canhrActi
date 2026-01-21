@@ -338,11 +338,14 @@ mod_sleep_server <- function(id, shared) {
       file_choices <- sapply(res, function(r) r$subject_id %||% r$name)
       names(file_choices) <- file_choices
 
+      # Add "All Participants" option at the beginning
+      all_choices <- c("All Participants" = "all", file_choices)
+
       selectInput(
         ns("selected_file"),
         NULL,
-        choices = file_choices,
-        selected = file_choices[1],
+        choices = all_choices,
+        selected = "all",
         width = "200px"
       )
     })
@@ -406,53 +409,129 @@ mod_sleep_server <- function(id, shared) {
 
     output$metric_total_nights <- renderText({
       res <- results()
-      if (length(res) == 0) return("--")
-      total <- sum(sapply(res, function(r) {
+      sel <- input$selected_file
+      if (length(res) == 0 || is.null(sel)) return("--")
+
+      if (sel == "all") {
+        # Sum across all participants
+        total <- sum(sapply(res, function(r) {
+          np <- r$n_periods
+          if (is.null(np) || length(np) == 0) return(0)
+          as.numeric(np[1])
+        }), na.rm = TRUE)
+        as.character(total)
+      } else {
+        # Find selected participant
+        r <- NULL
+        for (result in res) {
+          result_id <- result$subject_id %||% result$name
+          if (!is.null(result_id) && result_id == sel) {
+            r <- result
+            break
+          }
+        }
+        if (is.null(r)) return("--")
         np <- r$n_periods
-        if (is.null(np) || length(np) == 0) return(0)
-        as.numeric(np[1])
-      }), na.rm = TRUE)
-      as.character(total)
+        if (is.null(np) || length(np) == 0) return("0")
+        as.character(as.numeric(np[1]))
+      }
     })
 
     output$metric_avg_duration <- renderText({
       res <- results()
-      if (length(res) == 0) return("--")
-      durs <- sapply(res, function(r) {
+      sel <- input$selected_file
+      if (length(res) == 0 || is.null(sel)) return("--")
+
+      if (sel == "all") {
+        # Simple average of each participant's average
+        durs <- sapply(res, function(r) {
+          val <- r$avg_duration
+          if (is.null(val) || length(val) == 0 || !is.numeric(val)) return(NA)
+          as.numeric(val[1])
+        })
+        avg <- mean(durs, na.rm = TRUE)
+        if (is.na(avg) || !is.finite(avg)) return("--")
+        sprintf("%.1fh", avg / 60)
+      } else {
+        # Find selected participant
+        r <- NULL
+        for (result in res) {
+          result_id <- result$subject_id %||% result$name
+          if (!is.null(result_id) && result_id == sel) {
+            r <- result
+            break
+          }
+        }
+        if (is.null(r)) return("--")
         val <- r$avg_duration
-        if (is.null(val) || length(val) == 0 || !is.numeric(val)) return(NA)
-        as.numeric(val[1])
-      })
-      avg <- mean(durs, na.rm = TRUE)
-      if (is.na(avg) || !is.finite(avg)) return("--")
-      sprintf("%.1fh", avg / 60)
+        if (is.null(val) || length(val) == 0 || !is.numeric(val)) return("--")
+        sprintf("%.1fh", as.numeric(val[1]) / 60)
+      }
     })
 
     output$metric_avg_efficiency <- renderText({
       res <- results()
-      if (length(res) == 0) return("--")
-      effs <- sapply(res, function(r) {
+      sel <- input$selected_file
+      if (length(res) == 0 || is.null(sel)) return("--")
+
+      if (sel == "all") {
+        # Simple average of each participant's average
+        effs <- sapply(res, function(r) {
+          val <- r$avg_efficiency
+          if (is.null(val) || length(val) == 0 || !is.numeric(val)) return(NA)
+          as.numeric(val[1])
+        })
+        avg <- mean(effs, na.rm = TRUE)
+        if (is.na(avg) || !is.finite(avg)) return("--")
+        sprintf("%.0f%%", avg)
+      } else {
+        # Find selected participant
+        r <- NULL
+        for (result in res) {
+          result_id <- result$subject_id %||% result$name
+          if (!is.null(result_id) && result_id == sel) {
+            r <- result
+            break
+          }
+        }
+        if (is.null(r)) return("--")
         val <- r$avg_efficiency
-        if (is.null(val) || length(val) == 0 || !is.numeric(val)) return(NA)
-        as.numeric(val[1])
-      })
-      avg <- mean(effs, na.rm = TRUE)
-      if (is.na(avg) || !is.finite(avg)) return("--")
-      sprintf("%.0f%%", avg)
+        if (is.null(val) || length(val) == 0 || !is.numeric(val)) return("--")
+        sprintf("%.0f%%", as.numeric(val[1]))
+      }
     })
 
     # Average WASO metric
     output$metric_avg_waso <- renderText({
       res <- results()
-      if (length(res) == 0) return("--")
-      wasos <- sapply(res, function(r) {
+      sel <- input$selected_file
+      if (length(res) == 0 || is.null(sel)) return("--")
+
+      if (sel == "all") {
+        # Simple average of each participant's average
+        wasos <- sapply(res, function(r) {
+          val <- r$avg_waso
+          if (is.null(val) || length(val) == 0 || !is.numeric(val)) return(NA)
+          as.numeric(val[1])
+        })
+        avg <- mean(wasos, na.rm = TRUE)
+        if (is.na(avg) || !is.finite(avg)) return("--")
+        sprintf("%.0fm", avg)
+      } else {
+        # Find selected participant
+        r <- NULL
+        for (result in res) {
+          result_id <- result$subject_id %||% result$name
+          if (!is.null(result_id) && result_id == sel) {
+            r <- result
+            break
+          }
+        }
+        if (is.null(r)) return("--")
         val <- r$avg_waso
-        if (is.null(val) || length(val) == 0 || !is.numeric(val)) return(NA)
-        as.numeric(val[1])
-      })
-      avg <- mean(wasos, na.rm = TRUE)
-      if (is.na(avg) || !is.finite(avg)) return("--")
-      sprintf("%.0fm", avg)
+        if (is.null(val) || length(val) == 0 || !is.numeric(val)) return("--")
+        sprintf("%.0fm", as.numeric(val[1]))
+      }
     })
 
     # Output for conditional panels (matching Activity tab pattern)

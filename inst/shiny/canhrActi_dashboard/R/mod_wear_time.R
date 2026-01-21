@@ -366,24 +366,47 @@ mod_wear_time_server <- function(id, shared) {
 
     output$sum_valid_days <- renderText({
       res <- results()
-      if (length(res) == 0) return("--")
-      total <- sum(sapply(res, function(r) r$valid_days))
-      paste0(total)
+      sel <- input$chart_file
+      if (length(res) == 0 || is.null(sel) || sel == "none") return("--")
+      if (sel == "all") {
+        total <- sum(sapply(res, function(r) r$valid_days))
+        paste0(total)
+      } else if (sel %in% names(res)) {
+        paste0(res[[sel]]$valid_days)
+      } else {
+        "--"
+      }
     })
 
     output$sum_avg_wear <- renderText({
       res <- results()
-      if (length(res) == 0) return("--")
-      avg <- mean(sapply(res, function(r) r$avg_wear), na.rm = TRUE)
-      if (is.na(avg)) return("--")
-      paste0(round(avg, 1), "h")
+      sel <- input$chart_file
+      if (length(res) == 0 || is.null(sel) || sel == "none") return("--")
+      if (sel == "all") {
+        avg <- mean(sapply(res, function(r) r$avg_wear), na.rm = TRUE)
+        if (is.na(avg)) return("--")
+        paste0(round(avg, 1), "h")
+      } else if (sel %in% names(res)) {
+        avg_val <- res[[sel]]$avg_wear
+        if (is.na(avg_val)) return("--")
+        paste0(round(avg_val, 1), "h")
+      } else {
+        "--"
+      }
     })
 
     output$sum_wear_pct <- renderText({
       res <- results()
-      if (length(res) == 0) return("--")
-      avg <- mean(sapply(res, function(r) r$wear_pct), na.rm = TRUE)
-      paste0(round(avg, 1), "%")
+      sel <- input$chart_file
+      if (length(res) == 0 || is.null(sel) || sel == "none") return("--")
+      if (sel == "all") {
+        avg <- mean(sapply(res, function(r) r$wear_pct), na.rm = TRUE)
+        paste0(round(avg, 1), "%")
+      } else if (sel %in% names(res)) {
+        paste0(round(res[[sel]]$wear_pct, 1), "%")
+      } else {
+        "--"
+      }
     })
 
     # Validation status badge for header

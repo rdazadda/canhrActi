@@ -191,6 +191,7 @@ mod_overview_server <- function(id, shared, parent_session = NULL) {
       activity_done <- !is.null(shared$results$activity) && length(shared$results$activity) > 0
       sleep_done <- !is.null(shared$results$sleep) && length(shared$results$sleep) > 0
       circadian_done <- !is.null(shared$results$circadian) && length(shared$results$circadian) > 0
+      sedentary_done <- !is.null(shared$results$sedentary) && length(shared$results$sedentary) > 0
 
       tagList(
         # Quick Stats Row
@@ -229,70 +230,72 @@ mod_overview_server <- function(id, shared, parent_session = NULL) {
         tags$div(
           class = "next-steps-section",
           tags$h3(class = "next-steps-title", "Next Steps"),
-          fluidRow(
-            # Wear Time
-            column(3,
-              tags$div(
-                class = paste("next-step-card", if (wear_done) "completed" else ""),
-                tags$div(class = "next-step-status",
-                  if (wear_done) icon("check-circle") else icon("circle")
-                ),
-                tags$div(class = "next-step-content",
-                  tags$h4("Wear Time"),
-                  tags$p(if (wear_done) "Completed" else "Detect valid wear periods")
-                ),
-                if (!wear_done) {
-                  actionButton(ns("go_wear"), "Run", class = "btn-next-step")
-                }
-              )
+          tags$div(
+            class = "next-steps-grid",
+            tags$div(
+              class = paste("next-step-card", if (wear_done) "completed" else ""),
+              tags$div(class = "next-step-status",
+                if (wear_done) icon("check-circle") else icon("circle")
+              ),
+              tags$div(class = "next-step-content",
+                tags$h4("Wear Time"),
+                tags$p(if (wear_done) "Completed" else "Detect valid wear periods")
+              ),
+              if (!wear_done) {
+                actionButton(ns("go_wear"), "Run", class = "btn-next-step")
+              }
             ),
-            # Activity
-            column(3,
-              tags$div(
-                class = paste("next-step-card", if (activity_done) "completed" else ""),
-                tags$div(class = "next-step-status",
-                  if (activity_done) icon("check-circle") else icon("circle")
-                ),
-                tags$div(class = "next-step-content",
-                  tags$h4("Activity"),
-                  tags$p(if (activity_done) "Completed" else "Classify intensity levels")
-                ),
-                if (!activity_done) {
-                  actionButton(ns("go_activity"), "Run", class = "btn-next-step")
-                }
-              )
+            tags$div(
+              class = paste("next-step-card", if (activity_done) "completed" else ""),
+              tags$div(class = "next-step-status",
+                if (activity_done) icon("check-circle") else icon("circle")
+              ),
+              tags$div(class = "next-step-content",
+                tags$h4("Activity"),
+                tags$p(if (activity_done) "Completed" else "Classify intensity levels")
+              ),
+              if (!activity_done) {
+                actionButton(ns("go_activity"), "Run", class = "btn-next-step")
+              }
             ),
-            # Sleep
-            column(3,
-              tags$div(
-                class = paste("next-step-card", if (sleep_done) "completed" else ""),
-                tags$div(class = "next-step-status",
-                  if (sleep_done) icon("check-circle") else icon("circle")
-                ),
-                tags$div(class = "next-step-content",
-                  tags$h4("Sleep"),
-                  tags$p(if (sleep_done) "Completed" else "Run sleep analysis")
-                ),
-                if (!sleep_done) {
-                  actionButton(ns("go_sleep"), "Run", class = "btn-next-step")
-                }
-              )
+            tags$div(
+              class = paste("next-step-card", if (sleep_done) "completed" else ""),
+              tags$div(class = "next-step-status",
+                if (sleep_done) icon("check-circle") else icon("circle")
+              ),
+              tags$div(class = "next-step-content",
+                tags$h4("Sleep"),
+                tags$p(if (sleep_done) "Completed" else "Run sleep analysis")
+              ),
+              if (!sleep_done) {
+                actionButton(ns("go_sleep"), "Run", class = "btn-next-step")
+              }
             ),
-            # Circadian
-            column(3,
-              tags$div(
-                class = paste("next-step-card", if (circadian_done) "completed" else ""),
-                tags$div(class = "next-step-status",
-                  if (circadian_done) icon("check-circle") else icon("circle")
-                ),
-                tags$div(class = "next-step-content",
-                  tags$h4("Circadian"),
-                  tags$p(if (circadian_done) "Completed" else "Run circadian analysis")
-                ),
-                if (!circadian_done) {
-                  actionButton(ns("go_circadian"), "Run", class = "btn-next-step")
-                }
-              )
+            tags$div(
+              class = paste("next-step-card", if (circadian_done) "completed" else ""),
+              tags$div(class = "next-step-status",
+                if (circadian_done) icon("check-circle") else icon("circle")
+              ),
+              tags$div(class = "next-step-content",
+                tags$h4("Circadian"),
+                tags$p(if (circadian_done) "Completed" else "Run circadian analysis")
+              ),
+              if (!circadian_done) {
+                actionButton(ns("go_circadian"), "Run", class = "btn-next-step")
+              }
+            ),
+            tags$div(
+              class = paste("next-step-card", if (sedentary_done) "completed" else ""),
+              tags$div(class = "next-step-status",
+                if (sedentary_done) icon("check-circle") else icon("circle")
+              ),
+              tags$div(class = "next-step-content",
+                tags$h4("Sedentary"),
+                tags$p(if (sedentary_done) "Completed" else "Run sedentary analysis")
+              ),
+              if (!sedentary_done) {
+                actionButton(ns("go_sedentary"), "Run", class = "btn-next-step")
+              }
             )
           )
         ),
@@ -321,6 +324,10 @@ mod_overview_server <- function(id, shared, parent_session = NULL) {
 
     observeEvent(input$go_circadian, {
       updateTabItems(session = parent_session, "tabs", selected = "circadian")
+    })
+
+    observeEvent(input$go_sedentary, {
+      updateTabItems(session = parent_session, "tabs", selected = "sedentary")
     })
 
     # Files summary table

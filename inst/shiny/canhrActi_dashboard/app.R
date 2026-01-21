@@ -55,10 +55,10 @@ ui <- dashboardPage(
     tags$li(
       class = "dropdown",
       tags$a(
-        href = "https://www.uaf.edu/canhr/",
+        href = "https://github.com/rdazadda/canhrActi/issues",
         target = "_blank",
         class = "header-link",
-        title = "Visit CANHR website for documentation and support",
+        title = "Report issues or request features",
         icon("question-circle"),
         tags$span(class = "header-link-text", "Support")
       )
@@ -174,6 +174,7 @@ server <- function(input, output, session) {
     epoch_length = 60,
     cut_points = "freedson",
     data_loaded = FALSE,
+    visualization_complete = FALSE,
     # Parameters for expanded analysis options
     data_type = "axis1",
     auto_cutpoints = FALSE,
@@ -221,21 +222,23 @@ server <- function(input, output, session) {
     step3_complete <- length(shared$results$activity) > 0 ||
                       length(shared$results$sleep) > 0 ||
                       length(shared$results$circadian) > 0
+    step4_complete <- shared$visualization_complete
 
     # Current active step
     current_step <- if (!step1_complete) 1
                     else if (!step2_complete) 2
                     else if (!step3_complete) 3
+                    else if (!step4_complete) 4
                     else 4
 
     # Step definitions with labels
     steps <- list(
-      list(label = "Upload", icon = "cloud-upload-alt"),
-      list(label = "Validate", icon = "check-circle"),
-      list(label = "Analyze", icon = "chart-line"),
-      list(label = "Export", icon = "download")
+      list(label = "Upload Data", icon = "cloud-upload-alt"),
+      list(label = "Validate Data", icon = "check-circle"),
+      list(label = "Analyze Data", icon = "chart-line"),
+      list(label = "Visualize Data", icon = "download")
     )
-    step_complete <- c(step1_complete, step2_complete, step3_complete, FALSE)
+    step_complete <- c(step1_complete, step2_complete, step3_complete, step4_complete)
 
     tags$div(
       class = "workflow-indicator",
@@ -267,11 +270,12 @@ server <- function(input, output, session) {
       ),
       tags$div(class = paste("workflow-connector", if (step3_complete) "completed" else "")),
 
-      # Step 4: Export
+      # Step 4: Visualize
       tags$div(
-        class = paste("workflow-step", if (current_step == 4) "active" else ""),
+        class = paste("workflow-step",
+                      if (step4_complete) "completed" else if (current_step == 4) "active" else ""),
         title = steps[[4]]$label,
-        "4"
+        if (step4_complete) icon("check") else "4"
       )
     )
   })

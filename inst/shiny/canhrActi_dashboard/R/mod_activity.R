@@ -265,8 +265,11 @@ mod_activity_ui <- function(id) {
             div(class = "hero-chart-title",
               icon("chart-area"), "Activity Intensity Distribution"
             ),
-            div(
-              uiOutput(ns("chart_status_badge"))
+            div(class = "hero-chart-controls",
+              uiOutput(ns("chart_status_badge")),
+              selectInput(ns("selected_participant"), NULL,
+                choices = c("All Participants" = "all"),
+                width = "180px")
             )
           ),
           conditionalPanel(
@@ -375,6 +378,26 @@ mod_activity_server <- function(id, shared) {
 
     results <- reactiveVal(list())
 
+    # Update participant selector when results change
+    observe({
+      res <- results()
+      if (length(res) > 0) {
+        choices <- c("All Participants" = "all")
+        for (fid in names(res)) {
+          r <- res[[fid]]
+          label <- r$subject_id %||% r$name %||% fid
+          choices <- c(choices, setNames(fid, label))
+        }
+        updateSelectInput(session, "selected_participant",
+          choices = choices,
+          selected = isolate(input$selected_participant) %||% "all")
+      } else {
+        updateSelectInput(session, "selected_participant",
+          choices = c("All Participants" = "all"),
+          selected = "all")
+      }
+    })
+
     # Output for conditional panel
     output$has_activity_results <- reactive({
       length(results()) > 0
@@ -386,50 +409,136 @@ mod_activity_server <- function(id, shared) {
       as.character(shared$file_count)
     })
 
-    # Compact metrics
+    # Compact metrics (reactive to participant selection) - use daily data for consistency
     output$metric_sedentary <- renderText({
       res <- results()
-      if (is.null(res) || length(res) == 0) return("--")
-      sed_values <- sapply(res, function(r) if (is.numeric(r$sedentary_min)) r$sedentary_min else NA)
-      avg <- mean(sed_values, na.rm = TRUE)
-      if (is.na(avg)) return("--")
-      paste0(round(avg / 60, 1), "h")
+      sel <- input$selected_participant
+      if (is.null(res) || length(res) == 0 || is.null(sel)) return("--")
+      if (sel == "all") {
+        # Simple average of each participant's average (not weighted by days)
+        participant_avgs <- c()
+        for (r in res) {
+          if (!is.null(r$daily) && "sedentary_hrs" %in% names(r$daily)) {
+            participant_avgs <- c(participant_avgs, mean(r$daily$sedentary_hrs, na.rm = TRUE))
+          }
+        }
+        if (length(participant_avgs) == 0) return("--")
+        avg <- mean(participant_avgs, na.rm = TRUE)
+        if (is.na(avg)) return("--")
+        paste0(round(avg, 1), "h")
+      } else if (sel %in% names(res)) {
+        r <- res[[sel]]
+        if (!is.null(r$daily) && "sedentary_hrs" %in% names(r$daily)) {
+          avg <- mean(r$daily$sedentary_hrs, na.rm = TRUE)
+          if (is.na(avg)) return("--")
+          paste0(round(avg, 1), "h")
+        } else {
+          "--"
+        }
+      } else {
+        "--"
+      }
     })
 
     output$metric_light <- renderText({
       res <- results()
-      if (is.null(res) || length(res) == 0) return("--")
-      light_values <- sapply(res, function(r) if (is.numeric(r$light_min)) r$light_min else NA)
-      avg <- mean(light_values, na.rm = TRUE)
-      if (is.na(avg)) return("--")
-      paste0(round(avg / 60, 1), "h")
+      sel <- input$selected_participant
+      if (is.null(res) || length(res) == 0 || is.null(sel)) return("--")
+      if (sel == "all") {
+        # Simple average of each participant's average (not weighted by days)
+        participant_avgs <- c()
+        for (r in res) {
+          if (!is.null(r$daily) && "light_hrs" %in% names(r$daily)) {
+            participant_avgs <- c(participant_avgs, mean(r$daily$light_hrs, na.rm = TRUE))
+          }
+        }
+        if (length(participant_avgs) == 0) return("--")
+        avg <- mean(participant_avgs, na.rm = TRUE)
+        if (is.na(avg)) return("--")
+        paste0(round(avg, 1), "h")
+      } else if (sel %in% names(res)) {
+        r <- res[[sel]]
+        if (!is.null(r$daily) && "light_hrs" %in% names(r$daily)) {
+          avg <- mean(r$daily$light_hrs, na.rm = TRUE)
+          if (is.na(avg)) return("--")
+          paste0(round(avg, 1), "h")
+        } else {
+          "--"
+        }
+      } else {
+        "--"
+      }
     })
 
     output$metric_mvpa <- renderText({
       res <- results()
-      if (is.null(res) || length(res) == 0) return("--")
-      mvpa_values <- sapply(res, function(r) if (is.numeric(r$mvpa_min)) r$mvpa_min else NA)
-      avg <- mean(mvpa_values, na.rm = TRUE)
-      if (is.na(avg)) return("--")
-      paste0(round(avg), "m")
+      sel <- input$selected_participant
+      if (is.null(res) || length(res) == 0 || is.null(sel)) return("--")
+      if (sel == "all") {
+        # Simple average of each participant's average (not weighted by days)
+        participant_avgs <- c()
+        for (r in res) {
+          if (!is.null(r$daily)) {
+            mod_hrs <- if ("moderate_hrs" %in% names(r$daily)) r$daily$moderate_hrs else 0
+            vig_hrs <- if ("vigorous_hrs" %in% names(r$daily)) r$daily$vigorous_hrs else 0
+            vvig_hrs <- if ("very_vigorous_hrs" %in% names(r$daily)) r$daily$very_vigorous_hrs else 0
+            mvpa_min <- (mod_hrs + vig_hrs + vvig_hrs) * 60
+            participant_avgs <- c(participant_avgs, mean(mvpa_min, na.rm = TRUE))
+          }
+        }
+        if (length(participant_avgs) == 0) return("--")
+        avg <- mean(participant_avgs, na.rm = TRUE)
+        if (is.na(avg)) return("--")
+        paste0(round(avg), "m")
+      } else if (sel %in% names(res)) {
+        r <- res[[sel]]
+        if (!is.null(r$daily)) {
+          mod_hrs <- if ("moderate_hrs" %in% names(r$daily)) r$daily$moderate_hrs else 0
+          vig_hrs <- if ("vigorous_hrs" %in% names(r$daily)) r$daily$vigorous_hrs else 0
+          vvig_hrs <- if ("very_vigorous_hrs" %in% names(r$daily)) r$daily$very_vigorous_hrs else 0
+          mvpa_min <- (mod_hrs + vig_hrs + vvig_hrs) * 60
+          avg <- mean(mvpa_min, na.rm = TRUE)
+          if (is.na(avg)) return("--")
+          paste0(round(avg), "m")
+        } else {
+          "--"
+        }
+      } else {
+        "--"
+      }
     })
 
     output$metric_steps <- renderText({
       res <- results()
-      if (is.null(res) || length(res) == 0) return("--")
-      # Calculate average daily steps from shared files
-      step_values <- sapply(names(shared$files), function(fid) {
+      sel <- input$selected_participant
+      if (is.null(res) || length(res) == 0 || is.null(sel)) return("--")
+      if (sel == "all") {
+        step_values <- sapply(names(shared$files), function(fid) {
+          f <- shared$files[[fid]]
+          if ("steps" %in% names(f$data)) {
+            total_steps <- sum(f$data$steps, na.rm = TRUE)
+            n_days <- if ("timestamp" %in% names(f$data)) length(unique(as.Date(f$data$timestamp))) else 1
+            return(total_steps / n_days)
+          }
+          return(NA)
+        })
+        avg <- mean(step_values, na.rm = TRUE)
+        if (is.na(avg)) return("--")
+        formatC(round(avg), format = "d", big.mark = ",")
+      } else if (sel %in% names(res)) {
+        fid <- sel
         f <- shared$files[[fid]]
-        if ("steps" %in% names(f$data)) {
+        if (!is.null(f) && "steps" %in% names(f$data)) {
           total_steps <- sum(f$data$steps, na.rm = TRUE)
           n_days <- if ("timestamp" %in% names(f$data)) length(unique(as.Date(f$data$timestamp))) else 1
-          return(total_steps / n_days)
+          avg <- total_steps / n_days
+          formatC(round(avg), format = "d", big.mark = ",")
+        } else {
+          "--"
         }
-        return(NA)
-      })
-      avg <- mean(step_values, na.rm = TRUE)
-      if (is.na(avg)) return("--")
-      formatC(round(avg), format = "d", big.mark = ",")
+      } else {
+        "--"
+      }
     })
 
     # Wear time status indicator
@@ -669,17 +778,18 @@ mod_activity_server <- function(id, shared) {
             if (!is.null(ee)) total_ee <- ee$total_kcal
           }
 
-          # Calculate summary stats
+          # Basic epoch counts (for reference)
           int_table <- table(intensity)
           n_valid_epochs <- sum(analysis_mask)
-          n_days <- if ("timestamp" %in% names(data)) length(unique(as.Date(data$timestamp[analysis_mask]))) else 1
-          epoch_min <- f$epoch_length / 60
 
-          sedentary_min <- if ("sedentary" %in% names(int_table)) int_table["sedentary"] * epoch_min / n_days else 0
-          light_min <- if ("light" %in% names(int_table)) int_table["light"] * epoch_min / n_days else 0
-          moderate_min <- if ("moderate" %in% names(int_table)) int_table["moderate"] * epoch_min / n_days else 0
-          vigorous_min <- sum(int_table[names(int_table) %in% c("vigorous", "very_vigorous")]) * epoch_min / n_days
-          mvpa_min <- moderate_min + vigorous_min
+          # Initialize - will be calculated from daily data below
+          n_days <- 0
+          sedentary_min <- 0
+          light_min <- 0
+          moderate_min <- 0
+          vigorous_min <- 0
+          very_vigorous_min <- 0
+          mvpa_min <- 0
 
           # Hourly pattern
           hourly <- NULL
@@ -708,9 +818,29 @@ mod_activity_server <- function(id, shared) {
                 daily[daily$date == d, "sedentary"] <- if ("sedentary" %in% names(day_int)) day_int["sedentary"] else 0
                 daily[daily$date == d, "light"] <- if ("light" %in% names(day_int)) day_int["light"] else 0
                 daily[daily$date == d, "moderate"] <- if ("moderate" %in% names(day_int)) day_int["moderate"] else 0
-                daily[daily$date == d, "vigorous"] <- if ("vigorous" %in% names(day_int)) day_int["vigorous"] + if ("very_vigorous" %in% names(day_int)) day_int["very_vigorous"] else 0 else 0
+                daily[daily$date == d, "vigorous"] <- if ("vigorous" %in% names(day_int)) day_int["vigorous"] else 0
+                daily[daily$date == d, "very_vigorous"] <- if ("very_vigorous" %in% names(day_int)) day_int["very_vigorous"] else 0
               }
             }
+
+            # Convert epoch counts to hours for each day
+            epoch_hrs <- f$epoch_length / 3600
+            daily$sedentary_hrs <- daily$sedentary * epoch_hrs
+            daily$light_hrs <- daily$light * epoch_hrs
+            daily$moderate_hrs <- daily$moderate * epoch_hrs
+            daily$vigorous_hrs <- daily$vigorous * epoch_hrs
+            daily$very_vigorous_hrs <- daily$very_vigorous * epoch_hrs
+          }
+
+          # Calculate summary stats FROM daily data (source of truth)
+          if (!is.null(daily) && nrow(daily) > 0) {
+            n_days <- nrow(daily)
+            sedentary_min <- mean(daily$sedentary_hrs, na.rm = TRUE) * 60
+            light_min <- mean(daily$light_hrs, na.rm = TRUE) * 60
+            moderate_min <- mean(daily$moderate_hrs, na.rm = TRUE) * 60
+            vigorous_min <- mean(daily$vigorous_hrs, na.rm = TRUE) * 60
+            very_vigorous_min <- mean(daily$very_vigorous_hrs, na.rm = TRUE) * 60
+            mvpa_min <- moderate_min + vigorous_min + very_vigorous_min
           }
 
           all_results[[fid]] <- list(
@@ -735,6 +865,7 @@ mod_activity_server <- function(id, shared) {
             light_min = as.numeric(light_min),
             moderate_min = as.numeric(moderate_min),
             vigorous_min = as.numeric(vigorous_min),
+            very_vigorous_min = as.numeric(very_vigorous_min),
             mvpa_min = as.numeric(mvpa_min),
             n_bouts = if (!is.null(bouts)) nrow(bouts) else 0,
             parameters = list(
@@ -924,6 +1055,7 @@ mod_activity_server <- function(id, shared) {
     # HERO CHART: Intensity plot (larger, more prominent)
     output$intensity_plot <- renderPlot({
       res <- results()
+      sel <- input$selected_participant
 
       # User-friendly empty state messaging
       validate(
@@ -931,27 +1063,43 @@ mod_activity_server <- function(id, shared) {
              "No data yet")
       )
 
-      all_intensity <- c()
+      # Filter results based on selection
+      if (!is.null(sel) && sel != "all" && sel %in% names(res)) {
+        res <- list(res[[sel]])
+      }
+
+      # Use daily data (source of truth) - sum hours across all days
+      total_sedentary <- 0
+      total_light <- 0
+      total_moderate <- 0
+      total_vigorous <- 0
+      total_very_vigorous <- 0
+      total_days <- 0
+
       for (r in res) {
-        if (!is.null(r$intensity_valid)) {
-          all_intensity <- c(all_intensity, as.character(r$intensity_valid))
+        daily <- r$daily
+        if (!is.null(daily) && nrow(daily) > 0) {
+          total_days <- total_days + nrow(daily)
+          total_sedentary <- total_sedentary + sum(daily$sedentary_hrs, na.rm = TRUE)
+          total_light <- total_light + sum(daily$light_hrs, na.rm = TRUE)
+          total_moderate <- total_moderate + sum(daily$moderate_hrs, na.rm = TRUE)
+          total_vigorous <- total_vigorous + sum(daily$vigorous_hrs, na.rm = TRUE)
+          total_very_vigorous <- total_very_vigorous + sum(daily$very_vigorous_hrs, na.rm = TRUE)
         }
       }
 
       validate(
-        need(length(all_intensity) > 0,
-             "No valid epochs found")
+        need(total_days > 0,
+             "No valid data found")
       )
 
-      int_cols <- c("sedentary", "light", "moderate", "vigorous", "very_vigorous")
-      counts <- table(factor(all_intensity, levels = int_cols))
-      total <- sum(counts)
+      total_hours <- total_sedentary + total_light + total_moderate + total_vigorous + total_very_vigorous
 
       df <- data.frame(
         intensity = factor(c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous"),
           levels = c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous")),
-        hours = as.numeric(counts) * shared$epoch_length / 3600,
-        pct = as.numeric(counts) / total * 100
+        hours = c(total_sedentary, total_light, total_moderate, total_vigorous, total_very_vigorous),
+        pct = c(total_sedentary, total_light, total_moderate, total_vigorous, total_very_vigorous) / total_hours * 100
       )
 
       colors <- c("Sedentary" = "#94a3b8", "Light" = "#3b82f6", "Moderate" = "#f59e0b",
@@ -978,12 +1126,18 @@ mod_activity_server <- function(id, shared) {
     # Hourly pattern plot
     output$hourly_plot <- renderPlot({
       res <- results()
+      sel <- input$selected_participant
 
       # User-friendly empty state messaging
       validate(
         need(length(res) > 0,
              "No hourly data")
       )
+
+      # Filter results based on selection
+      if (!is.null(sel) && sel != "all" && sel %in% names(res)) {
+        res <- list(res[[sel]])
+      }
 
       all_hourly <- data.frame()
       for (r in res) {
@@ -2456,6 +2610,7 @@ mod_activity_server <- function(id, shared) {
     # VM Heatmap Plot
     output$vm_heatmap_plot <- renderPlot({
       res <- results()
+      sel <- input$selected_participant
 
       if (length(res) == 0) {
         ggplot2::ggplot() +
@@ -2463,8 +2618,12 @@ mod_activity_server <- function(id, shared) {
                            size = 5, hjust = 0.5, color = "#64748b") +
           ggplot2::theme_void()
       } else {
-        # Get first file's data for heatmap
-        r <- res[[1]]
+        # Get selected participant's data (or first if "all")
+        if (!is.null(sel) && sel != "all" && sel %in% names(res)) {
+          r <- res[[sel]]
+        } else {
+          r <- res[[1]]
+        }
         fid <- r$file_id
         f <- shared$files[[fid]]
 

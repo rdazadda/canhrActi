@@ -2479,7 +2479,7 @@
       "checksum": "23f582111bce31885db1eac3f3cc3c27"
     },
     "R/mod_graphing.R": {
-      "checksum": "909ca8f511b655794a0923216f4107de"
+      "checksum": "5ade6a4b2276f569157ecc432b913b33"
     },
     "R/mod_overview.R": {
       "checksum": "24fa24f5709eb8ec4e0e1a13c2b155d1"
@@ -2488,13 +2488,13 @@
       "checksum": "ac3cdb3a06ad84c7aa83ef61d19f014c"
     },
     "R/mod_sleep.R": {
-      "checksum": "a02430d07ef1cab26e74cd19708eb983"
+      "checksum": "ed0735864ef257de0554a721303accf6"
     },
     "R/mod_upload.R": {
       "checksum": "cc4fba83d7851eac9a46b87a0703da36"
     },
     "R/mod_wear_time.R": {
-      "checksum": "a28d2ca41463f16825b3ed5f0882d94c"
+      "checksum": "1ee16d3ea3945ef219c2a7c3b66ffa2c"
     },
     "R/shared_components.R": {
       "checksum": "b925cd3824eeca6664dd516ef5598c60"

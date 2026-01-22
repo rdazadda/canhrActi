@@ -10,16 +10,6 @@ test_that("plot_daily_timeline returns ggplot object", {
   expect_s3_class(result, "ggplot")
 })
 
-test_that("plot_actogram_simple returns ggplot object", {
-  skip_if_not_installed("ggplot2")
-
-  test_data <- create.test.counts.data(n = 2880)
-
-  result <- plot_actogram_simple(test_data)
-
-  expect_s3_class(result, "ggplot")
-})
-
 test_that("plot_activity_heatmap returns ggplot object", {
   skip_if_not_installed("ggplot2")
 
@@ -27,16 +17,6 @@ test_that("plot_activity_heatmap returns ggplot object", {
   test_data <- create.test.counts.data(n = 4320)  # 3 days
 
   result <- plot_activity_heatmap(test_data)
-
-  expect_s3_class(result, "ggplot")
-})
-
-test_that("plot_hourly_boxplot returns ggplot object", {
-  skip_if_not_installed("ggplot2")
-
-  test_data <- create.test.counts.data(n = 2880)
-
-  result <- plot_hourly_boxplot(test_data)
 
   expect_s3_class(result, "ggplot")
 })
@@ -69,27 +49,6 @@ test_that("plot_daily_summary_bars returns ggplot object", {
   test_data$intensity <- freedson(test_data$axis1)
 
   result <- plot_daily_summary_bars(test_data)
-
-  expect_s3_class(result, "ggplot")
-})
-
-test_that("plot_sleep_overlay returns ggplot object", {
-  skip_if_not_installed("ggplot2")
-
-  test_data <- create.test.counts.data(n = 1440)
-
-  # Create mock sleep periods
-  sleep_periods <- data.frame(
-    in_bed_time = "2024-01-01 22:00:00",
-    out_bed_time = "2024-01-02 06:00:00",
-    onset = "2024-01-01 22:30:00",
-    sleep_time = 420,
-    wake_time = 30,
-    sleep_efficiency = 93.3,
-    stringsAsFactors = FALSE
-  )
-
-  result <- plot_sleep_overlay(test_data, sleep_periods = sleep_periods)
 
   expect_s3_class(result, "ggplot")
 })
@@ -148,18 +107,6 @@ test_that("plot_circadian_polar handles missing hours", {
   expect_s3_class(result, "ggplot")
 })
 
-test_that("plot_compliance_calendar returns ggplot object", {
-  skip_if_not_installed("ggplot2")
-
-  test_data <- create.test.counts.data(n = 10080)  # 7 days
-  test_data$wear <- TRUE
-  test_data$wear[1:120] <- FALSE  # 2 hours non-wear
-
-  result <- plot_compliance_calendar(test_data, wear_col = "wear")
-
-  expect_s3_class(result, "ggplot")
-})
-
 test_that("plot_weekend_weekday returns ggplot object", {
   skip_if_not_installed("ggplot2")
 
@@ -176,16 +123,6 @@ test_that("plot_acceleration_distribution returns ggplot object", {
   test_data <- create.test.counts.data(n = 1440)
 
   result <- plot_acceleration_distribution(test_data)
-
-  expect_s3_class(result, "ggplot")
-})
-
-test_that("plot_activity_histogram returns ggplot object", {
-  skip_if_not_installed("ggplot2")
-
-  test_data <- create.test.counts.data(n = 1440)
-
-  result <- plot_activity_histogram(test_data)
 
   expect_s3_class(result, "ggplot")
 })

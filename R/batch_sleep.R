@@ -306,9 +306,27 @@ canhrActi.sleep <- function(agd_file_path,
   counts_data <- agd.counts(agd_data)
   subject_info <- extract.subject.info(agd_data)
 
+  epoch_length <- 60
+  if (!is.null(agd_data$settings) && is.data.frame(agd_data$settings)) {
+    epoch_val <- agd_data$settings$settingValue[tolower(agd_data$settings$settingName) == "epochlength"]
+    if (length(epoch_val) > 0 && !is.na(epoch_val[1])) {
+      epoch_length <- as.numeric(epoch_val[1])
+    }
+  }
+  if (epoch_length <= 0 && nrow(counts_data) > 1) {
+    time_diff <- as.numeric(difftime(counts_data$timestamp[2], counts_data$timestamp[1], units = "secs"))
+    if (!is.na(time_diff) && time_diff > 0) {
+      epoch_length <- round(time_diff)
+    }
+  }
+  if (is.na(epoch_length) || epoch_length <= 0) epoch_length <- 60
+
   if (sleep_algorithm == "cole_kripke") {
-    sleep_wake <- sleep.cole.kripke(counts_data$axis1, apply_rescoring = apply_rescoring)
+    sleep_wake <- sleep.cole.kripke(counts_data$axis1, apply_rescoring = apply_rescoring, epoch_length = epoch_length)
   } else if (sleep_algorithm == "sadeh") {
+    if (!is.na(epoch_length) && epoch_length != 60) {
+      warning("Sadeh was validated for 60-second epochs. epoch_length = ", epoch_length, "s.")
+    }
     sleep_wake <- sleep.sadeh(counts_data$axis1)
   } else {
     stop("Unknown sleep algorithm: ", sleep_algorithm)

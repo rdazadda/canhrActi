@@ -52,6 +52,10 @@ mod_wear_time_ui <- function(id) {
       div(class = "cluster cluster--gap-2 ml-auto metrics-strip-fixed",
         actionButton(ns("run_btn"), span(icon("play"), "Run Validation"),
                      class = "btn-primary"),
+        actionButton(ns("validate_selected"), span(icon("check"), "Validate Selected"),
+                     class = "btn-default"),
+        actionButton(ns("toggle_advanced"), span(icon("sliders-h"), "Advanced"),
+                     class = "btn-default"),
         actionButton(ns("clear_results"), span(icon("redo"), "Reset"),
                      class = "btn-default")
       )
@@ -599,6 +603,26 @@ mod_wear_time_server <- function(id, shared) {
       min_wear_hours <- input$min_wear_day / 60
       start_time <- Sys.time()
       progress_interval <- max(1, min(5, ceiling(n_files / 10)))
+      warned_msgs <- character()
+
+      notify_warning <- function(msg) {
+        if (is.null(msg) || !nzchar(msg)) return()
+        if (!msg %in% warned_msgs) {
+          showNotification(msg, type = "warning", duration = 8)
+          warned_msgs <<- c(warned_msgs, msg)
+        }
+      }
+
+      capture_warnings <- function(expr, prefix = NULL) {
+        withCallingHandlers(expr, warning = function(w) {
+          msg <- conditionMessage(w)
+          if (!is.null(prefix) && nzchar(prefix)) {
+            msg <- paste(prefix, msg)
+          }
+          notify_warning(msg)
+          invokeRestart("muffleWarning")
+        })
+      }
 
       withProgress(message = "Validating wear time...", value = 0, {
         for (i in seq_along(file_ids)) {
@@ -618,7 +642,11 @@ mod_wear_time_server <- function(id, shared) {
             setProgress(value = i / n_files, detail = detail_msg)
           }
 
-          counts <- if (count_col %in% names(data)) data[[count_col]] else data$axis1
+          counts_raw <- if (count_col %in% names(data)) data[[count_col]] else data$axis1
+          counts <- counts_raw
+          if (!is.na(f$epoch_length) && f$epoch_length > 0 && f$epoch_length != 60) {
+            counts <- counts_raw * (60 / f$epoch_length)
+          }
           epoch_minutes <- f$epoch_length / 60
           non_wear_epochs <- as.integer(input$min_length / epoch_minutes)
           spike_tol_epochs <- as.integer(input$spike_tolerance / epoch_minutes)
@@ -626,38 +654,40 @@ mod_wear_time_server <- function(id, shared) {
           small_window_epochs <- as.integer(input$small_window / epoch_minutes)
 
           wear <- tryCatch({
-            if (input$algorithm == "troiano") {
-              canhrActi::wear.troiano(
-                counts_per_minute = counts,
-                non_wear_window = non_wear_epochs,
-                spike_tolerance = spike_tol_epochs,
-                spike_stoplevel = input$spike_stoplevel
-              )
-            } else if (input$algorithm == "choi") {
-              canhrActi::wear.choi(
-                counts_per_minute = counts,
-                non_wear_window = non_wear_epochs,
-                spike_tolerance = spike_tol_epochs,
-                spike_stoplevel = input$spike_stoplevel,
-                min_window_len = small_window_epochs
-              )
-            } else if (input$algorithm == "canhr") {
-              canhrActi::wear.CANHR2025(
-                counts_per_minute = counts,
-                non_wear_window = non_wear_epochs,
-                spike_tolerance = spike_tol_epochs,
-                spike_stoplevel = input$spike_stoplevel,
-                min_window_len = small_window_epochs
-              )
-            } else {
-              canhrActi::wear.CANHR2025(
-                counts_per_minute = counts,
-                non_wear_window = non_wear_epochs,
-                spike_tolerance = spike_tol_epochs,
-                spike_stoplevel = input$spike_stoplevel,
-                min_window_len = small_window_epochs
-              )
-            }
+            capture_warnings({
+              if (input$algorithm == "troiano") {
+                canhrActi::wear.troiano(
+                  counts_per_minute = counts,
+                  non_wear_window = non_wear_epochs,
+                  spike_tolerance = spike_tol_epochs,
+                  spike_stoplevel = input$spike_stoplevel
+                )
+              } else if (input$algorithm == "choi") {
+                canhrActi::wear.choi(
+                  counts_per_minute = counts,
+                  non_wear_window = non_wear_epochs,
+                  spike_tolerance = spike_tol_epochs,
+                  spike_stoplevel = input$spike_stoplevel,
+                  min_window_len = small_window_epochs
+                )
+              } else if (input$algorithm == "canhr") {
+                canhrActi::wear.CANHR2025(
+                  counts_per_minute = counts,
+                  non_wear_window = non_wear_epochs,
+                  spike_tolerance = spike_tol_epochs,
+                  spike_stoplevel = input$spike_stoplevel,
+                  min_window_len = small_window_epochs
+                )
+              } else {
+                canhrActi::wear.CANHR2025(
+                  counts_per_minute = counts,
+                  non_wear_window = non_wear_epochs,
+                  spike_tolerance = spike_tol_epochs,
+                  spike_stoplevel = input$spike_stoplevel,
+                  min_window_len = small_window_epochs
+                )
+              }
+            }, prefix = paste0(f$name, ":"))
           }, error = function(e) {
             showNotification(paste0("Wear validation skipped for ", f$name), type = "error")
             return(NULL)

@@ -344,7 +344,7 @@ extract.subject.info <- function(agd_data) {
   settings <- agd_data$settings
 
   get_setting <- function(name) {
-    value <- settings$settingValue[settings$settingName == name]
+    value <- settings$settingValue[tolower(settings$settingName) == tolower(name)]
     if (length(value) == 0) return(NA)
     value <- as.character(value)
     if (value == "" || value == "0") return(NA)

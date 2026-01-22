@@ -6,6 +6,7 @@
 ^\.git$
 ^\.gitignore$
 ^agd\.files$
+^inst/shiny/canhrActi_dashboard/rsconnect
 ^test_canhrActi\.R$
 ^.*\.o$
 ^.*\.so$

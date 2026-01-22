@@ -55,7 +55,7 @@
 run_dashboard <- function(launch.browser = TRUE, port = NULL, host = "127.0.0.1") {
 
   # Check for required packages
-  required_packages <- c("shiny", "bslib", "bsicons", "DT", "shinyjs")
+  required_packages <- c("shiny", "shinydashboard", "bslib", "bsicons", "DT", "shinyjs")
   missing_packages <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
 
 

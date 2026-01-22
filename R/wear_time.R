@@ -139,6 +139,8 @@
 #' @param non_wear_window Integer. Consecutive zero minutes for non-wear detection (default: 60)
 #' @param spike_tolerance Integer. Maximum consecutive minutes with activity allowed within non-wear (default: 2)
 #' @param spike_stoplevel Integer. Maximum count value considered as spike (default: 100)
+#' @param epoch_length Integer. Epoch length in seconds (default: 60). Window parameters
+#'   are automatically scaled to epochs based on this value.
 #' @return Logical vector where TRUE indicates wear time, FALSE indicates non-wear
 #' @export
 #' @references Troiano RP, et al. (2008). Physical activity in the United States measured
@@ -146,11 +148,16 @@
 wear.troiano <- function(counts_per_minute,
                          non_wear_window = 60,
                          spike_tolerance = 2,
-                         spike_stoplevel = 100) {
+                         spike_stoplevel = 100,
+                         epoch_length = 60) {
+
+  epochs_per_minute <- 60 / epoch_length
+  window_epochs <- ceiling(non_wear_window * epochs_per_minute)
+  spike_epochs <- ceiling(spike_tolerance * epochs_per_minute)
 
   .detect_wear_time_base(counts_per_minute,
-                         non_wear_window,
-                         spike_tolerance,
+                         window_epochs,
+                         spike_epochs,
                          spike_stoplevel,
                          validate_spikes = FALSE)
 }
@@ -167,7 +174,9 @@ wear.troiano <- function(counts_per_minute,
 #' @param spike_tolerance Integer. Maximum consecutive minutes with activity allowed (default: 2)
 #' @param min_spike_length Integer. Minimum length of spike (default: 1, reserved for future use)
 #' @param spike_stoplevel Integer. Maximum count value for spike (default: 100)
-#' @param min_window_len Integer. Required consecutive zeros before/after spike (default: 30)
+#' @param min_window_len Integer. Required consecutive zeros before/after spike in minutes (default: 30)
+#' @param epoch_length Integer. Epoch length in seconds (default: 60). Window parameters
+#'   are automatically scaled to epochs based on this value.
 #'
 #' @return Logical vector where TRUE indicates wear time, FALSE indicates non-wear
 #' @export
@@ -178,14 +187,20 @@ wear.choi <- function(counts_per_minute,
                       spike_tolerance = 2,
                       min_spike_length = 1,
                       spike_stoplevel = 100,
-                      min_window_len = 30) {
+                      min_window_len = 30,
+                      epoch_length = 60) {
+
+  epochs_per_minute <- 60 / epoch_length
+  window_epochs <- ceiling(non_wear_window * epochs_per_minute)
+  spike_epochs <- ceiling(spike_tolerance * epochs_per_minute)
+  validation_epochs <- ceiling(min_window_len * epochs_per_minute)
 
   .detect_wear_time_base(counts_per_minute,
-                         non_wear_window,
-                         spike_tolerance,
+                         window_epochs,
+                         spike_epochs,
                          spike_stoplevel,
                          validate_spikes = TRUE,
-                         min_window_len = min_window_len)
+                         min_window_len = validation_epochs)
 }
 
 #' Wear Time Detection Using CANHR 2025 Algorithm
@@ -200,6 +215,8 @@ wear.choi <- function(counts_per_minute,
 #' @param min_spike_length Integer. Minimum length of spike (default: 1, reserved for future use)
 #' @param spike_stoplevel Integer. Maximum count value for spike (default: 150)
 #' @param min_window_len Integer. Upstream/downstream window length in minutes (default: 45)
+#' @param epoch_length Integer. Epoch length in seconds (default: 60). Window parameters
+#'   are automatically scaled to epochs based on this value.
 #'
 #' @return Logical vector where TRUE indicates wear time, FALSE indicates non-wear
 #' @export
@@ -208,14 +225,20 @@ wear.CANHR2025 <- function(counts_per_minute,
                            spike_tolerance = 3,
                            min_spike_length = 1,
                            spike_stoplevel = 150,
-                           min_window_len = 45) {
+                           min_window_len = 45,
+                           epoch_length = 60) {
+
+  epochs_per_minute <- 60 / epoch_length
+  window_epochs <- ceiling(non_wear_window * epochs_per_minute)
+  spike_epochs <- ceiling(spike_tolerance * epochs_per_minute)
+  validation_epochs <- ceiling(min_window_len * epochs_per_minute)
 
   .detect_wear_time_base(counts_per_minute,
-                         non_wear_window,
-                         spike_tolerance,
+                         window_epochs,
+                         spike_epochs,
                          spike_stoplevel,
                          validate_spikes = TRUE,
-                         min_window_len = min_window_len)
+                         min_window_len = validation_epochs)
 }
 
 

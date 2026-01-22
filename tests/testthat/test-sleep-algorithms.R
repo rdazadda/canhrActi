@@ -251,3 +251,35 @@ test_that("tudor-locke keeps normal sleep periods", {
   expect_true(result$sleep_efficiency < 100)
   expect_true(result$number_of_awakenings > 0)
 })
+
+test_that("sadeh warns for non-60s epochs", {
+  counts <- rep(0, 100)
+  expect_warning(sleep.sadeh(counts, epoch_length = 30), "60-second")
+})
+
+test_that("cole-kripke warns for non-60s epochs", {
+  counts <- rep(0, 100)
+  expect_warning(sleep.cole.kripke(counts, epoch_length = 30), "60-second")
+})
+
+test_that("tudor-locke scales parameters for 30-second epochs", {
+  sleep.state <- c(rep("W", 20), rep("S", 400), rep("W", 3), rep("S", 200), rep("W", 30))
+  timestamps <- seq(as.POSIXct("2024-01-01 22:00:00"), by = 30, length.out = 653)
+  counts <- c(rep(500, 20), rep(50, 400), rep(200, 3), rep(50, 200), rep(500, 30))
+
+  result <- sleep.tudor.locke(sleep.state, timestamps, counts = counts, epoch_length = 30)
+  expect_true(nrow(result) >= 1)
+})
+
+test_that("tudor-locke accepts filter_suspicious parameter", {
+  sleep.state <- c(rep("W", 10), rep("S", 200), rep("W", 15))
+  timestamps <- seq(as.POSIXct("2024-01-01 22:00:00"), by = 60, length.out = 225)
+
+  expect_no_error(sleep.tudor.locke(sleep.state, timestamps, filter_suspicious = FALSE))
+  expect_no_error(sleep.tudor.locke(sleep.state, timestamps, filter_suspicious = TRUE))
+})
+
+test_that("sadeh accepts epoch_length parameter", {
+  counts <- rep(100, 50)
+  expect_no_error(sleep.sadeh(counts, epoch_length = 60))
+})

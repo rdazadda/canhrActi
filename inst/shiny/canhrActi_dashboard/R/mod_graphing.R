@@ -433,6 +433,7 @@ mod_graphing_server <- function(id, shared) {
         req(shared$files[[sel]])
         f <- shared$files[[sel]]
         data <- f$data
+        epoch_len <- f$epoch_length
         subject_id <- f$subject_info$id %||% f$name
         chart_title <- paste(chart_names[chart] %||% "Chart", "-", subject_id)
       } else {
@@ -567,6 +568,7 @@ mod_graphing_server <- function(id, shared) {
                 data = data,
                 show_axes = input$show_axes %||% "axis1",
                 show_cutpoints = input$show_cutpoints %||% TRUE,
+                epoch_length = epoch_len,
                 title = chart_title
               )
             },
@@ -605,6 +607,7 @@ mod_graphing_server <- function(id, shared) {
                 canhrActi::plot_intensity_pie(
                   data = data,
                   cutpoints = input$pie_cutpoints %||% "freedson",
+                  epoch_length = epoch_len,
                   show_labels = input$pie_labels %||% TRUE,
                   donut_style = input$pie_donut %||% TRUE,
                   title = chart_title
@@ -616,6 +619,7 @@ mod_graphing_server <- function(id, shared) {
               canhrActi::plot_intensity_area(
                 data = data,
                 cutpoints = input$pie_cutpoints %||% "freedson",
+                epoch_length = epoch_len,
                 title = chart_title
               )
             },
@@ -750,6 +754,7 @@ mod_graphing_server <- function(id, shared) {
             } else {
               canhrActi::plot_daily_summary_bars(
                 data = data,
+                epoch_length = epoch_len,
                 title = chart_title
               )
             }

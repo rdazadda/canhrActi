@@ -119,3 +119,34 @@ test_that("wear time functions return logical vectors", {
   expect_type(result2, "logical")
   expect_type(result3, "logical")
 })
+
+test_that("troiano scales window for 30-second epochs", {
+  counts_60s <- c(rep(500, 30), rep(0, 60), rep(500, 30))
+  counts_30s <- c(rep(500, 60), rep(0, 120), rep(500, 60))
+
+  result_60s <- wear.troiano(counts_60s, epoch_length = 60)
+  result_30s <- wear.troiano(counts_30s, epoch_length = 30)
+
+  nonwear_60s <- sum(!result_60s)
+  nonwear_30s <- sum(!result_30s)
+
+  expect_true(nonwear_30s >= nonwear_60s * 1.5)
+})
+
+test_that("choi scales window for 30-second epochs", {
+  counts_60s <- rep(0, 150)
+  counts_30s <- rep(0, 300)
+
+  result_60s <- wear.choi(counts_60s, epoch_length = 60)
+  result_30s <- wear.choi(counts_30s, epoch_length = 30)
+
+  expect_true(sum(!result_60s) >= 90)
+  expect_true(sum(!result_30s) >= 180)
+})
+
+test_that("wear time accepts epoch_length parameter", {
+  counts <- rep(0, 120)
+  expect_no_error(wear.troiano(counts, epoch_length = 30))
+  expect_no_error(wear.choi(counts, epoch_length = 30))
+  expect_no_error(wear.CANHR2025(counts, epoch_length = 30))
+})

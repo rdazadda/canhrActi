@@ -876,6 +876,29 @@ mod_sleep_server <- function(id, shared) {
         )
       }
 
+      warned_epoch <- FALSE
+      warned_msgs <- character()
+
+      notify_warning <- function(msg) {
+        if (is.null(msg) || !nzchar(msg)) return()
+        if (!msg %in% warned_msgs) {
+          showNotification(msg, type = "warning", duration = 8)
+          warned_msgs <<- c(warned_msgs, msg)
+        }
+      }
+
+      capture_warnings <- function(expr, prefix = NULL) {
+        withCallingHandlers(expr, warning = function(w) {
+          msg <- conditionMessage(w)
+          if (!grepl("validated for 60-second epochs", msg, ignore.case = TRUE)) {
+            if (!is.null(prefix) && nzchar(prefix)) {
+              msg <- paste(prefix, msg)
+            }
+            notify_warning(msg)
+          }
+          invokeRestart("muffleWarning")
+        })
+      }
       file_ids <- names(shared$files)
       n_files <- length(file_ids)
       all_results <- vector("list", n_files)
@@ -904,6 +927,11 @@ mod_sleep_server <- function(id, shared) {
 
           counts <- if ("axis1" %in% names(data)) data$axis1 else data[, 1]
 
+          if (!warned_epoch && !is.null(f$epoch_length) && !is.na(f$epoch_length) && f$epoch_length != 60) {
+            showNotification("Sleep algorithms are validated for 60-second epochs. Results may be inaccurate.", type = "warning", duration = 6)
+            warned_epoch <- TRUE
+          }
+
           timestamps <- if ("timestamp" %in% names(data)) {
             data$timestamp
           } else if ("dataTimestamp" %in% names(data)) {
@@ -926,9 +954,13 @@ mod_sleep_server <- function(id, shared) {
           if (actual_algorithm %in% c("cole.kripke", "sadeh")) {
             sleep_state <- tryCatch({
               if (actual_algorithm == "cole.kripke") {
-                canhrActi::sleep.cole.kripke(counts, apply_rescoring = TRUE)
+                capture_warnings({
+                  canhrActi::sleep.cole.kripke(counts, apply_rescoring = TRUE, epoch_length = f$epoch_length)
+                }, prefix = paste0(f$name, ":"))
               } else {
-                canhrActi::sleep.sadeh(counts)
+                capture_warnings({
+                  canhrActi::sleep.sadeh(counts)
+                }, prefix = paste0(f$name, ":"))
               }
             }, error = function(e) {
               showNotification(paste0("Sleep scoring failed for ", f$name, " - may need more data"), type = "error")
@@ -941,16 +973,18 @@ mod_sleep_server <- function(id, shared) {
 
               # Run Tudor-Locke period detection on FULL sleep_state (no NA masking yet)
               periods <- tryCatch({
-                canhrActi::sleep.tudor.locke(
-                  sleep.state = sleep_state,
-                  timestamps = data$timestamp,
-                  counts = counts,
-                  bedtime_start = bedtime_epochs,
-                  wake_time_end = wake_epochs,
-                  min_sleep_period = input$min_sleep_period,
-                  max_sleep_period = input$max_sleep_period,
-                  min_nonzero_epochs = if (input$use_min_nonzero) input$min_nonzero_epochs else 0
-                )
+                capture_warnings({
+                  canhrActi::sleep.tudor.locke(
+                    sleep.state = sleep_state,
+                    timestamps = data$timestamp,
+                    counts = counts,
+                    bedtime_start = bedtime_epochs,
+                    wake_time_end = wake_epochs,
+                    min_sleep_period = input$min_sleep_period,
+                    max_sleep_period = input$max_sleep_period,
+                    min_nonzero_epochs = if (input$use_min_nonzero) input$min_nonzero_epochs else 0
+                  )
+                }, prefix = paste0(f$name, ":"))
               }, error = function(e) {
                 showNotification(paste("Period detection error in", f$name, ":", e$message), type = "warning")
                 return(NULL)

@@ -41,8 +41,12 @@
 #' }
 #'
 #' @export
-sleep.cole.kripke <- function(counts, apply_rescoring = TRUE) {
+sleep.cole.kripke <- function(counts, apply_rescoring = TRUE, epoch_length = 60) {
   counts <- validate_counts(counts)
+
+  if (!is.null(epoch_length) && !is.na(epoch_length) && epoch_length != 60) {
+    warning("Cole-Kripke was validated for 60-second epochs. epoch_length = ", epoch_length, "s.")
+  }
 
   # Scale counts (divide by 100, cap at 300)
   scaled.counts <- counts / 100
@@ -166,6 +170,8 @@ sleep.cole.kripke <- function(counts, apply_rescoring = TRUE) {
 #' Implements the Sadeh sleep/wake scoring algorithm for children/adolescents (ages 10-25).
 #'
 #' @param counts Numeric vector of activity counts (from axis1)
+#' @param epoch_length Epoch length in seconds (default: 60). The Sadeh algorithm
+#'   was validated on 60-second epochs. Using other epoch lengths will generate a warning.
 #'
 #' @return Character vector of sleep states: "S" (sleep) or "W" (wake)
 #'
@@ -198,8 +204,12 @@ sleep.cole.kripke <- function(counts, apply_rescoring = TRUE) {
 #' }
 #'
 #' @export
-sleep.sadeh <- function(counts) {
+sleep.sadeh <- function(counts, epoch_length = 60) {
   counts <- validate_counts(counts)
+
+  if (!is.null(epoch_length) && !is.na(epoch_length) && epoch_length != 60) {
+    warning("Sadeh was validated for 60-second epochs. epoch_length = ", epoch_length, "s.")
+  }
 
   # Cap counts at 300
   capped.counts <- counts
@@ -263,17 +273,22 @@ sleep.sadeh <- function(counts) {
 #' @param sleep.state Character vector of sleep states ("S" or "W")
 #' @param timestamps POSIXct vector of epoch timestamps
 #' @param counts Optional numeric vector of activity counts for total counts
-#' @param bedtime_start Consecutive sleep epochs to define bedtime (default: 5)
-#' @param wake_time_end Consecutive wake epochs to define wake time (default: 10)
+#' @param bedtime_start Consecutive sleep minutes to define bedtime (default: 5)
+#' @param wake_time_end Consecutive wake minutes to define wake time (default: 10)
 #' @param min_sleep_period Minimum sleep period in minutes (default: 160)
 #' @param max_sleep_period Maximum sleep period in minutes (default: 1440)
-#' @param min_nonzero_epochs Minimum non-zero epochs (default: 15)
+#' @param min_nonzero_epochs Minimum non-zero activity epochs (default: 15)
+#' @param epoch_length Epoch length in seconds (default: 60). Parameters are
+#'   automatically scaled to epochs based on this value.
+#' @param filter_suspicious Logical. Filter suspicious periods that likely indicate
+#'   device removal or sedentary behavior? (default: TRUE)
 #'
 #' @return Data frame with sleep periods and metrics (TST, SE, WASO, awakenings, etc.)
 #'
 #' @details
-#' Suspicious periods (>12 hours, >99% efficiency, 0 awakenings) are automatically
-#' filtered as they likely indicate device removal rather than actual sleep.
+#' When filter_suspicious is TRUE, periods meeting these criteria are removed:
+#' >12 hours with >99\% efficiency and 0 awakenings, very low activity (<5 counts/min),
+#' or daytime periods with unrealistic characteristics.
 #'
 #' @references
 #' Tudor-Locke C, Barreira TV, Schuna JM, Mire EF, Katzmarzyk PT (2014).
@@ -297,7 +312,9 @@ sleep.tudor.locke <- function(sleep.state,
                               wake_time_end = 10,
                               min_sleep_period = 160,
                               max_sleep_period = 1440,
-                              min_nonzero_epochs = 15) {
+                              min_nonzero_epochs = 15,
+                              epoch_length = 60,
+                              filter_suspicious = TRUE) {
 
   if (length(sleep.state) != length(timestamps)) {
     stop("Length of sleep.state (", length(sleep.state),
@@ -314,15 +331,24 @@ sleep.tudor.locke <- function(sleep.state,
          ") must equal length of sleep.state (", length(sleep.state), ")")
   }
 
+  # Scale time-based parameters from minutes to epochs
+  epochs_per_minute <- 60 / epoch_length
+  bedtime_epochs <- ceiling(bedtime_start * epochs_per_minute)
+  wake_epochs <- ceiling(wake_time_end * epochs_per_minute)
+  min_period_epochs <- ceiling(min_sleep_period * epochs_per_minute)
+  max_period_epochs <- ceiling(max_sleep_period * epochs_per_minute)
+
   sleep.periods <- .detect.sleep.periods(
     sleep.state = sleep.state,
     timestamps = timestamps,
     counts = counts,
-    bedtime_start = bedtime_start,
-    wake_time_end = wake_time_end,
-    min_sleep_period = min_sleep_period,
-    max_sleep_period = max_sleep_period,
-    min_nonzero_epochs = min_nonzero_epochs
+    bedtime_start = bedtime_epochs,
+    wake_time_end = wake_epochs,
+    min_sleep_period = min_period_epochs,
+    max_sleep_period = max_period_epochs,
+    min_nonzero_epochs = min_nonzero_epochs,
+    epoch_length = epoch_length,
+    filter_suspicious = filter_suspicious
   )
 
   return(sleep.periods)
@@ -354,7 +380,9 @@ sleep.tudor.locke <- function(sleep.state,
 .detect.sleep.periods <- function(sleep.state, timestamps, counts,
                                   bedtime_start, wake_time_end,
                                   min_sleep_period, max_sleep_period,
-                                  min_nonzero_epochs) {
+                                  min_nonzero_epochs,
+                                  epoch_length = 60,
+                                  filter_suspicious = TRUE) {
 
   n <- length(sleep.state)
   periods <- list()
@@ -401,7 +429,14 @@ sleep.tudor.locke <- function(sleep.state,
     # Check duration criteria
     if (period.duration >= min_sleep_period && period.duration < max_sleep_period) {
       period.sleep.state <- sleep.state[bedtime.idx:(wake.idx - 1)]
-      nonzero.count <- sum(period.sleep.state == "S")
+
+      # Count epochs with non-zero activity (validates device was worn)
+      if (!is.null(counts)) {
+        period.counts <- counts[bedtime.idx:(wake.idx - 1)]
+        nonzero.count <- sum(period.counts > 0, na.rm = TRUE)
+      } else {
+        nonzero.count <- min_nonzero_epochs
+      }
 
       if (nonzero.count >= min_nonzero_epochs) {
         period.count <- period.count + 1
@@ -459,55 +494,35 @@ sleep.tudor.locke <- function(sleep.state,
                        "average_awakening", "movement_index", "fragmentation_index",
                        "sleep_efficiency", "total_counts", "activity_sd", "activity_cv")]
 
-  # Filter out suspicious periods (likely device removal or sedentary behavior, not real sleep)
-  # Multiple criteria to improve specificity:
-
-  if (nrow(result) > 0) {
-    # Calculate average counts per minute for each period
+  if (filter_suspicious && nrow(result) > 0) {
     avg_counts_per_min <- result$total_counts / pmax(result$sleep_time, 1)
     avg_counts_per_min[is.na(avg_counts_per_min) | is.infinite(avg_counts_per_min)] <- 0
 
-    # Criteria 1: Very long (>12h) + very high efficiency (>99%) + no awakenings
-    # This indicates device removal
     suspicious1 <- result$sleep_time > 720 &
                    result$sleep_efficiency > 99 &
                    result$number_of_awakenings == 0
 
-    # Criteria 2: Very low average activity (< 5 counts/min) for periods > 2 hours
-    # True sleep has SOME movement; near-zero suggests device off
     suspicious2 <- result$sleep_time > 120 & avg_counts_per_min < 5
 
-    # Criteria 3: 100% efficiency + 0 awakenings for periods > 3 hours
-    # Real sleep periods of this length almost always have some awakenings
     suspicious3 <- result$sleep_time > 180 &
                    result$sleep_efficiency >= 99.5 &
                    result$number_of_awakenings == 0
 
-    # Criteria 4: Short periods (<3h) with very high efficiency (>98%) and 0 awakenings
-    # These are likely sedentary periods (watching TV, reading) not naps
     suspicious4 <- result$sleep_time < 180 &
                    result$sleep_time > 30 &
                    result$sleep_efficiency > 98 &
                    result$number_of_awakenings == 0
 
-    # Criteria 5: Total counts essentially zero (device definitely off)
     suspicious5 <- result$total_counts < 50 & result$sleep_time > 60
 
-    # Criteria 6: Very low activity variance with high efficiency
-    # True sleep has micro-movements; constant low activity suggests sedentary behavior
-    # Low CV (< 0.5) + high efficiency (> 95%) + few awakenings (< 2) is suspicious
     suspicious6 <- result$activity_cv < 0.5 &
                    result$sleep_efficiency > 95 &
                    result$number_of_awakenings < 2 &
                    result$sleep_time > 60 &
-                   result$sleep_time < 300  # Only for periods 1-5 hours
+                   result$sleep_time < 300
 
-    # Criteria 7: Daytime "sleep" periods - likely sedentary behavior
-    # True sleep rarely starts between 9 AM and 6 PM and lasts < 3 hours
-    # (Naps are usually shorter and wouldn't be detected as full sleep periods)
     suspicious7 <- tryCatch({
       in_bed_hours <- as.numeric(format(as.POSIXct(result$in_bed_time), "%H"))
-      # Sleep starting 9 AM - 6 PM (hours 9-17) with duration < 180 min is suspicious
       daytime_start <- in_bed_hours >= 9 & in_bed_hours <= 17
       short_duration <- result$sleep_time < 180
       high_efficiency <- result$sleep_efficiency > 90

@@ -24,6 +24,7 @@ NULL
 #' @param inclinometer_col Name of inclinometer/posture column
 #' @param equal_scales Logical. Use same y-axis scale for all days? (default: TRUE)
 #' @param max_counts Maximum y-axis value (default: auto)
+#' @param epoch_length Epoch length in seconds (optional)
 #' @param title Plot title (default: "Daily Activity Timeline")
 #' @param color_scheme Named list of colors for each metric
 #'
@@ -71,6 +72,7 @@ plot_daily_timeline <- function(data,
                                  inclinometer_col = "inclinometer",
                                  equal_scales = TRUE,
                                  max_counts = NULL,
+                                 epoch_length = NULL,
                                  title = "Daily Activity Timeline",
                                  color_scheme = NULL) {
 
@@ -105,6 +107,16 @@ plot_daily_timeline <- function(data,
   data$date <- as.Date(data[[timestamp_col]])
   data$time_of_day <- as.numeric(format(data[[timestamp_col]], "%H")) +
                       as.numeric(format(data[[timestamp_col]], "%M")) / 60
+
+  if (is.null(epoch_length) || is.na(epoch_length) || epoch_length <= 0) {
+    if (nrow(data) > 1) {
+      time_diffs <- diff(as.numeric(data[[timestamp_col]]))
+      epoch_length <- round(stats::median(time_diffs, na.rm = TRUE))
+    }
+  }
+  if (is.null(epoch_length) || is.na(epoch_length) || epoch_length <= 0) {
+    epoch_length <- 60
+  }
 
   # Get unique dates
   unique_dates <- sort(unique(data$date))
@@ -209,9 +221,10 @@ plot_daily_timeline <- function(data,
 
   # Add cut-point lines if requested
   if (show_cutpoints && length(cutpoints) > 0) {
+    cutpoints_scaled <- cutpoints * (epoch_length / 60)
     cutpoint_df <- data.frame(
-      yintercept = cutpoints,
-      label = names(cutpoints),
+      yintercept = cutpoints_scaled,
+      label = names(cutpoints_scaled),
       stringsAsFactors = FALSE
     )
     cutpoint_df <- cutpoint_df[cutpoint_df$yintercept <= max_counts, ]
@@ -795,6 +808,7 @@ plot_activity_heatmap <- function(data,
 #' @param date_filter Specific date to plot
 #' @param show_cutpoints Logical. Show cut-point lines?
 #' @param cutpoints Named vector of cut-point values
+#' @param epoch_length Epoch length in seconds (optional)
 #' @param normalize Logical. Normalize metrics to same scale? (default: FALSE)
 #' @param facet Logical. Use faceted display instead of overlay? (default: FALSE)
 #' @param title Character. Plot title (default: "Multi-Metric Comparison")
@@ -812,6 +826,7 @@ plot_multi_metric <- function(data,
                                show_cutpoints = TRUE,
                                cutpoints = c(sedentary = 100, light = 1952,
                                            moderate = 5725, vigorous = 9498),
+                               epoch_length = NULL,
                                normalize = FALSE,
                                facet = FALSE,
                                title = "Multi-Metric Comparison") {
@@ -842,6 +857,16 @@ plot_multi_metric <- function(data,
   # Add time of day
   data$time_of_day <- as.numeric(format(data[[timestamp_col]], "%H")) +
                       as.numeric(format(data[[timestamp_col]], "%M")) / 60
+
+  if (is.null(epoch_length) || is.na(epoch_length) || epoch_length <= 0) {
+    if (nrow(data) > 1) {
+      time_diffs <- diff(as.numeric(data[[timestamp_col]]))
+      epoch_length <- round(stats::median(time_diffs, na.rm = TRUE))
+    }
+  }
+  if (is.null(epoch_length) || is.na(epoch_length) || epoch_length <= 0) {
+    epoch_length <- 60
+  }
 
   # Prepare long-format data
   plot_data_list <- list()
@@ -883,9 +908,10 @@ plot_multi_metric <- function(data,
   # Add cut-points if not normalized
   if (show_cutpoints && !normalize) {
     max_val <- max(plot_data$value, na.rm = TRUE)
+    cutpoints_scaled <- cutpoints * (epoch_length / 60)
     cutpoint_df <- data.frame(
-      yintercept = cutpoints[cutpoints <= max_val * 1.1],
-      label = names(cutpoints[cutpoints <= max_val * 1.1])
+      yintercept = cutpoints_scaled[cutpoints_scaled <= max_val * 1.1],
+      label = names(cutpoints_scaled[cutpoints_scaled <= max_val * 1.1])
     )
 
     if (nrow(cutpoint_df) > 0) {
@@ -943,7 +969,7 @@ plot_multi_metric <- function(data,
 #' @param date_col Name of date column
 #' @param timestamp_col Name of timestamp column (default: "timestamp")
 #' @param axis1_col Name of axis1 counts column (default: "axis1")
-#' @param epoch_length Epoch length in seconds (default: 60)
+#' @param epoch_length Epoch length in seconds (optional)
 #' @param cutpoints Cut-point algorithm to use (default: "freedson")
 #' @param daily_summary Optional. Pre-computed daily summary data frame (default: NULL)
 #' @param title Character. Plot title (default: "Daily Activity Summary")
@@ -957,7 +983,7 @@ plot_daily_summary_bars <- function(data,
                                      date_col = "date",
                                      timestamp_col = "timestamp",
                                      axis1_col = "axis1",
-                                     epoch_length = 60,
+                                     epoch_length = NULL,
                                      cutpoints = "freedson",
                                      daily_summary = NULL,
                                      title = "Daily Activity Summary",
@@ -965,6 +991,16 @@ plot_daily_summary_bars <- function(data,
 
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("Package 'ggplot2' is required")
+  }
+
+  if (is.null(epoch_length) || is.na(epoch_length) || epoch_length <= 0) {
+    if (timestamp_col %in% names(data) && nrow(data) > 1) {
+      time_diffs <- diff(as.numeric(data[[timestamp_col]]))
+      epoch_length <- round(stats::median(time_diffs, na.rm = TRUE))
+    }
+  }
+  if (is.null(epoch_length) || is.na(epoch_length) || epoch_length <= 0) {
+    epoch_length <- 60
   }
 
   # Use pre-calculated daily summary if provided
@@ -996,6 +1032,9 @@ plot_daily_summary_bars <- function(data,
     # Summarize by date
     daily_summary <- lapply(split(data, data$date), function(day_data) {
       axis1_vals <- if (axis1_col %in% names(day_data)) day_data[[axis1_col]] else rep(0, nrow(day_data))
+      if (!is.null(epoch_length) && !is.na(epoch_length) && epoch_length > 0 && epoch_length != 60) {
+        axis1_vals <- to_cpm(axis1_vals, epoch_length)
+      }
 
       # Calculate metrics
       total_steps <- if ("steps" %in% names(day_data)) sum(day_data$steps, na.rm = TRUE) else NA
@@ -1093,7 +1132,7 @@ plot_daily_summary_bars <- function(data,
 #' @param data Data frame with timestamp and intensity columns
 #' @param timestamp_col Name of timestamp column
 #' @param intensity_col Name of intensity column
-#' @param epoch_length Epoch length in seconds
+#' @param epoch_length Epoch length in seconds (optional)
 #' @param cutpoints Cut-points to use for intensity classification (default: "freedson")
 #' @param stacked Whether to stack the areas (default: TRUE)
 #' @param intensity Optional. Pre-computed intensity vector (default: NULL)
@@ -1106,7 +1145,7 @@ plot_daily_summary_bars <- function(data,
 plot_intensity_area <- function(data,
                                  timestamp_col = "timestamp",
                                  intensity_col = "intensity",
-                                 epoch_length = 60,
+                                 epoch_length = NULL,
                                  cutpoints = "freedson",
                                  stacked = TRUE,
                                  intensity = NULL,
@@ -1120,6 +1159,16 @@ plot_intensity_area <- function(data,
   # Ensure timestamp is POSIXct
   if (!inherits(data[[timestamp_col]], "POSIXct")) {
     data[[timestamp_col]] <- as.POSIXct(data[[timestamp_col]])
+  }
+
+  if (is.null(epoch_length) || is.na(epoch_length) || epoch_length <= 0) {
+    if (nrow(data) > 1) {
+      time_diffs <- diff(as.numeric(data[[timestamp_col]]))
+      epoch_length <- round(stats::median(time_diffs, na.rm = TRUE))
+    }
+  }
+  if (is.null(epoch_length) || is.na(epoch_length) || epoch_length <= 0) {
+    epoch_length <- 60
   }
 
   # Use pre-calculated intensity if provided
@@ -1137,7 +1186,11 @@ plot_intensity_area <- function(data,
         "canhr" = c(0, 100, 1500, 5000, 9000),
         c(0, 100, 1952, 5725, 9498)  # default to freedson
       )
-      data$intensity <- cut(data$axis1,
+      axis1_vals <- data$axis1
+      if (!is.null(epoch_length) && !is.na(epoch_length) && epoch_length > 0 && epoch_length != 60) {
+        axis1_vals <- to_cpm(axis1_vals, epoch_length)
+      }
+      data$intensity <- cut(axis1_vals,
         breaks = c(cp, Inf),
         labels = c("sedentary", "light", "moderate", "vigorous", "very_vigorous"),
         include.lowest = TRUE, right = FALSE
@@ -3096,7 +3149,11 @@ plot_intensity_pie <- function(data,
   } else {
     # Calculate from counts using cut-points
     # Classify intensity
-    data$intensity <- cut(data[[counts_col]],
+    counts_vals <- data[[counts_col]]
+    if (!is.null(epoch_length) && !is.na(epoch_length) && epoch_length > 0 && epoch_length != 60) {
+      counts_vals <- to_cpm(counts_vals, epoch_length)
+    }
+    data$intensity <- cut(counts_vals,
       breaks = cp,
       labels = c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous"),
       include.lowest = TRUE, right = FALSE

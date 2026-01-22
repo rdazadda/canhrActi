@@ -335,12 +335,17 @@ canhrActi <- function(agd_file_path,
     counts.for.analysis <- vm(counts.data$axis1, counts.data$axis2, counts.data$axis3)
   }
 
+  counts_for_wear <- counts.for.analysis
+  if (!is.na(epoch_length) && epoch_length > 0 && epoch_length != 60) {
+    counts_for_wear <- counts.for.analysis * (60 / epoch_length)
+  }
+
   if (wear_time_algorithm == "choi") {
-    wear.time <- wear.choi(counts.for.analysis)
+    wear.time <- wear.choi(counts_for_wear, epoch_length = epoch_length)
   } else if (wear_time_algorithm == "troiano") {
-    wear.time <- wear.troiano(counts.for.analysis)
+    wear.time <- wear.troiano(counts_for_wear, epoch_length = epoch_length)
   } else if (wear_time_algorithm == "CANHR2025") {
-    wear.time <- wear.CANHR2025(counts.for.analysis)
+    wear.time <- wear.CANHR2025(counts_for_wear, epoch_length = epoch_length)
   }
 
   # Calculate wear time accounting for epoch length
@@ -435,24 +440,39 @@ canhrActi <- function(agd_file_path,
     }
 
     tryCatch({
-      # Count-based algorithms
-      sleep_scores <- switch(sleep_algorithm,
-        "cole_kripke" = sleep.cole.kripke(counts.for.analysis),
-        "sadeh" = sleep.sadeh(counts.for.analysis),
-        "tudor_locke" = sleep.tudor.locke(counts.for.analysis),
-        sleep.cole.kripke(counts.for.analysis)  # default
-      )
-      epoch.data$sleep <- sleep_scores
-
-      sleep_results <- list(
-        sleep = sleep_scores,
-        algorithm = switch(sleep_algorithm,
-          "cole_kripke" = "Cole-Kripke (1992)",
-          "sadeh" = "Sadeh (1994)",
-          "tudor_locke" = "Tudor-Locke",
-          "Unknown"
+      if (sleep_algorithm == "tudor_locke") {
+        sleep_scores <- sleep.cole.kripke(counts.for.analysis, apply_rescoring = TRUE, epoch_length = epoch_length)
+        sleep_periods <- sleep.tudor.locke(
+          sleep.state = sleep_scores,
+          timestamps = counts.data$timestamp,
+          counts = counts.for.analysis,
+          epoch_length = epoch_length
         )
-      )
+        epoch.data$sleep <- sleep_scores
+
+        sleep_results <- list(
+          sleep = sleep_scores,
+          periods = sleep_periods,
+          algorithm = "Tudor-Locke",
+          base_algorithm = "Cole-Kripke (1992)"
+        )
+      } else {
+        sleep_scores <- switch(sleep_algorithm,
+          "cole_kripke" = sleep.cole.kripke(counts.for.analysis, apply_rescoring = TRUE, epoch_length = epoch_length),
+          "sadeh" = sleep.sadeh(counts.for.analysis, epoch_length = epoch_length),
+          sleep.cole.kripke(counts.for.analysis, apply_rescoring = TRUE, epoch_length = epoch_length)
+        )
+        epoch.data$sleep <- sleep_scores
+
+        sleep_results <- list(
+          sleep = sleep_scores,
+          algorithm = switch(sleep_algorithm,
+            "cole_kripke" = "Cole-Kripke (1992)",
+            "sadeh" = "Sadeh (1994)",
+            "Unknown"
+          )
+        )
+      }
     }, error = function(e) {
       if (output_summary) warning("Sleep analysis failed: ", e$message)
       sleep_results <<- NULL
@@ -587,16 +607,13 @@ canhrActi <- function(agd_file_path,
         if (output_summary) cat("  Detecting sleep periods for exclusion (SBRN: sedentary = waking only)...\n")
 
         sleep_mask <- tryCatch({
-          # Run Cole-Kripke sleep/wake classification on valid day data
-          sleep_state <- sleep.cole.kripke(valid_day_data$axis1, apply_rescoring = TRUE)
+          sleep_state <- sleep.cole.kripke(valid_day_data$axis1, apply_rescoring = TRUE, epoch_length = epoch_length)
 
-          # Detect consolidated sleep PERIODS using Tudor-Locke algorithm
-          # This groups epoch-by-epoch classification into actual sleep windows
-          # and filters out suspicious periods (device removal, sedentary misclassification)
           sleep_periods <- sleep.tudor.locke(
             sleep.state = sleep_state,
             timestamps = valid_day_data$timestamp,
-            counts = valid_day_data$axis1
+            counts = valid_day_data$axis1,
+            epoch_length = epoch_length
           )
 
           # Create mask from detected sleep PERIOD WINDOWS
@@ -793,9 +810,6 @@ summary.canhrActi_analysis <- function(object, ...) {
   print(object$daily_summary)
   invisible(object)
 }
-
-`%||%` <- function(a, b) if (is.null(a)) b else a
-
 
 #' Analyze AGD File
 #'

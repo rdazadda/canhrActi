@@ -8,7 +8,8 @@ wear.troiano(
   counts_per_minute,
   non_wear_window = 60,
   spike_tolerance = 2,
-  spike_stoplevel = 100
+  spike_stoplevel = 100,
+  epoch_length = 60
 )
 }
 \arguments{
@@ -19,6 +20,9 @@ wear.troiano(
 \item{spike_tolerance}{Integer. Maximum consecutive minutes with activity allowed within non-wear (default: 2)}
 
 \item{spike_stoplevel}{Integer. Maximum count value considered as spike (default: 100)}
+
+\item{epoch_length}{Integer. Epoch length in seconds (default: 60). Window parameters
+are automatically scaled to epochs based on this value.}
 }
 \value{
 Logical vector where TRUE indicates wear time, FALSE indicates non-wear

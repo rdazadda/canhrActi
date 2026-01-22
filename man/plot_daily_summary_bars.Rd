@@ -10,7 +10,7 @@ plot_daily_summary_bars(
   date_col = "date",
   timestamp_col = "timestamp",
   axis1_col = "axis1",
-  epoch_length = 60,
+  epoch_length = NULL,
   cutpoints = "freedson",
   daily_summary = NULL,
   title = "Daily Activity Summary",
@@ -28,7 +28,7 @@ plot_daily_summary_bars(
 
 \item{axis1_col}{Name of axis1 counts column (default: "axis1")}
 
-\item{epoch_length}{Epoch length in seconds (default: 60)}
+\item{epoch_length}{Epoch length in seconds (optional)}
 
 \item{cutpoints}{Cut-point algorithm to use (default: "freedson")}
 

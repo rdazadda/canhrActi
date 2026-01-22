@@ -10,7 +10,8 @@ wear.choi(
   spike_tolerance = 2,
   min_spike_length = 1,
   spike_stoplevel = 100,
-  min_window_len = 30
+  min_window_len = 30,
+  epoch_length = 60
 )
 }
 \arguments{
@@ -24,7 +25,10 @@ wear.choi(
 
 \item{spike_stoplevel}{Integer. Maximum count value for spike (default: 100)}
 
-\item{min_window_len}{Integer. Required consecutive zeros before/after spike (default: 30)}
+\item{min_window_len}{Integer. Required consecutive zeros before/after spike in minutes (default: 30)}
+
+\item{epoch_length}{Integer. Epoch length in seconds (default: 60). Window parameters
+are automatically scaled to epochs based on this value.}
 }
 \value{
 Logical vector where TRUE indicates wear time, FALSE indicates non-wear

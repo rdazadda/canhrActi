@@ -8,7 +8,7 @@ plot_intensity_area(
   data,
   timestamp_col = "timestamp",
   intensity_col = "intensity",
-  epoch_length = 60,
+  epoch_length = NULL,
   cutpoints = "freedson",
   stacked = TRUE,
   intensity = NULL,
@@ -23,7 +23,7 @@ plot_intensity_area(
 
 \item{intensity_col}{Name of intensity column}
 
-\item{epoch_length}{Epoch length in seconds}
+\item{epoch_length}{Epoch length in seconds (optional)}
 
 \item{cutpoints}{Cut-points to use for intensity classification (default: "freedson")}
 

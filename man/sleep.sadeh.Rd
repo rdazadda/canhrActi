@@ -4,10 +4,13 @@
 \alias{sleep.sadeh}
 \title{Sadeh Sleep Scoring Algorithm}
 \usage{
-sleep.sadeh(counts)
+sleep.sadeh(counts, epoch_length = 60)
 }
 \arguments{
 \item{counts}{Numeric vector of activity counts (from axis1)}
+
+\item{epoch_length}{Epoch length in seconds (default: 60). The Sadeh algorithm
+was validated on 60-second epochs. Using other epoch lengths will generate a warning.}
 }
 \value{
 Character vector of sleep states: "S" (sleep) or "W" (wake)

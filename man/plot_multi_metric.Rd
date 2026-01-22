@@ -11,6 +11,7 @@ plot_multi_metric(
   date_filter = NULL,
   show_cutpoints = TRUE,
   cutpoints = c(sedentary = 100, light = 1952, moderate = 5725, vigorous = 9498),
+  epoch_length = NULL,
   normalize = FALSE,
   facet = FALSE,
   title = "Multi-Metric Comparison"
@@ -28,6 +29,8 @@ plot_multi_metric(
 \item{show_cutpoints}{Logical. Show cut-point lines?}
 
 \item{cutpoints}{Named vector of cut-point values}
+
+\item{epoch_length}{Epoch length in seconds (optional)}
 
 \item{normalize}{Logical. Normalize metrics to same scale? (default: FALSE)}
 

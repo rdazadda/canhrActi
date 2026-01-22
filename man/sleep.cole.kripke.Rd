@@ -4,7 +4,7 @@
 \alias{sleep.cole.kripke}
 \title{Cole-Kripke Sleep Scoring Algorithm}
 \usage{
-sleep.cole.kripke(counts, apply_rescoring = TRUE)
+sleep.cole.kripke(counts, apply_rescoring = TRUE, epoch_length = 60)
 }
 \arguments{
 \item{counts}{Numeric vector of activity counts (from axis1)}

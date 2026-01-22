@@ -10,7 +10,8 @@ wear.CANHR2025(
   spike_tolerance = 3,
   min_spike_length = 1,
   spike_stoplevel = 150,
-  min_window_len = 45
+  min_window_len = 45,
+  epoch_length = 60
 )
 }
 \arguments{
@@ -25,6 +26,9 @@ wear.CANHR2025(
 \item{spike_stoplevel}{Integer. Maximum count value for spike (default: 150)}
 
 \item{min_window_len}{Integer. Upstream/downstream window length in minutes (default: 45)}
+
+\item{epoch_length}{Integer. Epoch length in seconds (default: 60). Window parameters
+are automatically scaled to epochs based on this value.}
 }
 \value{
 Logical vector where TRUE indicates wear time, FALSE indicates non-wear

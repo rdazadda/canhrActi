@@ -287,8 +287,8 @@ sleep.sadeh <- function(counts, epoch_length = 60) {
 #'
 #' @details
 #' When filter_suspicious is TRUE, periods meeting these criteria are removed:
-#' >12 hours with >99\% efficiency and 0 awakenings, very low activity (<5 counts/min),
-#' or daytime periods with unrealistic characteristics.
+#' periods longer than 12 hours with over 99 percent efficiency and 0 awakenings,
+#' very low activity (under 5 counts/min), or daytime periods with unrealistic characteristics.
 #'
 #' @references
 #' Tudor-Locke C, Barreira TV, Schuna JM, Mire EF, Katzmarzyk PT (2014).

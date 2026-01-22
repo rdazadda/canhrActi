@@ -14,6 +14,7 @@ plot_daily_timeline(
   inclinometer_col = "inclinometer",
   equal_scales = TRUE,
   max_counts = NULL,
+  epoch_length = NULL,
   title = "Daily Activity Timeline",
   color_scheme = NULL
 )
@@ -37,6 +38,8 @@ plot_daily_timeline(
 \item{equal_scales}{Logical. Use same y-axis scale for all days? (default: TRUE)}
 
 \item{max_counts}{Maximum y-axis value (default: auto)}
+
+\item{epoch_length}{Epoch length in seconds (optional)}
 
 \item{title}{Plot title (default: "Daily Activity Timeline")}
 

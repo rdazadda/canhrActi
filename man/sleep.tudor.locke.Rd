@@ -12,7 +12,9 @@ sleep.tudor.locke(
   wake_time_end = 10,
   min_sleep_period = 160,
   max_sleep_period = 1440,
-  min_nonzero_epochs = 15
+  min_nonzero_epochs = 15,
+  epoch_length = 60,
+  filter_suspicious = TRUE
 )
 }
 \arguments{
@@ -22,15 +24,21 @@ sleep.tudor.locke(
 
 \item{counts}{Optional numeric vector of activity counts for total counts}
 
-\item{bedtime_start}{Consecutive sleep epochs to define bedtime (default: 5)}
+\item{bedtime_start}{Consecutive sleep minutes to define bedtime (default: 5)}
 
-\item{wake_time_end}{Consecutive wake epochs to define wake time (default: 10)}
+\item{wake_time_end}{Consecutive wake minutes to define wake time (default: 10)}
 
 \item{min_sleep_period}{Minimum sleep period in minutes (default: 160)}
 
 \item{max_sleep_period}{Maximum sleep period in minutes (default: 1440)}
 
-\item{min_nonzero_epochs}{Minimum non-zero epochs (default: 15)}
+\item{min_nonzero_epochs}{Minimum non-zero activity epochs (default: 15)}
+
+\item{epoch_length}{Epoch length in seconds (default: 60). Parameters are
+automatically scaled to epochs based on this value.}
+
+\item{filter_suspicious}{Logical. Filter suspicious periods that likely indicate
+device removal or sedentary behavior? (default: TRUE)}
 }
 \value{
 Data frame with sleep periods and metrics (TST, SE, WASO, awakenings, etc.)
@@ -39,8 +47,9 @@ Data frame with sleep periods and metrics (TST, SE, WASO, awakenings, etc.)
 Detects sleep periods and calculates sleep quality metrics.
 }
 \details{
-Suspicious periods (>12 hours, >99\% efficiency, 0 awakenings) are automatically
-filtered as they likely indicate device removal rather than actual sleep.
+When filter_suspicious is TRUE, periods meeting these criteria are removed:
+periods longer than 12 hours with over 99 percent efficiency and 0 awakenings,
+very low activity (under 5 counts/min), or daytime periods with unrealistic characteristics.
 }
 \examples{
 \dontrun{

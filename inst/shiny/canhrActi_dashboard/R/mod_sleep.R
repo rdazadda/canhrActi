@@ -959,11 +959,11 @@ mod_sleep_server <- function(id, shared) {
                 }, prefix = paste0(f$name, ":"))
               } else {
                 capture_warnings({
-                  canhrActi::sleep.sadeh(counts)
+                  canhrActi::sleep.sadeh(counts, epoch_length = f$epoch_length)
                 }, prefix = paste0(f$name, ":"))
               }
             }, error = function(e) {
-              showNotification(paste0("Sleep scoring failed for ", f$name, " - may need more data"), type = "error")
+              showNotification(paste0("Sleep scoring failed for ", f$name, ": ", e$message), type = "error")
               return(NULL)
             })
 

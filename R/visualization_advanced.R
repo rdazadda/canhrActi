@@ -3528,36 +3528,44 @@ plot_intensity_pie_from_summary <- function(intensity_summary,
     if (nrow(small_slices) > 0) {
       small_slices$short_label <- sprintf("%.1f%%\n(%s)", small_slices$percent, small_slices$time_str)
 
+      # Calculate positions pushed further out for small slices
+      small_slices$anchor_x <- small_slices$outside_x * 0.75  # Point on pie edge
+      small_slices$anchor_y <- small_slices$outside_y * 0.75
+      small_slices$label_pos_x <- small_slices$outside_x * 1.35  # Label position further out
+      small_slices$label_pos_y <- small_slices$outside_y * 1.35
+
       if (requireNamespace("ggrepel", quietly = TRUE)) {
         p <- p +
           ggrepel::geom_text_repel(
             data = small_slices,
-            ggplot2::aes(x = outside_x, y = outside_y, label = short_label),
+            ggplot2::aes(x = anchor_x, y = anchor_y, label = short_label),
             size = 3.5, fontface = "bold", color = "gray20",
             lineheight = 0.85,
             min.segment.length = 0,
             segment.color = "gray50",
-            segment.size = 0.4,
-            box.padding = 0.4,
-            point.padding = 0.3,
-            force = 2,
-            force_pull = 0.5,
+            segment.size = 0.5,
+            box.padding = 0.5,
+            point.padding = 0.2,
+            force = 3,
+            force_pull = 0.3,
             max.overlaps = 20,
             direction = "both",
+            nudge_x = small_slices$label_pos_x - small_slices$anchor_x,
+            nudge_y = small_slices$label_pos_y - small_slices$anchor_y,
             seed = 42
           )
       } else {
         p <- p +
           ggplot2::geom_text(
             data = small_slices,
-            ggplot2::aes(x = outside_x * 1.3, y = outside_y * 1.3, label = short_label, hjust = hjust),
+            ggplot2::aes(x = label_pos_x, y = label_pos_y, label = short_label, hjust = hjust),
             size = 3.5, fontface = "bold", color = "gray20", lineheight = 0.85
           ) +
           ggplot2::geom_segment(
             data = small_slices,
-            ggplot2::aes(x = outside_x * 0.95, y = outside_y * 0.95,
-                         xend = outside_x * 1.15, yend = outside_y * 1.15),
-            color = "gray50", linewidth = 0.4
+            ggplot2::aes(x = anchor_x, y = anchor_y,
+                         xend = label_pos_x * 0.85, yend = label_pos_y * 0.85),
+            color = "gray50", linewidth = 0.5
           )
       }
     }

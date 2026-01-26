@@ -437,6 +437,7 @@ mod_graphing_server <- function(id, shared) {
               total_light <- 0
               total_moderate <- 0
               total_vigorous <- 0
+              total_very_vigorous <- 0
 
               activity_results <- shared$results$activity
               if (!is.null(activity_results) && length(activity_results) > 0) {
@@ -446,21 +447,22 @@ mod_graphing_server <- function(id, shared) {
                     total_light <- total_light + sum(r$daily$light_hrs * 60, na.rm = TRUE)
                     total_moderate <- total_moderate + sum(r$daily$moderate_hrs * 60, na.rm = TRUE)
                     vig_hrs <- if ("vigorous_hrs" %in% names(r$daily)) r$daily$vigorous_hrs else 0
+                    total_vigorous <- total_vigorous + sum(vig_hrs * 60, na.rm = TRUE)
                     vvig_hrs <- if ("very_vigorous_hrs" %in% names(r$daily)) r$daily$very_vigorous_hrs else 0
-                    total_vigorous <- total_vigorous + sum((vig_hrs + vvig_hrs) * 60, na.rm = TRUE)
+                    total_very_vigorous <- total_very_vigorous + sum(vvig_hrs * 60, na.rm = TRUE)
                   }
                 }
               }
 
-              if (total_sedentary + total_light + total_moderate + total_vigorous == 0) {
+              if (total_sedentary + total_light + total_moderate + total_vigorous + total_very_vigorous == 0) {
                 showNotification("No activity data. Run Activity Analysis first.", type = "warning")
                 return(NULL)
               }
 
               intensity_minutes <- data.frame(
-                intensity = factor(c("Sedentary", "Light", "Moderate", "Vigorous"),
-                                   levels = c("Sedentary", "Light", "Moderate", "Vigorous")),
-                minutes = c(total_sedentary, total_light, total_moderate, total_vigorous)
+                intensity = factor(c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous"),
+                                   levels = c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous")),
+                minutes = c(total_sedentary, total_light, total_moderate, total_vigorous, total_very_vigorous)
               )
               canhrActi::plot_intensity_pie_from_summary(
                 intensity_summary = intensity_minutes,
@@ -574,13 +576,14 @@ mod_graphing_server <- function(id, shared) {
               activity_data <- shared$results$activity[[sel]]
               if (!is.null(activity_data) && !is.null(activity_data$sedentary_min)) {
                 intensity_minutes <- data.frame(
-                  intensity = factor(c("Sedentary", "Light", "Moderate", "Vigorous"),
-                                     levels = c("Sedentary", "Light", "Moderate", "Vigorous")),
+                  intensity = factor(c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous"),
+                                     levels = c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous")),
                   minutes = c(
                     activity_data$sedentary_min %||% 0,
                     activity_data$light_min %||% 0,
                     activity_data$moderate_min %||% 0,
-                    activity_data$vigorous_min %||% 0
+                    activity_data$vigorous_min %||% 0,
+                    activity_data$very_vigorous_min %||% 0
                   )
                 )
                 canhrActi::plot_intensity_pie_from_summary(

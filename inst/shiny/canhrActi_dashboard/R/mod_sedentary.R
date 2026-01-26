@@ -779,6 +779,21 @@ mod_sedentary_server <- function(id, shared) {
       }, FUN.VALUE = numeric(1))
     }
 
+    # Helper: Get filtered results based on file selection
+    filtered_results <- reactive({
+      res <- results()
+      if (length(res) == 0) return(list())
+
+      sel <- input$file_select
+      if (is.null(sel) || sel == "all") {
+        res
+      } else if (sel %in% names(res)) {
+        res[sel]
+      } else {
+        res
+      }
+    })
+
     # Helper: Get current fragmentation data
     current_frag <- reactive({
       res <- results()
@@ -913,7 +928,7 @@ mod_sedentary_server <- function(id, shared) {
 
     # HERO CHART - Daily Pattern
     output$hero_chart <- renderPlot({
-      res <- results()
+      res <- filtered_results()
 
       if (length(res) == 0) {
         ggplot2::ggplot() +
@@ -1235,7 +1250,7 @@ mod_sedentary_server <- function(id, shared) {
 
     # Bout histogram
     output$bout_histogram <- renderPlot({
-      res <- results()
+      res <- filtered_results()
 
       if (length(res) == 0) {
         ggplot2::ggplot() +
@@ -1280,7 +1295,7 @@ mod_sedentary_server <- function(id, shared) {
 
     # Bout categories
     output$bout_categories <- renderPlot({
-      res <- results()
+      res <- filtered_results()
 
       if (length(res) == 0) {
         ggplot2::ggplot() +
@@ -1332,7 +1347,7 @@ mod_sedentary_server <- function(id, shared) {
 
     # Accumulation curve
     output$accumulation_curve <- renderPlot({
-      res <- results()
+      res <- filtered_results()
 
       if (length(res) == 0) {
         ggplot2::ggplot() +
@@ -1388,7 +1403,7 @@ mod_sedentary_server <- function(id, shared) {
 
     # Survival curve (Kaplan-Meier style)
     output$survival_curve <- renderPlot({
-      res <- results()
+      res <- filtered_results()
 
       if (length(res) == 0) {
         ggplot2::ggplot() +
@@ -1469,7 +1484,7 @@ mod_sedentary_server <- function(id, shared) {
 
     # Hourly bouts
     output$hourly_bouts <- renderPlot({
-      res <- results()
+      res <- filtered_results()
 
       if (length(res) == 0) {
         ggplot2::ggplot() +
@@ -1520,7 +1535,7 @@ mod_sedentary_server <- function(id, shared) {
 
     # Hourly duration
     output$hourly_duration <- renderPlot({
-      res <- results()
+      res <- filtered_results()
 
       if (length(res) == 0) {
         ggplot2::ggplot() +
@@ -1562,7 +1577,7 @@ mod_sedentary_server <- function(id, shared) {
 
     # Transition matrix
     output$transition_matrix <- renderPlot({
-      res <- results()
+      res <- filtered_results()
 
       if (length(res) == 0) {
         ggplot2::ggplot() +
@@ -1961,7 +1976,7 @@ mod_sedentary_server <- function(id, shared) {
 
     # INTER-BOUT INTERVAL ANALYSIS OUTPUT
     output$ibi_analysis_output <- renderUI({
-      res <- results()
+      res <- filtered_results()
       req(length(res) > 0)
 
       # Collect all IBIs across files

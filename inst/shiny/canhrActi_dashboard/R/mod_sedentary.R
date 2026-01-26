@@ -992,17 +992,22 @@ mod_sedentary_server <- function(id, shared) {
           # Heatmap view
           heatmap_data <- aggregate(duration_min ~ hour + date, all_bouts, sum)
 
-          ggplot2::ggplot(heatmap_data, ggplot2::aes(x = hour, y = date, fill = duration_min)) +
-            ggplot2::geom_tile(color = "white", linewidth = 0.5) +
+          # Convert date to factor for proper discrete y-axis handling
+          heatmap_data$date_label <- format(heatmap_data$date, "%b %d")
+          heatmap_data$date_label <- factor(heatmap_data$date_label,
+                                            levels = unique(heatmap_data$date_label[order(heatmap_data$date)]))
+
+          ggplot2::ggplot(heatmap_data, ggplot2::aes(x = hour, y = date_label, fill = duration_min)) +
+            ggplot2::geom_tile(color = "white", linewidth = 0.5, width = 1, height = 1) +
             ggplot2::scale_fill_gradient2(low = "#f8fafc", mid = "#3a7ab0", high = "#0f2d42",
                                          midpoint = median(heatmap_data$duration_min, na.rm = TRUE),
                                          name = "Minutes") +
-            ggplot2::scale_x_continuous(breaks = seq(0, 23, 3)) +
+            ggplot2::scale_x_continuous(breaks = seq(0, 23, 3), expand = c(0, 0)) +
             ggplot2::labs(title = NULL, x = "Hour of Day", y = "Date") +
             canhrActi::theme_canhrActi() +
             ggplot2::theme(
               panel.grid = ggplot2::element_blank(),
-              axis.text.y = ggplot2::element_text(size = 11),
+              axis.text.y = ggplot2::element_text(size = 10),
               plot.background = ggplot2::element_rect(fill = "white", color = NA)
             )
 
@@ -1011,7 +1016,12 @@ mod_sedentary_server <- function(id, shared) {
           all_bouts$time_of_day <- as.numeric(format(all_bouts$start_time, "%H")) +
                                    as.numeric(format(all_bouts$start_time, "%M")) / 60
 
-          ggplot2::ggplot(all_bouts, ggplot2::aes(x = time_of_day, y = date, size = duration_min, color = duration_min)) +
+          # Convert date to factor for proper discrete y-axis
+          all_bouts$date_label <- format(all_bouts$date, "%b %d")
+          all_bouts$date_label <- factor(all_bouts$date_label,
+                                         levels = unique(all_bouts$date_label[order(all_bouts$date)]))
+
+          ggplot2::ggplot(all_bouts, ggplot2::aes(x = time_of_day, y = date_label, size = duration_min, color = duration_min)) +
             ggplot2::geom_point(alpha = 0.6) +
             ggplot2::scale_color_gradient2(low = "#17a589", mid = "#FFCD00", high = "#236192",
                                           midpoint = 30, name = "Duration\n(min)") +

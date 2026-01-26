@@ -25,10 +25,6 @@ mod_graphing_ui <- function(id) {
                    class = "quick-chart-btn"),
       actionButton(ns("quick_circadian"), "Circadian Profile",
                    class = "quick-chart-btn"),
-      actionButton(ns("quick_heatmap"), "Activity Heatmap",
-                   class = "quick-chart-btn"),
-      actionButton(ns("quick_intensity"), "Intensity Breakdown",
-                   class = "quick-chart-btn"),
 
       # Spacer to push Generate/Reset to right
       div(style = "flex: 1;"),
@@ -321,16 +317,6 @@ mod_graphing_server <- function(id, shared) {
 
     observeEvent(input$quick_circadian, {
       updateSelectInput(session, "chart_select", selected = "polar")
-      shinyjs::click(ns("generate_btn"))
-    })
-
-    observeEvent(input$quick_heatmap, {
-      updateSelectInput(session, "chart_select", selected = "heatmap")
-      shinyjs::click(ns("generate_btn"))
-    })
-
-    observeEvent(input$quick_intensity, {
-      updateSelectInput(session, "chart_select", selected = "intensity_pie")
       shinyjs::click(ns("generate_btn"))
     })
 

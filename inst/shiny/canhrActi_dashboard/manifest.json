@@ -486,11 +486,11 @@
         "RemoteRepo": "canhrActi",
         "RemoteUsername": "rdazadda",
         "RemoteRef": "HEAD",
-        "RemoteSha": "31b536bfa83158ec59c2d9a23fbd94f0402aca97",
+        "RemoteSha": "b91a4bf466e202ace4872e59b323bea54d7fac49",
         "GithubRepo": "canhrActi",
         "GithubUsername": "rdazadda",
         "GithubRef": "HEAD",
-        "GithubSHA1": "31b536bfa83158ec59c2d9a23fbd94f0402aca97",
+        "GithubSHA1": "b91a4bf466e202ace4872e59b323bea54d7fac49",
         "NeedsCompilation": "yes",
         "Packaged": "2026-01-20 16:28:18 UTC; rdazadda",
         "Built": "R 4.5.2; x86_64-w64-mingw32; 2026-01-20 16:28:21 UTC; windows",
@@ -916,6 +916,22 @@
         "Repository": "CRAN",
         "Date/Publication": "2025-11-14 09:20:02 UTC",
         "Built": "R 4.5.2; ; 2025-11-15 12:35:28 UTC; windows"
+      }
+    },
+    "ggrepel": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "ggrepel",
+        "Title": "Automatically Position Non-Overlapping Text Labels with 'ggplot2'",
+        "Version": "0.9.6",
+        "License": "GPL-3",
+        "URL": "https://github.com/slowkow/ggrepel",
+        "BugReports": "https://github.com/slowkow/ggrepel/issues",
+        "Depends": "R (>= 3.0.0), ggplot2 (>= 2.2.0)",
+        "Imports": "grid, Rcpp, rlang (>= 0.3.0), scales (>= 0.5.0), withr (>= 2.5.0)",
+        "NeedsCompilation": "yes",
+        "Repository": "CRAN"
       }
     },
     "glue": {

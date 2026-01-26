@@ -3307,11 +3307,9 @@ plot_intensity_pie <- function(data,
     }
   }
 
-  # Add labels if requested
   if (show_labels) {
     label_x_pos <- if (donut_style) 2.0 else 0.7
 
-    # Labels inside for large slices (>= 10%)
     inside_labels <- intensity_summary[intensity_summary$inside & intensity_summary$percent > 0, ]
     if (nrow(inside_labels) > 0) {
       p <- p +
@@ -3324,18 +3322,37 @@ plot_intensity_pie <- function(data,
         )
     }
 
-    # Labels outside for small slices (< 10% but > 2%)
     outside_labels <- intensity_summary[!intensity_summary$inside & intensity_summary$percent > 2, ]
     if (nrow(outside_labels) > 0) {
-      # Create short labels for outside
       outside_labels$short_label <- sprintf("%.1f%%", outside_labels$percent)
-      p <- p +
-        ggplot2::geom_text(
-          data = outside_labels,
-          ggplot2::aes(y = pos, label = short_label),
-          x = if (donut_style) 2.6 else 1.7,
-          color = "gray30", fontface = "bold", size = 3.5
-        )
+      outside_x <- if (donut_style) 2.6 else 1.7
+
+      if (requireNamespace("ggrepel", quietly = TRUE)) {
+        p <- p +
+          ggrepel::geom_text_repel(
+            data = outside_labels,
+            ggplot2::aes(y = pos, label = short_label),
+            x = outside_x,
+            size = 3.5, fontface = "bold", color = "gray30",
+            min.segment.length = 0,
+            segment.color = "gray50",
+            segment.size = 0.3,
+            box.padding = 0.3,
+            point.padding = 0.2,
+            force = 1.5,
+            max.overlaps = 15,
+            direction = "y",
+            seed = 42
+          )
+      } else {
+        p <- p +
+          ggplot2::geom_text(
+            data = outside_labels,
+            ggplot2::aes(y = pos, label = short_label),
+            x = outside_x,
+            color = "gray30", fontface = "bold", size = 3.5
+          )
+      }
     }
   }
 
@@ -3410,37 +3427,27 @@ plot_intensity_pie_from_summary <- function(intensity_summary,
     stop("Package 'ggplot2' is required")
   }
 
-  # Ensure we have the required columns
   if (!all(c("intensity", "minutes") %in% names(intensity_summary))) {
     stop("intensity_summary must have 'intensity' and 'minutes' columns")
   }
 
-  # Calculate derived values
   intensity_summary$hours <- intensity_summary$minutes / 60
   intensity_summary$percent <- intensity_summary$minutes / sum(intensity_summary$minutes, na.rm = TRUE) * 100
 
-  # Format time strings
   intensity_summary$time_str <- sapply(intensity_summary$minutes, function(m) {
     h <- floor(m / 60)
     mins <- round(m %% 60)
-    if (h > 0) {
-      sprintf("%dh %dm", h, mins)
-    } else {
-      sprintf("%dm", mins)
-    }
+    if (h > 0) sprintf("%dh %dm", h, mins) else sprintf("%dm", mins)
   })
 
-  # Create labels
   intensity_summary$label <- sprintf("%.1f%%\n(%s)",
                                       intensity_summary$percent,
                                       intensity_summary$time_str)
 
-  # Ensure correct factor levels
   intensity_order <- c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous")
   intensity_summary$intensity <- factor(intensity_summary$intensity, levels = intensity_order)
   intensity_summary <- intensity_summary[order(intensity_summary$intensity), ]
 
-  # Intensity colors
   intensity_colors <- c(
     "Sedentary" = "#3498DB",
     "Light" = "#F1C40F",
@@ -3449,28 +3456,52 @@ plot_intensity_pie_from_summary <- function(intensity_summary,
     "Very Vigorous" = "#9B59B6"
   )
 
-  # Remove categories with 0 minutes
   intensity_summary <- intensity_summary[intensity_summary$minutes > 0, ]
 
   if (nrow(intensity_summary) == 0) {
-    # Return empty plot with message
     return(ggplot2::ggplot() +
       ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No activity data available",
                         size = 5, hjust = 0.5) +
       ggplot2::theme_void())
   }
 
-  # Calculate positions for labels
   intensity_summary$ymax <- cumsum(intensity_summary$percent)
   intensity_summary$ymin <- c(0, head(intensity_summary$ymax, -1))
   intensity_summary$pos <- (intensity_summary$ymax + intensity_summary$ymin) / 2
-  intensity_summary$inside <- intensity_summary$percent >= 10
 
-  # Create pie chart
-  p <- ggplot2::ggplot(intensity_summary,
-                        ggplot2::aes(x = "", y = percent, fill = intensity)) +
-    ggplot2::geom_bar(stat = "identity", width = 1, color = "white", linewidth = 1.5) +
-    ggplot2::coord_polar("y", start = 0) +
+  angle_rad <- (90 - intensity_summary$pos * 3.6) * pi / 180
+  intensity_summary$label_x <- 0.6 * sin(angle_rad)
+  intensity_summary$label_y <- 0.6 * cos(angle_rad)
+  intensity_summary$outside_x <- 1.4 * sin(angle_rad)
+  intensity_summary$outside_y <- 1.4 * cos(angle_rad)
+
+  intensity_summary$hjust <- ifelse(intensity_summary$outside_x > 0.1, 0,
+                                    ifelse(intensity_summary$outside_x < -0.1, 1, 0.5))
+
+  pie_data <- intensity_summary
+  pie_data$id <- seq_len(nrow(pie_data))
+
+  pie_segments <- do.call(rbind, lapply(seq_len(nrow(pie_data)), function(i) {
+    row <- pie_data[i, ]
+    start_angle <- (90 - row$ymin * 3.6) * pi / 180
+    end_angle <- (90 - row$ymax * 3.6) * pi / 180
+    n_points <- max(2, round(abs(row$percent) / 2))
+    angles <- seq(start_angle, end_angle, length.out = n_points)
+    data.frame(
+      id = row$id,
+      x = c(0, sin(angles), 0),
+      y = c(0, cos(angles), 0),
+      intensity = row$intensity,
+      stringsAsFactors = FALSE
+    )
+  }))
+
+  p <- ggplot2::ggplot() +
+    ggplot2::geom_polygon(
+      data = pie_segments,
+      ggplot2::aes(x = x, y = y, fill = intensity, group = id),
+      color = "white", linewidth = 1.5
+    ) +
     ggplot2::scale_fill_manual(
       values = intensity_colors,
       name = "Activity\nIntensity",
@@ -3479,36 +3510,59 @@ plot_intensity_pie_from_summary <- function(intensity_summary,
         keywidth = ggplot2::unit(1, "cm"),
         keyheight = ggplot2::unit(0.6, "cm")
       )
-    )
+    ) +
+    ggplot2::coord_equal(xlim = c(-2, 2), ylim = c(-1.5, 1.5))
 
-  # Add labels
   if (show_labels) {
-    inside_labels <- intensity_summary[intensity_summary$inside & intensity_summary$percent > 0, ]
-    if (nrow(inside_labels) > 0) {
+    large_slices <- intensity_summary[intensity_summary$percent >= 8, ]
+    if (nrow(large_slices) > 0) {
       p <- p +
         ggplot2::geom_text(
-          data = inside_labels,
-          ggplot2::aes(y = pos, label = label),
-          x = 0.3,
-          color = "white", fontface = "bold", size = 4,
-          lineheight = 0.9
+          data = large_slices,
+          ggplot2::aes(x = label_x, y = label_y, label = label),
+          color = "white", fontface = "bold", size = 4, lineheight = 0.9
         )
     }
 
-    outside_labels <- intensity_summary[!intensity_summary$inside & intensity_summary$percent > 2, ]
-    if (nrow(outside_labels) > 0) {
-      outside_labels$short_label <- sprintf("%.1f%%", outside_labels$percent)
-      p <- p +
-        ggplot2::geom_text(
-          data = outside_labels,
-          ggplot2::aes(y = pos, label = short_label),
-          x = 1.7,
-          color = "gray30", fontface = "bold", size = 3.5
-        )
+    small_slices <- intensity_summary[intensity_summary$percent < 8 & intensity_summary$percent >= 2, ]
+    if (nrow(small_slices) > 0) {
+      small_slices$short_label <- sprintf("%.1f%%\n(%s)", small_slices$percent, small_slices$time_str)
+
+      if (requireNamespace("ggrepel", quietly = TRUE)) {
+        p <- p +
+          ggrepel::geom_text_repel(
+            data = small_slices,
+            ggplot2::aes(x = outside_x, y = outside_y, label = short_label),
+            size = 3.5, fontface = "bold", color = "gray20",
+            lineheight = 0.85,
+            min.segment.length = 0,
+            segment.color = "gray50",
+            segment.size = 0.4,
+            box.padding = 0.4,
+            point.padding = 0.3,
+            force = 2,
+            force_pull = 0.5,
+            max.overlaps = 20,
+            direction = "both",
+            seed = 42
+          )
+      } else {
+        p <- p +
+          ggplot2::geom_text(
+            data = small_slices,
+            ggplot2::aes(x = outside_x * 1.3, y = outside_y * 1.3, label = short_label, hjust = hjust),
+            size = 3.5, fontface = "bold", color = "gray20", lineheight = 0.85
+          ) +
+          ggplot2::geom_segment(
+            data = small_slices,
+            ggplot2::aes(x = outside_x * 0.95, y = outside_y * 0.95,
+                         xend = outside_x * 1.15, yend = outside_y * 1.15),
+            color = "gray50", linewidth = 0.4
+          )
+      }
     }
   }
 
-  # Generate subtitle if not provided
   if (is.null(subtitle)) {
     cutpoint_name <- if (is.character(cutpoints)) {
       switch(cutpoints,

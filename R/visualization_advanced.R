@@ -3511,7 +3511,7 @@ plot_intensity_pie_from_summary <- function(intensity_summary,
         keyheight = ggplot2::unit(0.6, "cm")
       )
     ) +
-    ggplot2::coord_equal(xlim = c(-2, 2), ylim = c(-1.5, 1.5))
+    ggplot2::coord_equal(xlim = c(-2.5, 2.5), ylim = c(-2.1, 2.1))
 
   if (show_labels) {
     large_slices <- intensity_summary[intensity_summary$percent >= 8, ]
@@ -3528,46 +3528,13 @@ plot_intensity_pie_from_summary <- function(intensity_summary,
     if (nrow(small_slices) > 0) {
       small_slices$short_label <- sprintf("%.1f%%\n(%s)", small_slices$percent, small_slices$time_str)
 
-      # Calculate positions pushed further out for small slices
-      small_slices$anchor_x <- small_slices$outside_x * 0.75  # Point on pie edge
-      small_slices$anchor_y <- small_slices$outside_y * 0.75
-      small_slices$label_pos_x <- small_slices$outside_x * 1.35  # Label position further out
-      small_slices$label_pos_y <- small_slices$outside_y * 1.35
-
-      if (requireNamespace("ggrepel", quietly = TRUE)) {
-        p <- p +
-          ggrepel::geom_text_repel(
-            data = small_slices,
-            ggplot2::aes(x = anchor_x, y = anchor_y, label = short_label),
-            size = 3.5, fontface = "bold", color = "gray20",
-            lineheight = 0.85,
-            min.segment.length = 0,
-            segment.color = "gray50",
-            segment.size = 0.5,
-            box.padding = 0.5,
-            point.padding = 0.2,
-            force = 3,
-            force_pull = 0.3,
-            max.overlaps = 20,
-            direction = "both",
-            nudge_x = small_slices$label_pos_x - small_slices$anchor_x,
-            nudge_y = small_slices$label_pos_y - small_slices$anchor_y,
-            seed = 42
-          )
-      } else {
-        p <- p +
-          ggplot2::geom_text(
-            data = small_slices,
-            ggplot2::aes(x = label_pos_x, y = label_pos_y, label = short_label, hjust = hjust),
-            size = 3.5, fontface = "bold", color = "gray20", lineheight = 0.85
-          ) +
-          ggplot2::geom_segment(
-            data = small_slices,
-            ggplot2::aes(x = anchor_x, y = anchor_y,
-                         xend = label_pos_x * 0.85, yend = label_pos_y * 0.85),
-            color = "gray50", linewidth = 0.5
-          )
-      }
+      # Place label inside the slice, closer to the edge (0.75 radius)
+      p <- p +
+        ggplot2::geom_text(
+          data = small_slices,
+          ggplot2::aes(x = label_x * 1.1, y = label_y * 1.1, label = short_label),
+          color = "white", fontface = "bold", size = 3.2, lineheight = 0.85
+        )
     }
   }
 

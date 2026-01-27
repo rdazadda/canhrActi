@@ -1955,7 +1955,9 @@ hourly.fragmentation.pattern <- function(intensity, timestamps, wear_time = NULL
     bout_distribution = data.frame(
       category = c("1-5 min", "5-10 min", "10-20 min", "20-30 min", "30-60 min", ">60 min"),
       count = rep(0L, 6),
-      percent = rep(0, 6)
+      percent = rep(0, 6),
+      mid_value = c(2.5, 7.5, 15, 25, 45, 90),
+      stringsAsFactors = FALSE
     ),
     bouts = .create.empty.bouts.df(),
     analysis_method = "canhrActi_v2_fragmentation"

@@ -45,20 +45,12 @@ mod_sedentary_ui <- function(id) {
                 ),
                 div(
                   class = "sed-advanced-panel",
-                  # Activity Tab Integration
-                  div(
-                    style = "margin-bottom: 12px; padding: 8px; background: #e8f4f8; border-radius: 4px; border-left: 3px solid #10b981;",
-                    checkboxInput(ns("use_activity_bouts"), "Use Activity Tab Bouts", value = TRUE),
-                    uiOutput(ns("activity_bouts_status")),
-                    tags$small(
-                      style = "color: #64748b; display: block; margin-top: -8px;",
-                      "Uses same parameters as Activity tab (threshold, drop time, etc.)"
-                    )
-                  ),
                   sliderInput(ns("prolonged_threshold"), "Prolonged Bout Threshold",
                              min = 20, max = 60, value = 30, step = 5, post = " min"),
                   sliderInput(ns("min_bout_duration"), "Minimum Bout Duration",
                              min = 1, max = 10, value = 1, step = 1, post = " min"),
+                  sliderInput(ns("min_break_length"), "Gap Bridging (Healy)",
+                             min = 1, max = 10, value = 5, step = 1, post = " min"),
                   div(
                     style = "margin-top: 10px; padding: 8px; background: #f8fafc; border-radius: 4px; border-left: 3px solid #236192;",
                     checkboxInput(ns("include_sleep"), "Include Sleep in Sedentary (uncheck to exclude)", value = FALSE),
@@ -365,28 +357,6 @@ mod_sedentary_server <- function(id, shared) {
     ns <- session$ns
 
     results <- reactiveVal(list())
-
-    # Activity Tab Bouts Status Indicator
-    output$activity_bouts_status <- renderUI({
-      sed_bouts <- shared$results$sedentary_bouts
-      if (!is.null(sed_bouts) && !is.null(sed_bouts$bouts) && length(sed_bouts$bouts) > 0) {
-        params <- sed_bouts$parameters
-        n_files <- length(sed_bouts$bouts)
-        total_bouts <- sum(sapply(sed_bouts$bouts, nrow))
-        tags$div(
-          style = "font-size: 11px; color: #10b981; margin-top: 4px;",
-          icon("check-circle"),
-          sprintf(" %d bouts from %d files (threshold: %d CPM)", total_bouts, n_files, params$threshold)
-        )
-      } else {
-        tags$div(
-          style = "font-size: 11px; color: #f59e0b; margin-top: 4px;",
-          icon("exclamation-triangle"),
-          " Run Activity Analysis first to detect bouts"
-        )
-      }
-    })
-
     # Update file selector when files change
     observe({
       files <- shared$files
@@ -441,20 +411,7 @@ mod_sedentary_server <- function(id, shared) {
       }
 
       all_results <- list()
-
-      # Check if Activity tab bouts are available and should be used
-      use_activity_bouts <- input$use_activity_bouts %||% TRUE
-      activity_bouts_available <- !is.null(shared$results$sedentary_bouts) &&
-                                  !is.null(shared$results$sedentary_bouts$bouts) &&
-                                  length(shared$results$sedentary_bouts$bouts) > 0
-
-      if (use_activity_bouts && activity_bouts_available) {
-        showNotification(
-          HTML("<strong>Using Activity Tab Bouts:</strong> Fragmentation analysis uses the same bouts detected in Activity tab."),
-          type = "message",
-          duration = 5
-        )
-      }
+      min_break_length <- input$min_break_length %||% 5
 
       withProgress(message = "Analyzing sedentary patterns...", value = 0, {
         n_files <- length(shared$files)
@@ -554,165 +511,19 @@ mod_sedentary_server <- function(id, shared) {
 
           if (is.null(intensity)) next
 
-          # DEBUG: Show analysis inputs
-          n_total <- length(intensity)
-          n_sedentary <- sum(intensity == "sedentary")
-          n_wear <- if (!is.null(wear_mask)) sum(wear_mask) else n_total
-          n_sleep <- if (!is.null(sleep_mask)) sum(sleep_mask) else 0
-
-          # Apply filters manually to see counts
-          is_sed <- intensity == "sedentary"
-          if (!is.null(wear_mask)) is_sed <- is_sed & wear_mask
-          if (!is.null(sleep_mask)) is_sed <- is_sed & !sleep_mask
-          n_sed_final <- sum(is_sed)
-
-          # Run fragmentation analysis
-          fragmentation <- NULL
-          activity_bouts_used <- FALSE
-
-          # Option 1: Use Activity tab bouts if available and selected
-          if (use_activity_bouts && activity_bouts_available && fid %in% names(shared$results$sedentary_bouts$bouts)) {
-            activity_bouts <- shared$results$sedentary_bouts$bouts[[fid]]
-
-            if (!is.null(activity_bouts) && nrow(activity_bouts) > 0) {
-              # Calculate fragmentation metrics from Activity tab bouts
-              bout_durations <- activity_bouts$duration_min
-              total_bouts <- nrow(activity_bouts)
-
-              # Total sedentary time from bouts
-              total_sed_time <- sum(bout_durations)
-
-              # Breaks per sedentary hour (bouts per hour of sedentary time)
-              breaks_per_sed_hour <- if (total_sed_time > 0) total_bouts / (total_sed_time / 60) else 0
-
-              # Bout duration statistics
-              mean_bout <- mean(bout_durations)
-              median_bout <- median(bout_durations)
-              max_bout <- max(bout_durations)
-              min_bout <- min(bout_durations)
-
-              # Wx percentiles (duration below which X% of sedentary time accumulated)
-              sorted_durations <- sort(bout_durations, decreasing = TRUE)
-              cumsum_durations <- cumsum(sorted_durations)
-              W25_idx <- which(cumsum_durations >= total_sed_time * 0.25)[1]
-              W50_idx <- which(cumsum_durations >= total_sed_time * 0.50)[1]
-              W75_idx <- which(cumsum_durations >= total_sed_time * 0.75)[1]
-              W90_idx <- which(cumsum_durations >= total_sed_time * 0.90)[1]
-              W25 <- if (!is.na(W25_idx)) sorted_durations[W25_idx] else max_bout
-              W50 <- if (!is.na(W50_idx)) sorted_durations[W50_idx] else median_bout
-              W75 <- if (!is.na(W75_idx)) sorted_durations[W75_idx] else median_bout
-              W90 <- if (!is.na(W90_idx)) sorted_durations[W90_idx] else min_bout
-
-              # Alpha (power law exponent) - using MLE for bout durations
-              xmin <- min(bout_durations)
-              if (xmin > 0 && total_bouts > 1) {
-                alpha <- 1 + total_bouts / sum(log(bout_durations / xmin))
-              } else {
-                alpha <- NA
-              }
-
-              # Gini coefficient for bout duration inequality
-              n <- length(bout_durations)
-              if (n > 1) {
-                sorted_d <- sort(bout_durations)
-                gini <- (2 * sum(seq_along(sorted_d) * sorted_d) - (n + 1) * sum(sorted_d)) / (n * sum(sorted_d))
-              } else {
-                gini <- 0
-              }
-
-              # Transition probabilities (ASTP and SATP)
-              # Calculate from the intensity vector if available
-              is_sed_vec <- intensity == "sedentary"
-              if (!is.null(wear_mask)) is_sed_vec <- is_sed_vec & wear_mask
-              if (!is.null(sleep_mask)) is_sed_vec <- is_sed_vec & !sleep_mask
-
-              n_sed <- sum(is_sed_vec, na.rm = TRUE)
-              n_active <- sum(!is_sed_vec, na.rm = TRUE)
-              transitions <- diff(as.numeric(is_sed_vec))
-              n_sed_to_active <- sum(transitions == -1, na.rm = TRUE)
-              n_active_to_sed <- sum(transitions == 1, na.rm = TRUE)
-
-              SATP <- if (n_sed > 0) n_sed_to_active / n_sed else 0
-              ASTP <- if (n_active > 0) n_active_to_sed / n_active else 0
-
-              # Prolonged bouts (>30 min - standard threshold)
-              n_30min_bouts <- sum(bout_durations >= 30)
-              time_30min_bouts <- sum(bout_durations[bout_durations >= 30])
-              pct_time_30min_bouts <- if (total_sed_time > 0) 100 * time_30min_bouts / total_sed_time else 0
-
-              # Create bouts data frame for compatibility
-              bouts_df <- data.frame(
-                start_time = activity_bouts$start_time,
-                end_time = activity_bouts$end_time,
-                duration_min = bout_durations,
-                stringsAsFactors = FALSE
-              )
-
-              # Generate survival curve for the bouts
-              survival_data <- canhrActi::bout.survival.analysis(bout_durations)
-
-              # Generate bout distribution by duration categories
-              bout_categories <- cut(bout_durations,
-                breaks = c(0, 5, 10, 20, 30, 60, Inf),
-                labels = c("1-5 min", "5-10 min", "10-20 min", "20-30 min", "30-60 min", ">60 min"),
-                right = TRUE, include.lowest = TRUE
-              )
-              bout_table <- table(bout_categories)
-              bout_distribution <- data.frame(
-                category = names(bout_table),
-                count = as.integer(bout_table),
-                percent = round(as.numeric(bout_table) / length(bout_durations) * 100, 1),
-                stringsAsFactors = FALSE
-              )
-
-              fragmentation <- list(
-                total_bouts = total_bouts,
-                total_sedentary_min = total_sed_time,
-                breaks_per_sed_hour = breaks_per_sed_hour,
-                mean_bout_duration = mean_bout,
-                median_bout_duration = median_bout,
-                max_bout_duration = max_bout,
-                min_bout_duration = min_bout,
-                W25 = W25,
-                W50 = W50,
-                W75 = W75,
-                W90 = W90,
-                alpha = alpha,
-                gini = gini,
-                ASTP = ASTP,
-                SATP = SATP,
-                n_30min_bouts = n_30min_bouts,
-                pct_time_30min_bouts = pct_time_30min_bouts,
-                bout_durations = bout_durations,
-                bouts = bouts_df,
-                bout_distribution = bout_distribution,
-                survival_curve = survival_data$survival_curve,
-                median_bout_survival = survival_data$median_survival,
-                hazard_rate = survival_data$hazard_rate,
-                source = "activity_tab"
-              )
-              activity_bouts_used <- TRUE
-            }
-          }
-
-          # Option 2: Fall back to independent fragmentation analysis
-          if (is.null(fragmentation)) {
-            fragmentation <- tryCatch({
-              canhrActi::sedentary.fragmentation(
-                intensity = intensity,
-                timestamps = data$timestamp,
-                wear_time = wear_mask,
-                sleep_mask = sleep_mask,
-                epoch_length = epoch_length
-              )
-            }, error = function(e) {
-              showNotification(paste(f$name, ":", e$message), type = "error")
-              NULL
-            })
-            if (!is.null(fragmentation)) {
-              fragmentation$source <- "independent"
-            }
-          }
+          fragmentation <- tryCatch({
+            canhrActi::sedentary.fragmentation(
+              intensity = intensity,
+              timestamps = data$timestamp,
+              wear_time = wear_mask,
+              sleep_mask = sleep_mask,
+              epoch_length = epoch_length,
+              min_break_length = min_break_length
+            )
+          }, error = function(e) {
+            showNotification(paste(f$name, ":", e$message), type = "error")
+            NULL
+          })
 
           if (is.null(fragmentation)) next
 
@@ -725,8 +536,7 @@ mod_sedentary_server <- function(id, shared) {
             timestamps = data$timestamp,
             wear_mask = wear_mask,
             sleep_excluded = !is.null(sleep_mask),
-            sleep_mask = sleep_mask,
-            activity_bouts_used = activity_bouts_used
+            sleep_mask = sleep_mask
           )
         }
       })
@@ -734,15 +544,9 @@ mod_sedentary_server <- function(id, shared) {
       results(all_results)
       shared$results$sedentary <- all_results
 
-      # Count integration stats
       n_sleep_excluded <- sum(sapply(all_results, function(r) isTRUE(r$sleep_excluded)))
-      n_activity_bouts <- sum(sapply(all_results, function(r) isTRUE(r$activity_bouts_used)))
 
-      # Build notification message
       msg_parts <- c(paste0("<strong>Sedentary analysis complete</strong> for ", length(all_results), " files"))
-      if (n_activity_bouts > 0) {
-        msg_parts <- c(msg_parts, paste0("<span style='color: #10b981;'>✓ Using Activity tab bouts for ", n_activity_bouts, " file(s)</span>"))
-      }
       if (n_sleep_excluded > 0) {
         msg_parts <- c(msg_parts, paste0("<span style='color: #17a589;'>✓ Sleep periods excluded from ", n_sleep_excluded, " file(s)</span>"))
       }
@@ -758,13 +562,9 @@ mod_sedentary_server <- function(id, shared) {
       res <- results()
       n <- length(res)
       if (n > 0) {
-        n_activity_bouts <- sum(sapply(res, function(r) isTRUE(r$activity_bouts_used)))
         n_sleep_excluded <- sum(sapply(res, function(r) isTRUE(r$sleep_excluded)))
         badge_text <- paste(n, "file(s) analyzed")
-        extras <- c()
-        if (n_activity_bouts > 0) extras <- c(extras, "integrated")
-        if (n_sleep_excluded > 0) extras <- c(extras, "sleep excl.")
-        if (length(extras) > 0) badge_text <- paste0(badge_text, " (", paste(extras, collapse = ", "), ")")
+        if (n_sleep_excluded > 0) badge_text <- paste0(badge_text, " (sleep excl.)")
         status_badge(badge_text, "success")
       } else {
         status_badge("Ready to analyze", "pending")
@@ -800,9 +600,9 @@ mod_sedentary_server <- function(id, shared) {
       req(length(res) > 0)
 
       sel <- input$file_select
+      prolonged_thresh <- input$prolonged_threshold %||% 30
 
       if (sel == "all") {
-        # Average across all files
         all_durations <- unlist(lapply(res, function(r) {
           if (!is.null(r$fragmentation$bouts)) r$fragmentation$bouts$duration_min else NULL
         }))
@@ -820,6 +620,11 @@ mod_sedentary_server <- function(id, shared) {
           }
         }
 
+        total_sed_time <- sum(all_durations, na.rm = TRUE)
+        prolonged_durations <- all_durations[all_durations >= prolonged_thresh]
+        prolonged_time <- sum(prolonged_durations, na.rm = TRUE)
+        prolonged_pct <- if (total_sed_time > 0) 100 * prolonged_time / total_sed_time else 0
+
         list(
           mode = "all",
           total_sedentary_min = mean(safe_extract(res, "total_sedentary_min"), na.rm = TRUE),
@@ -836,16 +641,19 @@ mod_sedentary_server <- function(id, shared) {
           W25 = mean(safe_extract(res, "W25"), na.rm = TRUE),
           W75 = mean(safe_extract(res, "W75"), na.rm = TRUE),
           W90 = mean(safe_extract(res, "W90"), na.rm = TRUE),
-          prolonged_percent = mean(safe_extract(res, "pct_time_30min_bouts"), na.rm = TRUE),
-          prolonged_count = sum(safe_extract(res, "n_30min_bouts"), na.rm = TRUE),
+          prolonged_percent = prolonged_pct,
+          prolonged_count = length(prolonged_durations),
+          prolonged_threshold = prolonged_thresh,
           ABI = abi_result$ABI,
           dist_type = dist_type
         )
       } else if (sel %in% names(res)) {
         r <- res[[sel]]
 
-        abi_result <- if (!is.null(r$fragmentation$bouts)) {
-          canhrActi::activity.balance.index(r$fragmentation$bouts$duration_min)
+        bout_durations <- if (!is.null(r$fragmentation$bouts)) r$fragmentation$bouts$duration_min else numeric(0)
+
+        abi_result <- if (length(bout_durations) > 0) {
+          canhrActi::activity.balance.index(bout_durations)
         } else {
           list(ABI = NA_real_)
         }
@@ -855,6 +663,11 @@ mod_sedentary_server <- function(id, shared) {
         } else {
           NA_character_
         }
+
+        total_sed_time <- sum(bout_durations, na.rm = TRUE)
+        prolonged_durations <- bout_durations[bout_durations >= prolonged_thresh]
+        prolonged_time <- sum(prolonged_durations, na.rm = TRUE)
+        prolonged_pct <- if (total_sed_time > 0) 100 * prolonged_time / total_sed_time else 0
 
         list(
           mode = "single",
@@ -872,8 +685,9 @@ mod_sedentary_server <- function(id, shared) {
           W25 = r$fragmentation$W25,
           W75 = r$fragmentation$W75,
           W90 = r$fragmentation$W90,
-          prolonged_percent = r$fragmentation$pct_time_30min_bouts,
-          prolonged_count = r$fragmentation$n_30min_bouts,
+          prolonged_percent = prolonged_pct,
+          prolonged_count = length(prolonged_durations),
+          prolonged_threshold = prolonged_thresh,
           ABI = abi_result$ABI,
           dist_type = dist_type
         )
@@ -1171,6 +985,7 @@ mod_sedentary_server <- function(id, shared) {
         prolonged_pct <- cf$prolonged_percent
         prolonged_count <- cf$prolonged_count %||% NA
         max_bout <- cf$max_bout_duration
+        prolonged_thresh <- cf$prolonged_threshold %||% 30
 
         # Determine severity
         if (is.na(prolonged_pct) || prolonged_pct < 20) {
@@ -1206,7 +1021,7 @@ mod_sedentary_server <- function(id, shared) {
                 class = "sed-alert-value",
                 style = paste0("color: ", severity_color, ";")
               ),
-              div("of sedentary time in bouts >30 min", class = "sed-alert-label")
+              div(paste0("of sedentary time in bouts >", prolonged_thresh, " min"), class = "sed-alert-label")
             )
           ),
 
@@ -1248,9 +1063,9 @@ mod_sedentary_server <- function(id, shared) {
 
     # BOUT ANALYSIS PLOTS
 
-    # Bout histogram
     output$bout_histogram <- renderPlot({
       res <- filtered_results()
+      prolonged_thresh <- input$prolonged_threshold %||% 30
 
       if (length(res) == 0) {
         ggplot2::ggplot() +
@@ -1273,9 +1088,10 @@ mod_sedentary_server <- function(id, shared) {
             ggplot2::geom_histogram(binwidth = 5, fill = "#236192", alpha = 0.8, color = "white") +
             ggplot2::geom_vline(xintercept = median(all_bouts$duration_min), linetype = "dashed",
                                color = "#FFCD00", linewidth = 1) +
-            ggplot2::geom_vline(xintercept = 30, linetype = "dotted",
+            ggplot2::geom_vline(xintercept = prolonged_thresh, linetype = "dotted",
                                color = "#f4b942", linewidth = 1) +
-            ggplot2::annotate("label", x = 30, y = Inf, label = "30 min threshold",
+            ggplot2::annotate("label", x = prolonged_thresh, y = Inf,
+                             label = paste0(prolonged_thresh, " min threshold"),
                              vjust = 1.5, size = 3, fill = "#fff8e1") +
             ggplot2::labs(
               title = "Bout Duration Distribution",
@@ -1415,8 +1231,9 @@ mod_sedentary_server <- function(id, shared) {
         all_durations <- list()
         groups <- c()
         for (r in res) {
-          if (!is.null(r$fragmentation$bout_durations) && length(r$fragmentation$bout_durations) > 0) {
-            all_durations[[r$subject_id]] <- r$fragmentation$bout_durations
+          bouts <- r$fragmentation$bouts
+          if (!is.null(bouts) && nrow(bouts) > 0) {
+            all_durations[[r$subject_id]] <- bouts$duration_min
             groups <- c(groups, r$subject_id)
           }
         }
@@ -1785,7 +1602,10 @@ mod_sedentary_server <- function(id, shared) {
           W90 = sapply(res, function(r) round(r$fragmentation$W90, 2)),
           alpha = sapply(res, function(r) round(r$fragmentation$alpha, 3)),
           gini = sapply(res, function(r) round(r$fragmentation$gini, 4)),
-          prolonged_bouts_count = sapply(res, function(r) r$fragmentation$n_30min_bouts),
+          prolonged_bouts_count = sapply(res, function(r) {
+            ps <- r$fragmentation$prolonged_summary
+            if (is.null(ps)) 0L else ps$n_bouts[ps$threshold == 30]
+          }),
           prolonged_percent = sapply(res, function(r) round(r$fragmentation$pct_time_30min_bouts, 2)),
           stringsAsFactors = FALSE
         )
@@ -1812,60 +1632,32 @@ mod_sedentary_server <- function(id, shared) {
           data <- f$data
           epoch_length <- f$epoch_length
 
-          # Get subject info
           subj <- f$subject_info
           subject_id <- subj$id
           weight_lbs <- if (!is.null(subj$weight_lbs)) subj$weight_lbs else 0
           age <- if (!is.null(subj$age)) subj$age else 0
           gender <- if (!is.null(subj$sex)) subj$sex else ""
 
-          # Calculate CPM and identify sedentary epochs
-          cpm <- data$axis1 * (60 / epoch_length)
-          sedentary_threshold <- if (input$cut_points == "freedson") 100 else 150
-          is_sedentary <- cpm < sedentary_threshold
+          bouts <- r$fragmentation$bouts
+          if (is.null(bouts) || nrow(bouts) == 0) next
 
-          # Apply wear time if available
-          if (fid %in% names(shared$results$wear_time)) {
-            wear_mask <- shared$results$wear_time[[fid]]$wear
-            is_sedentary <- is_sedentary & wear_mask
-          }
+          valid_bouts <- bouts[bouts$duration_min >= min_bout, ]
+          if (nrow(valid_bouts) == 0) next
 
-          # Detect bouts using RLE
-          rle_sed <- rle(is_sedentary)
-          end_indices <- cumsum(rle_sed$lengths)
-          start_indices <- c(1, end_indices[-length(end_indices)] + 1)
-
-          sed_mask <- rle_sed$values
-          bout_starts <- start_indices[sed_mask]
-          bout_ends <- end_indices[sed_mask]
-
-          if (length(bout_starts) == 0) next
-
-          # Calculate durations and filter
-          bout_lengths <- bout_ends - bout_starts + 1
-          duration_min <- bout_lengths * (epoch_length / 60)
-          valid_bouts <- duration_min >= min_bout
-
-          bout_starts <- bout_starts[valid_bouts]
-          bout_ends <- bout_ends[valid_bouts]
-          duration_min <- duration_min[valid_bouts]
-
-          if (length(bout_starts) == 0) next
-
-          # Build bout-level data
-          for (i in seq_along(bout_starts)) {
-            start_idx <- bout_starts[i]
-            end_idx <- bout_ends[i]
+          for (i in seq_len(nrow(valid_bouts))) {
+            start_idx <- valid_bouts$start_index[i]
+            end_idx <- valid_bouts$end_index[i]
+            duration_min_i <- valid_bouts$duration_min[i]
 
             bout_data <- data[start_idx:end_idx, ]
             bout_start_time <- data$timestamp[start_idx]
             bout_end_time <- data$timestamp[end_idx]
 
-            # Inter-bout interval
             if (i == 1) {
               time_since_last <- 0
             } else {
-              prev_end_time <- data$timestamp[bout_ends[i - 1]]
+              prev_end_idx <- valid_bouts$end_index[i - 1]
+              prev_end_time <- data$timestamp[prev_end_idx]
               time_since_last <- as.numeric(difftime(bout_start_time, prev_end_time, units = "mins"))
             }
 
@@ -1932,7 +1724,7 @@ mod_sedentary_server <- function(id, shared) {
               Gender = gender,
               `Sedentary Bout Start` = format(bout_start_time, "%m/%d/%Y %I:%M:%S %p"),
               `Sedentary Bout End` = format(bout_end_time, "%m/%d/%Y %I:%M:%S %p"),
-              `Time in Sedentary Bout` = round(duration_min[i], 1),
+              `Time in Sedentary Bout` = round(duration_min_i, 1),
               `Time since last Sedentary Bout` = round(time_since_last, 1),
               `Axis 1 Counts` = round(axis1_counts, 1),
               `Axis 2 Counts` = round(axis2_counts, 1),
@@ -1957,7 +1749,7 @@ mod_sedentary_server <- function(id, shared) {
               `Lux Average Counts` = round(lux_avg, 1),
               `Lux Max Counts` = lux_max,
               `Number of Epochs` = n_epochs,
-              Time = round(duration_min[i], 1),
+              Time = round(duration_min_i, 1),
               `Calendar Days` = calendar_days,
               stringsAsFactors = FALSE,
               check.names = FALSE
@@ -1979,52 +1771,21 @@ mod_sedentary_server <- function(id, shared) {
       res <- filtered_results()
       req(length(res) > 0)
 
-      # Collect all IBIs across files
       all_ibis <- c()
       min_bout <- input$min_bout_duration
 
       for (fid in names(res)) {
         r <- res[[fid]]
-        f <- shared$files[[fid]]
-        data <- f$data
-        epoch_length <- f$epoch_length
+        bouts <- r$fragmentation$bouts
+        if (is.null(bouts) || nrow(bouts) < 2) next
 
-        # Calculate CPM and identify sedentary epochs
-        cpm <- data$axis1 * (60 / epoch_length)
-        sedentary_threshold <- if (input$cut_points == "freedson") 100 else 150
-        is_sedentary <- cpm < sedentary_threshold
+        valid_bouts <- bouts[bouts$duration_min >= min_bout, ]
+        if (nrow(valid_bouts) < 2) next
 
-        # Apply wear time
-        if (fid %in% names(shared$results$wear_time)) {
-          is_sedentary <- is_sedentary & shared$results$wear_time[[fid]]$wear
-        }
-
-        # Detect bouts
-        rle_sed <- rle(is_sedentary)
-        end_indices <- cumsum(rle_sed$lengths)
-        start_indices <- c(1, end_indices[-length(end_indices)] + 1)
-
-        sed_mask <- rle_sed$values
-        bout_starts <- start_indices[sed_mask]
-        bout_ends <- end_indices[sed_mask]
-
-        if (length(bout_starts) < 2) next
-
-        # Filter by min bout duration
-        bout_lengths <- bout_ends - bout_starts + 1
-        duration_min <- bout_lengths * (epoch_length / 60)
-        valid_idx <- which(duration_min >= min_bout)
-
-        if (length(valid_idx) < 2) next
-
-        bout_starts <- bout_starts[valid_idx]
-        bout_ends <- bout_ends[valid_idx]
-
-        # Calculate IBIs
-        for (i in 2:length(bout_starts)) {
-          prev_end_time <- data$timestamp[bout_ends[i - 1]]
-          curr_start_time <- data$timestamp[bout_starts[i]]
-          ibi <- as.numeric(difftime(curr_start_time, prev_end_time, units = "mins"))
+        for (i in 2:nrow(valid_bouts)) {
+          prev_end <- valid_bouts$end_time[i - 1]
+          curr_start <- valid_bouts$start_time[i]
+          ibi <- as.numeric(difftime(curr_start, prev_end, units = "mins"))
           if (ibi > 0) all_ibis <- c(all_ibis, ibi)
         }
       }

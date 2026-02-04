@@ -483,14 +483,14 @@
         "RemoteRepo": "canhrActi",
         "RemoteUsername": "rdazadda",
         "RemoteRef": "HEAD",
-        "RemoteSha": "dae12bd12da47b74f790789db5631c7dfbf8cbac",
+        "RemoteSha": "9a78e8c5af1993be4b4115aba2550e3d711d7605",
         "GithubRepo": "canhrActi",
         "GithubUsername": "rdazadda",
         "GithubRef": "HEAD",
-        "GithubSHA1": "dae12bd12da47b74f790789db5631c7dfbf8cbac",
+        "GithubSHA1": "9a78e8c5af1993be4b4115aba2550e3d711d7605",
         "NeedsCompilation": "yes",
-        "Packaged": "2026-02-04 00:32:51 UTC; rdazadda",
-        "Built": "R 4.5.2; x86_64-w64-mingw32; 2026-02-04 00:32:53 UTC; windows",
+        "Packaged": "2026-02-04 00:57:00 UTC; rdazadda",
+        "Built": "R 4.5.2; x86_64-w64-mingw32; 2026-02-04 00:57:02 UTC; windows",
         "Archs": "x64"
       }
     },
@@ -2453,7 +2453,7 @@
       "checksum": "7f774341beb77e61fc3009143e08822c"
     },
     "data/MOS2E39230594 (2025-10-14)60sec.agd": {
-      "checksum": "fa52dc281c023c0bdcbae7cdb49255d7"
+      "checksum": "60dc8b94f67162aca58f1998ca278f91"
     },
     "data/MOS2E3923063660sec.agd": {
       "checksum": "ff3fe6a64969773dd282a4627a7ddba6"

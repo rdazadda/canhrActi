@@ -173,10 +173,11 @@
       "description": {
         "Package": "Rcpp",
         "Title": "Seamless R and C++ Integration",
-        "Version": "1.1.0",
-        "Date": "2025-07-01",
+        "Version": "1.1.1",
+        "Date": "2026-01-07",
         "Authors@R": "c(person(\"Dirk\", \"Eddelbuettel\", role = c(\"aut\", \"cre\"), email = \"edd@debian.org\",\n                    comment = c(ORCID = \"0000-0001-6419-907X\")),\n             person(\"Romain\", \"Francois\", role = \"aut\",\n                    comment = c(ORCID = \"0000-0002-2444-4226\")),\n             person(\"JJ\", \"Allaire\", role = \"aut\",\n                    comment = c(ORCID = \"0000-0003-0174-9868\")),\n             person(\"Kevin\", \"Ushey\", role = \"aut\",\n                    comment = c(ORCID = \"0000-0003-2880-7407\")),\n             person(\"Qiang\", \"Kou\", role = \"aut\",\n                    comment = c(ORCID = \"0000-0001-6786-5453\")),\n             person(\"Nathan\", \"Russell\", role = \"aut\"),\n             person(\"Iñaki\", \"Ucar\", role = \"aut\",\n                    comment = c(ORCID = \"0000-0001-6403-5550\")),\n             person(\"Doug\", \"Bates\", role = \"aut\",\n                    comment = c(ORCID = \"0000-0001-8316-9503\")),\n             person(\"John\", \"Chambers\", role = \"aut\"))",
         "Description": "The 'Rcpp' package provides R functions as well as C++ classes which\n offer a seamless integration of R and C++. Many R data types and objects can be\n mapped back and forth to C++ equivalents which facilitates both writing of new\n code as well as easier integration of third-party libraries. Documentation\n about 'Rcpp' is provided by several vignettes included in this package, via the\n 'Rcpp Gallery' site at <https://gallery.rcpp.org>, the paper by Eddelbuettel and\n Francois (2011, <doi:10.18637/jss.v040.i08>), the book by Eddelbuettel (2013,\n <doi:10.1007/978-1-4614-6868-4>) and the paper by Eddelbuettel and Balamuta (2018,\n <doi:10.1080/00031305.2017.1375990>); see 'citation(\"Rcpp\")' for details.",
+        "Depends": "R (>= 3.5.0)",
         "Imports": "methods, utils",
         "Suggests": "tinytest, inline, rbenchmark, pkgKitten (>= 0.1.2)",
         "URL": "https://www.rcpp.org,\nhttps://dirk.eddelbuettel.com/code/rcpp.html,\nhttps://github.com/RcppCore/Rcpp",
@@ -185,19 +186,15 @@
         "MailingList": "rcpp-devel@lists.r-forge.r-project.org",
         "RoxygenNote": "6.1.1",
         "Encoding": "UTF-8",
+        "VignetteBuilder": "Rcpp",
         "NeedsCompilation": "yes",
-        "Packaged": "2025-07-01 12:58:41 UTC; edd",
+        "Packaged": "2026-01-08 14:33:45 UTC; edd",
         "Author": "Dirk Eddelbuettel [aut, cre] (ORCID:\n    <https://orcid.org/0000-0001-6419-907X>),\n  Romain Francois [aut] (ORCID: <https://orcid.org/0000-0002-2444-4226>),\n  JJ Allaire [aut] (ORCID: <https://orcid.org/0000-0003-0174-9868>),\n  Kevin Ushey [aut] (ORCID: <https://orcid.org/0000-0003-2880-7407>),\n  Qiang Kou [aut] (ORCID: <https://orcid.org/0000-0001-6786-5453>),\n  Nathan Russell [aut],\n  Iñaki Ucar [aut] (ORCID: <https://orcid.org/0000-0001-6403-5550>),\n  Doug Bates [aut] (ORCID: <https://orcid.org/0000-0001-8316-9503>),\n  John Chambers [aut]",
         "Maintainer": "Dirk Eddelbuettel <edd@debian.org>",
         "Repository": "CRAN",
-        "Date/Publication": "2025-07-02 16:40:02 UTC",
-        "Built": "R 4.5.1; x86_64-w64-mingw32; 2025-10-26 00:48:03 UTC; windows",
-        "Archs": "x64",
-        "RemoteType": "standard",
-        "RemotePkgRef": "Rcpp",
-        "RemoteRef": "Rcpp",
-        "RemoteRepos": "https://cran.rstudio.com",
-        "RemoteSha": "1.1.0"
+        "Date/Publication": "2026-01-10 09:50:02 UTC",
+        "Built": "R 4.5.2; x86_64-w64-mingw32; 2026-01-17 01:48:55 UTC; windows",
+        "Archs": "x64"
       }
     },
     "RcppArmadillo": {
@@ -477,7 +474,7 @@
         "Imports": "stats, utils, tools, DBI, RSQLite, ggplot2, scales, tidyr,\nRcpp (>= 1.0.0)",
         "LinkingTo": "Rcpp, RcppArmadillo",
         "SystemRequirements": "C++17",
-        "Suggests": "knitr, rmarkdown, testthat (>= 3.0.0), patchwork, plotly,\ngridExtra, cowplot, ggridges, shiny (>= 1.7.0), bslib (>=\n0.5.0), bsicons, DT, shinyjs, shinycssloaders, shinydashboard,\nopenxlsx, future, promises",
+        "Suggests": "knitr, rmarkdown, testthat (>= 3.0.0), patchwork, plotly,\ngridExtra, cowplot, ggrepel, ggridges, shiny (>= 1.7.0), bslib\n(>= 0.5.0), bsicons, DT, shinyjs, shinycssloaders,\nshinydashboard, openxlsx, future, promises",
         "Encoding": "UTF-8",
         "Roxygen": "list(markdown = TRUE)",
         "RoxygenNote": "7.3.3",
@@ -486,14 +483,14 @@
         "RemoteRepo": "canhrActi",
         "RemoteUsername": "rdazadda",
         "RemoteRef": "HEAD",
-        "RemoteSha": "c905fa502cb17a60e471f7b179a2e6172910842f",
+        "RemoteSha": "2f0ee4caa79356b40ad4e38d0455b04f6f64bd0d",
         "GithubRepo": "canhrActi",
         "GithubUsername": "rdazadda",
         "GithubRef": "HEAD",
-        "GithubSHA1": "8b8b55763df9e6e1f62cb98a3e7ac81689ade720",
+        "GithubSHA1": "2f0ee4caa79356b40ad4e38d0455b04f6f64bd0d",
         "NeedsCompilation": "yes",
-        "Packaged": "2026-01-20 16:28:18 UTC; rdazadda",
-        "Built": "R 4.5.2; x86_64-w64-mingw32; 2026-01-20 16:28:21 UTC; windows",
+        "Packaged": "2026-02-04 00:27:35 UTC; rdazadda",
+        "Built": "R 4.5.2; x86_64-w64-mingw32; 2026-02-04 00:27:37 UTC; windows",
         "Archs": "x64"
       }
     },
@@ -916,22 +913,6 @@
         "Repository": "CRAN",
         "Date/Publication": "2025-11-14 09:20:02 UTC",
         "Built": "R 4.5.2; ; 2025-11-15 12:35:28 UTC; windows"
-      }
-    },
-    "ggrepel": {
-      "Source": "CRAN",
-      "Repository": "https://cloud.r-project.org",
-      "description": {
-        "Package": "ggrepel",
-        "Title": "Automatically Position Non-Overlapping Text Labels with 'ggplot2'",
-        "Version": "0.9.6",
-        "License": "GPL-3",
-        "URL": "https://github.com/slowkow/ggrepel",
-        "BugReports": "https://github.com/slowkow/ggrepel/issues",
-        "Depends": "R (>= 3.0.0), ggplot2 (>= 2.2.0)",
-        "Imports": "grid, Rcpp, rlang (>= 0.3.0), scales (>= 0.5.0), withr (>= 2.5.0)",
-        "NeedsCompilation": "yes",
-        "Repository": "CRAN"
       }
     },
     "glue": {
@@ -2490,13 +2471,13 @@
       "checksum": "23f582111bce31885db1eac3f3cc3c27"
     },
     "R/mod_graphing.R": {
-      "checksum": "5ade6a4b2276f569157ecc432b913b33"
+      "checksum": "4379d8cc5ec192ca9a7665fa1ce377c0"
     },
     "R/mod_overview.R": {
       "checksum": "24fa24f5709eb8ec4e0e1a13c2b155d1"
     },
     "R/mod_sedentary.R": {
-      "checksum": "ac3cdb3a06ad84c7aa83ef61d19f014c"
+      "checksum": "f904ee11817443f6036571ee7dfffc59"
     },
     "R/mod_sleep.R": {
       "checksum": "8d191fde7e5ded52208b047b2f6d8b33"

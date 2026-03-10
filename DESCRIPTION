@@ -22,7 +22,7 @@ Description: Comprehensive accelerometer data analysis suite developed by the Ce
     (L5, M10, IS, IV, RA, phi) and sedentary fragmentation metrics. Supports ActiGraph
     AGD files with pre-processed activity counts. Produces results compatible with
     ActiLife software.
-License: MIT + file LICENSE
+License: file LICENSE
 URL: https://github.com/rdazadda/canhrActi
 BugReports: https://github.com/rdazadda/canhrActi/issues
 Depends: R (>= 4.1)

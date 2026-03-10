@@ -1583,7 +1583,7 @@
     },
     "plogr": {
       "Source": "CRAN",
-      "Repository": "https://cloud.r-project.org",
+      "Repository": null,
       "description": {
         "Package": "plogr",
         "Title": "The 'plog' C++ Logging Library",

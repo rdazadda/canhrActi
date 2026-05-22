@@ -37,8 +37,8 @@ const R_DIR = path.join(RES_DIR, 'R');
 
 const SOURCES = {
   'win-x64':   `https://github.com/portable-r/portable-r-windows/releases/download/v${R_VERSION}/portable-r-${R_VERSION}-win-x64.zip`,
-  'mac-arm64': `https://github.com/portable-r/portable-r-macos/releases/download/v${R_VERSION}/portable-r-${R_VERSION}-mac-arm64.tar.gz`,
-  'mac-x64':   `https://github.com/portable-r/portable-r-macos/releases/download/v${R_VERSION}/portable-r-${R_VERSION}-mac-x64.tar.gz`,
+  'mac-arm64': `https://github.com/portable-r/portable-r-macos/releases/download/v${R_VERSION}/portable-r-${R_VERSION}-macos-arm64.tar.gz`,
+  'mac-x64':   `https://github.com/portable-r/portable-r-macos/releases/download/v${R_VERSION}/portable-r-${R_VERSION}-macos-x86_64.tar.gz`,
   'linux-x64': `https://cdn.rstudio.com/r/ubuntu-2204/pkgs/r-${R_VERSION}_1_amd64.deb`,
 };
 

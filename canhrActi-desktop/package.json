@@ -1,0 +1,41 @@
+{
+  "name": "canhractivity-desktop",
+  "version": "0.3.0",
+  "description": "Desktop application for canhrActi — CANHR Accelerometer Physical Activity and Sleep Analysis",
+  "main": "src/main/index.js",
+  "private": true,
+  "author": {
+    "name": "Center for Alaska Native Health Research",
+    "email": "rdazadda@alaska.edu"
+  },
+  "homepage": "https://github.com/rdazadda/canhrActi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rdazadda/canhrActi.git",
+    "directory": "canhrActi-desktop"
+  },
+  "scripts": {
+    "setup:r": "node scripts/fetch-r-portable.js",
+    "setup:packages": "node scripts/run-install.js",
+    "setup:strip": "node scripts/strip-r.js",
+    "setup:icons": "node scripts/generate-icons.js",
+    "setup": "npm run setup:r && npm run setup:packages && npm run setup:strip",
+    "start": "electron .",
+    "start:debug": "cross-env CANHRACTI_DEBUG=1 electron .",
+    "build:win": "electron-builder --win --x64",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "publish:win": "electron-builder --win --x64 --publish always",
+    "release": "electron-builder --publish always"
+  },
+  "dependencies": {
+    "electron-log": "^5.1.0",
+    "get-port": "^7.1.0"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^42.0.0",
+    "electron-builder": "^26.11.1",
+    "png2icons": "^2.0.1"
+  }
+}

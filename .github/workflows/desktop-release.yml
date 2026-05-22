@@ -1,0 +1,100 @@
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            target: win
+            arch: x64
+          - os: macos-14
+            target: mac
+            arch: arm64
+          - os: ubuntu-22.04
+            target: linux
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: canhrActi-desktop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: canhrActi-desktop/package-lock.json
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Cache R bundle
+        uses: actions/cache@v4
+        with:
+          path: canhrActi-desktop/resources/R
+          key: portable-r-4.5.2-${{ matrix.target }}-${{ matrix.arch }}
+
+      - name: Fetch R
+        run: node scripts/fetch-r-portable.js --platform ${{ matrix.target }} --arch ${{ matrix.arch }}
+
+      - name: Install canhrActi and pinned packages
+        run: npm run setup:packages
+
+      - name: Strip R bundle
+        run: npm run setup:strip
+
+      - name: Build installer (Windows)
+        if: matrix.target == 'win'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/desktop-v*') {
+            npm run publish:win
+          } else {
+            npm run build:win
+          }
+
+      - name: Build installer (macOS)
+        if: matrix.target == 'mac'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/desktop-v* ]]; then
+            npm run build:mac -- --publish always
+          else
+            npm run build:mac
+          fi
+
+      - name: Build installer (Linux)
+        if: matrix.target == 'linux'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/desktop-v* ]]; then
+            npm run build:linux -- --publish always
+          else
+            npm run build:linux
+          fi
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: canhrActi-${{ matrix.target }}-${{ matrix.arch }}
+          path: |
+            canhrActi-desktop/dist/*.exe
+            canhrActi-desktop/dist/*.dmg
+            canhrActi-desktop/dist/*.AppImage
+          if-no-files-found: warn
+          retention-days: 30

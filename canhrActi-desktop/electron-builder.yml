@@ -1,0 +1,93 @@
+appId: org.canhr.canhrActi
+productName: CANHRActi
+copyright: Copyright © 2026 Center for Alaska Native Health Research
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
+directories:
+  buildResources: build
+  output: dist
+
+asar: true
+asarUnpack:
+  - "rcode/**"
+
+files:
+  - "src/**/*"
+  - "package.json"
+  - "!**/*.{md,Rmd}"
+  - "!**/{__pycache__,.cache,.idea,.vscode,node_modules/.cache}"
+
+extraResources:
+  - from: "resources/R"
+    to: "R"
+    filter: ["**/*"]
+  - from: "rcode"
+    to: "app-r"
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: CANHRActi
+  uninstallDisplayName: CANHRActi ${version}
+  license: build/LICENSE.txt
+  include: build/installer.nsh
+  differentialPackage: true
+  artifactName: ${productName}-Setup-${version}.${ext}
+
+mac:
+  target:
+    - target: dmg
+      arch: [arm64]
+  category: public.app-category.healthcare-fitness
+  icon: build/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false
+  identity: null
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+      type: file
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+  window:
+    width: 540
+    height: 380
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  icon: build/icons
+  category: Science
+  synopsis: Accelerometer data analysis for physical activity and sleep
+  desktop:
+    entry:
+      Name: CANHRActi
+      Comment: Accelerometer data analysis
+      Categories: Science;Education;
+
+appImage:
+  artifactName: ${productName}-${version}.${ext}
+
+publish:
+  - provider: github
+    owner: rdazadda
+    repo: canhrActi
+    releaseType: release
+    vPrefixedTagName: true

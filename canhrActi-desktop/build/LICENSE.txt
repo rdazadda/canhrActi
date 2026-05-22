@@ -1,0 +1,15 @@
+canhrActi Desktop
+Copyright (c) 2026 Center for Alaska Native Health Research
+
+This installer bundles:
+  * The canhrActi R package (same license as the canhrActi source)
+  * R for Windows (GPL-2 / GPL-3) — see https://www.r-project.org/Licenses/
+  * Electron (MIT) — see https://github.com/electron/electron
+  * Various R packages from CRAN — see each package's DESCRIPTION for terms.
+
+The canhrActi-specific portion of this software is licensed under the same
+terms as the canhrActi R package. See the canhrActi LICENSE file for full
+terms.
+
+By installing this software you agree to the license terms above and the
+licenses of all bundled components.

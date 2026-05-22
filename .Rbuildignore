@@ -16,3 +16,5 @@
 .*Rplots\.pdf$
 ^\.DS_Store$
 ^Thumbs\.db$
+^canhrActi-desktop$
+^canhrActi-desktop/

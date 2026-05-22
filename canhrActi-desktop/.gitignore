@@ -1,0 +1,13 @@
+node_modules/
+dist/
+out/
+resources/R/
+resources/R.tmp/
+*.log
+.DS_Store
+Thumbs.db
+.env
+.env.local
+.vscode/
+.idea/
+package-lock.json.bak

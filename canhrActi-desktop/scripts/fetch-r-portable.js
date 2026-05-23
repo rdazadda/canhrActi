@@ -39,7 +39,7 @@ const SOURCES = {
   'win-x64':   `https://github.com/portable-r/portable-r-windows/releases/download/v${R_VERSION}/portable-r-${R_VERSION}-win-x64.zip`,
   'mac-arm64': `https://github.com/portable-r/portable-r-macos/releases/download/v${R_VERSION}/portable-r-${R_VERSION}-macos-arm64.tar.gz`,
   'mac-x64':   `https://github.com/portable-r/portable-r-macos/releases/download/v${R_VERSION}/portable-r-${R_VERSION}-macos-x86_64.tar.gz`,
-  'linux-x64': `https://cdn.rstudio.com/r/ubuntu-2204/pkgs/r-${R_VERSION}_1_amd64.deb`,
+  'linux-x64': `https://cdn.posit.co/r/manylinux_2_34/R-${R_VERSION}-manylinux_2_34.tar.gz`,
 };
 
 const key = `${PLATFORM}-${ARCH}`;
@@ -99,31 +99,27 @@ function extractTarball() {
   execSync(`tar -xzf '${TMP}' -C '${R_DIR}' --strip-components=1`, { stdio: 'inherit' });
 }
 
-function extractDeb() {
-  // .deb is an ar archive with data.tar.xz inside. We extract data.tar.xz,
-  // pull R out of /opt/R/<version>/, and copy it to RES_DIR/R/.
-  const work = path.join(RES_DIR, '.deb-extract');
-  fs.mkdirSync(work, { recursive: true });
-  execSync(`ar x '${TMP}'`, { cwd: work, stdio: 'inherit' });
-  const dataTar = fs.readdirSync(work).find((f) => f.startsWith('data.tar'));
-  if (!dataTar) throw new Error('data.tar not found inside .deb');
-  execSync(`tar -xf '${path.join(work, dataTar)}' -C '${work}'`, { stdio: 'inherit' });
-  const optR = path.join(work, 'opt', 'R', R_VERSION);
-  if (!fs.existsSync(optR)) {
-    throw new Error(`Expected /opt/R/${R_VERSION} inside .deb, not found.`);
-  }
-  fs.renameSync(optR, R_DIR);
-  // best-effort cleanup
-  try { execSync(`rm -rf '${work}'`); } catch { /* ignore */ }
-}
-
 (async () => {
   console.log(`Source: ${URL}`);
   fs.mkdirSync(RES_DIR, { recursive: true });
+
+  // Self-healing: if R_DIR exists but doesn't contain a recognizable Rscript,
+  // wipe it and re-fetch. Protects against poisoned cache from a previous run.
   if (fs.existsSync(R_DIR)) {
-    console.log(`R already present at ${R_DIR}. Delete that directory to re-download.`);
-    return;
+    const probes = [
+      path.join(R_DIR, 'bin', 'Rscript'),
+      path.join(R_DIR, 'bin', 'Rscript.exe'),
+      path.join(R_DIR, 'bin', 'x64', 'Rscript.exe'),
+      path.join(R_DIR, 'R.framework', 'Resources', 'Rscript'),
+    ];
+    if (probes.some((p) => fs.existsSync(p))) {
+      console.log(`R already present at ${R_DIR}. Delete that directory to re-download.`);
+      return;
+    }
+    console.log(`R_DIR exists but no Rscript found; wiping and re-downloading.`);
+    fs.rmSync(R_DIR, { recursive: true, force: true });
   }
+
   try {
     await download(URL, TMP);
   } catch (err) {
@@ -139,8 +135,6 @@ function extractDeb() {
       if (extracted) fs.renameSync(path.join(RES_DIR, extracted), R_DIR);
     } else if (URL.endsWith('.tar.gz') || URL.endsWith('.tgz')) {
       extractTarball();
-    } else if (URL.endsWith('.deb')) {
-      extractDeb();
     } else {
       throw new Error(`Unknown archive type for ${URL}`);
     }

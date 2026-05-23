@@ -47,6 +47,15 @@ ppm_url <- if (.Platform$OS.type == "unix" && Sys.info()[["sysname"]] == "Linux"
 cat("Using package source:", ppm_url, "\n")
 options(repos = c(PPM = ppm_url, CRAN = "https://cloud.r-project.org"))
 
+if (Sys.info()[["sysname"]] == "Darwin") {
+  if (file.exists("/opt/gfortran/bin/gfortran")) {
+    cat("gfortran detected at /opt/gfortran/bin/gfortran\n")
+  } else {
+    warning("gfortran not found at /opt/gfortran; source compilation of ",
+            "Fortran-using packages will fail.")
+  }
+}
+
 if (!requireNamespace("pak", quietly = TRUE)) {
   install.packages("pak", repos = "https://r-lib.r-universe.dev", lib = lib)
 }

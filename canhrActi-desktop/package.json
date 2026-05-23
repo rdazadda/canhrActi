@@ -22,9 +22,9 @@
     "setup": "npm run setup:r && npm run setup:packages && npm run setup:strip",
     "start": "electron .",
     "start:debug": "cross-env CANHRACTI_DEBUG=1 electron .",
-    "build:win": "electron-builder --win --x64",
-    "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux",
+    "build:win": "electron-builder --win --x64 --publish never",
+    "build:mac": "electron-builder --mac --publish never",
+    "build:linux": "electron-builder --linux --publish never",
     "publish:win": "electron-builder --win --x64 --publish always",
     "release": "electron-builder --publish always"
   },

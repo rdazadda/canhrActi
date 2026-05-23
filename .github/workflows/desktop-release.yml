@@ -52,14 +52,43 @@ jobs:
             libfribidi-dev libpng-dev libjpeg-dev libtiff5-dev \
             libcairo2-dev libxt-dev
 
+      - name: Install gfortran (macOS)
+        if: matrix.target == 'mac'
+        shell: bash
+        run: |
+          if [ ! -x /opt/gfortran/bin/gfortran ]; then
+            curl -fsSL -o /tmp/gfortran.pkg \
+              https://github.com/R-macos/gcc-14-branch/releases/download/gcc-14.2-darwin-r2.1/gfortran-14.2-universal.pkg
+            sudo installer -pkg /tmp/gfortran.pkg -target /
+            rm /tmp/gfortran.pkg
+          fi
+          /opt/gfortran/bin/gfortran --version
+          ls /opt/gfortran/lib/gcc/aarch64-apple-darwin*/14.2.0/libemutls_w.a 2>&1 || true
+
       - name: Install Node dependencies
         run: npm ci
 
       - name: Cache R bundle
+        id: cache-r
         uses: actions/cache@v4
         with:
           path: canhrActi-desktop/resources/R
-          key: portable-r-${{ matrix.r-version }}-${{ matrix.target }}-${{ matrix.arch }}-v2
+          key: portable-r-${{ matrix.r-version }}-${{ matrix.target }}-${{ matrix.arch }}-v3-${{ hashFiles('canhrActi-desktop/scripts/fetch-r-portable.js') }}
+
+      - name: Validate cached R bundle
+        if: steps.cache-r.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          ok=true
+          case "${{ matrix.target }}" in
+            win)   { [ -f resources/R/bin/x64/Rscript.exe ] || [ -f resources/R/bin/Rscript.exe ]; } || ok=false ;;
+            mac)   { [ -f resources/R/R.framework/Resources/Rscript ] || [ -f resources/R/bin/Rscript ]; } || ok=false ;;
+            linux) [ -f resources/R/bin/Rscript ] || ok=false ;;
+          esac
+          if [ "$ok" = "false" ]; then
+            echo "Cached R bundle is incomplete; wiping so fetch-r-portable re-downloads."
+            rm -rf resources/R
+          fi
 
       - name: Fetch R
         run: node scripts/fetch-r-portable.js --platform ${{ matrix.target }} --arch ${{ matrix.arch }} --version ${{ matrix.r-version }}
@@ -89,16 +118,21 @@ jobs:
 
       - name: Build installer (Windows)
         if: matrix.target == 'win'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build:win
 
       - name: Build installer (macOS)
         if: matrix.target == 'mac'
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run build:mac
 
       - name: Build installer (Linux)
         if: matrix.target == 'linux'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build:linux
 
       - name: Upload installer artifact

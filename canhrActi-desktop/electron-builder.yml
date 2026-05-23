@@ -84,10 +84,3 @@ linux:
 
 appImage:
   artifactName: ${productName}-${version}.${ext}
-
-publish:
-  - provider: github
-    owner: rdazadda
-    repo: canhrActi
-    releaseType: release
-    vPrefixedTagName: true

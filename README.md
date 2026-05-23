@@ -4,9 +4,9 @@ Comprehensive analysis of ActiGraph accelerometer data for physical activity, sl
 
 <strong>Use canhrActi:</strong> &nbsp;
 [Web app](https://rdazadda-canhracti.share.connect.posit.cloud/) &nbsp;||&nbsp;
-[Windows download](https://github.com/rdazadda/canhrActi/releases/latest) &nbsp;||&nbsp;
-[macOS download](https://github.com/rdazadda/canhrActi/releases/latest) &nbsp;||&nbsp;
-[Linux download](https://github.com/rdazadda/canhrActi/releases/latest) &nbsp;||&nbsp;
+[Windows download](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-Setup.exe) &nbsp;||&nbsp;
+[macOS download](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-mac-arm64.dmg) &nbsp;||&nbsp;
+[Linux download](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi.AppImage) &nbsp;||&nbsp;
 [R package](#r-package)
 <br/>
 
@@ -16,12 +16,12 @@ canhrActi reads ActiGraph `.agd` files and computes wear time, activity intensit
 
 ## Features
 
-- Wear time detection — Troiano 2007, Choi 2011, CANHR 2025
-- Activity intensity cut-points — Freedson, Sasaki VM3, Crouter, Evenson, Puyau, and others
-- Sleep scoring — Cole-Kripke and Sadeh, with Tudor-Locke period detection
-- MET prediction — twelve published algorithms
-- Circadian metrics — L5, M10, IS, IV, RA, phi, SRI
-- Sedentary fragmentation — ASTP, SATP, Gini, Clauset power-law exponent
+- Wear time detection: Troiano 2007, Choi 2011, CANHR 2025
+- Activity intensity cut-points: Freedson, Sasaki VM3, Crouter, Evenson, Puyau, and others
+- Sleep scoring: Cole-Kripke and Sadeh, with Tudor-Locke period detection
+- MET prediction: twelve published algorithms
+- Circadian metrics: L5, M10, IS, IV, RA, phi, SRI
+- Sedentary fragmentation: ASTP, SATP, Gini, Clauset power-law exponent
 - Interactive Shiny dashboard
 
 ## Quick Start
@@ -45,21 +45,21 @@ Open <https://rdazadda-canhracti.share.connect.posit.cloud/> in any modern brows
 
 ### Windows
 
-1. Download `canhrActi-Setup-<version>.exe` from the [releases page](https://github.com/rdazadda/canhrActi/releases).
-2. Double-click to install. Windows SmartScreen may show a warning the first time — click "More info" then "Run anyway".
-3. Launch canhrActi from the Start menu.
+1. [Download `CANHRActi-Setup.exe`](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-Setup.exe).
+2. Double-click to install. Windows SmartScreen may show a warning the first time. Click "More info" then "Run anyway".
+3. Launch CANHRActi from the Start menu.
 
 ### macOS (Apple Silicon)
 
-1. Download `canhrActi-<version>-mac-arm64.dmg` from the [releases page](https://github.com/rdazadda/canhrActi/releases).
-2. Open the .dmg and drag canhrActi to Applications.
-3. The first time you open it, right-click the icon in Applications and pick **Open** — this approves the unsigned app with Gatekeeper.
+1. [Download `CANHRActi-mac-arm64.dmg`](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-mac-arm64.dmg).
+2. Open the .dmg and drag CANHRActi to Applications.
+3. The first time you open it, right-click the icon in Applications and pick **Open**. This approves the unsigned app with Gatekeeper.
 
 ### Linux
 
-1. Download `canhrActi-<version>.AppImage` from the [releases page](https://github.com/rdazadda/canhrActi/releases).
-2. Make it executable: `chmod +x canhrActi-*.AppImage`
-3. Run it: `./canhrActi-*.AppImage`
+1. [Download `CANHRActi.AppImage`](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi.AppImage).
+2. Make it executable: `chmod +x CANHRActi.AppImage`
+3. Run it: `./CANHRActi.AppImage`
 
 ### R package
 

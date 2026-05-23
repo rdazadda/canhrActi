@@ -1,7 +1,7 @@
 {
   "name": "canhractivity-desktop",
   "version": "0.3.0",
-  "description": "Desktop application for canhrActi — CANHR Accelerometer Physical Activity and Sleep Analysis",
+  "description": "Desktop application for canhrActi: CANHR Accelerometer Physical Activity and Sleep Analysis",
   "main": "src/main/index.js",
   "private": true,
   "author": {

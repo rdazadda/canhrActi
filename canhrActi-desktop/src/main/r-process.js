@@ -65,6 +65,16 @@ async function startShiny({ onLog } = {}) {
     R_DISABLE_HTTPD: '1',
   };
 
+  // Relocated R needs help finding its own shared libraries on *nix platforms.
+  if (process.platform === 'linux') {
+    env.LD_LIBRARY_PATH = path.join(rRoot, 'lib', 'R', 'lib') + ':' + (process.env.LD_LIBRARY_PATH || '');
+  } else if (process.platform === 'darwin') {
+    const fwLib = path.join(rRoot, 'R.framework', 'Resources', 'lib');
+    if (fs.existsSync(fwLib)) {
+      env.DYLD_FALLBACK_LIBRARY_PATH = fwLib + ':' + (process.env.DYLD_FALLBACK_LIBRARY_PATH || '');
+    }
+  }
+
   try {
     fs.mkdirSync(env.R_LIBS_USER, { recursive: true });
   } catch { /* ignore */ }

@@ -59,10 +59,27 @@ jobs:
         uses: actions/cache@v4
         with:
           path: canhrActi-desktop/resources/R
-          key: portable-r-${{ matrix.r-version }}-${{ matrix.target }}-${{ matrix.arch }}
+          key: portable-r-${{ matrix.r-version }}-${{ matrix.target }}-${{ matrix.arch }}-v2
 
       - name: Fetch R
         run: node scripts/fetch-r-portable.js --platform ${{ matrix.target }} --arch ${{ matrix.arch }} --version ${{ matrix.r-version }}
+
+      - name: Verify R works (Linux)
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          export LD_LIBRARY_PATH="$PWD/resources/R/lib/R/lib:$LD_LIBRARY_PATH"
+          ls -la resources/R/bin/ || true
+          ls -la resources/R/lib/R/lib/ || true
+          ./resources/R/bin/Rscript --version || echo "Rscript failed; will rely on env in run-install.js"
+
+      - name: Verify R works (macOS)
+        if: matrix.target == 'mac'
+        shell: bash
+        run: |
+          ls -la resources/R/ || true
+          ls -la resources/R/R.framework/Resources/ 2>/dev/null || ls -la resources/R/bin/ 2>/dev/null || true
+          resources/R/R.framework/Resources/Rscript --version 2>&1 || resources/R/bin/Rscript --version 2>&1 || true
 
       - name: Install canhrActi and pinned packages
         run: npm run setup:packages
@@ -72,37 +89,17 @@ jobs:
 
       - name: Build installer (Windows)
         if: matrix.target == 'win'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if ($env:GITHUB_REF -like 'refs/tags/desktop-v*') {
-            npm run publish:win
-          } else {
-            npm run build:win
-          }
+        run: npm run build:win
 
       - name: Build installer (macOS)
         if: matrix.target == 'mac'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/desktop-v* ]]; then
-            npm run build:mac -- --publish always
-          else
-            npm run build:mac
-          fi
+        run: npm run build:mac
 
       - name: Build installer (Linux)
         if: matrix.target == 'linux'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/desktop-v* ]]; then
-            npm run build:linux -- --publish always
-          else
-            npm run build:linux
-          fi
+        run: npm run build:linux
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
@@ -114,3 +111,17 @@ jobs:
             canhrActi-desktop/dist/*.AppImage
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: false
+          files: |
+            canhrActi-desktop/dist/*.exe
+            canhrActi-desktop/dist/*.dmg
+            canhrActi-desktop/dist/*.AppImage

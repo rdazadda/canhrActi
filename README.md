@@ -12,7 +12,7 @@ Comprehensive analysis of ActiGraph accelerometer data for physical activity, sl
 
 <strong>(See installation instructions below.)</strong>
 
-canhrActi reads ActiGraph `.agd` files and computes wear time, activity intensity classifications, MVPA, energy expenditure, sleep periods, and circadian rhythm metrics. Output is compatible with ActiLife software. The same analysis pipeline is available three ways: as a hosted web app, as a desktop installer that bundles R, or as an R package for scripting.
+canhrActi reads ActiGraph `.agd` files and computes wear time, activity intensity classifications, energy expenditure, sleep periods, and circadian rhythm metrics. Output is compatible with ActiLife software. The same analysis pipeline is available three ways: as a hosted web app, as a desktop installer that bundles R, or as an R package for scripting.
 
 ## Features
 

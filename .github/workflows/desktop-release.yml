@@ -73,7 +73,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: canhrActi-desktop/resources/R
-          key: portable-r-${{ matrix.r-version }}-${{ matrix.target }}-${{ matrix.arch }}-v3-${{ hashFiles('canhrActi-desktop/scripts/fetch-r-portable.js') }}
+          key: portable-r-${{ matrix.r-version }}-${{ matrix.target }}-${{ matrix.arch }}-v4-${{ hashFiles('canhrActi-desktop/scripts/fetch-r-portable.js') }}-${{ hashFiles('DESCRIPTION', 'NAMESPACE', 'R/**', 'src/**', 'inst/shiny/**') }}
 
       - name: Validate cached R bundle
         if: steps.cache-r.outputs.cache-hit == 'true'

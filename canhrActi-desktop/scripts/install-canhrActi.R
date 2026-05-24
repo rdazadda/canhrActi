@@ -81,7 +81,11 @@ if (length(skipped) > 0) {
 pak::pkg_install(specs, ask = FALSE, upgrade = FALSE)
 
 cat("\nInstalling canhrActi from rdazadda/canhrActi on GitHub\n")
-pak::pkg_install("github::rdazadda/canhrActi", ask = FALSE)
+if ("canhrActi" %in% rownames(installed.packages(lib.loc = lib))) {
+  cat("Removing cached canhrActi so dashboard changes from main always ship.\n")
+  remove.packages("canhrActi", lib = lib)
+}
+pak::pkg_install("github::rdazadda/canhrActi", ask = FALSE, upgrade = TRUE)
 
 suppressPackageStartupMessages(library(canhrActi))
 cat("\ncanhrActi version:", as.character(utils::packageVersion("canhrActi")), "\n")

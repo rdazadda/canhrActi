@@ -43,16 +43,14 @@ ui <- dashboardPage(
     ),
     titleWidth = 260,
 
-    # File info indicator (shown when data loaded)
+    tags$li(
+      class = "dropdown header-page-title",
+      uiOutput("header_page_title")
+    ),
+
     tags$li(
       class = "dropdown header-file-info",
       uiOutput("header_file_info")
-    ),
-
-    # Workflow progress indicator
-    tags$li(
-      class = "dropdown header-progress",
-      uiOutput("header_workflow_progress")
     ),
 
     # Help/Documentation link
@@ -85,47 +83,17 @@ ui <- dashboardPage(
     sidebarMenu(
       id = "tabs",
 
-      # Overview/Home
-      menuItem(
-        text = "Overview",
-        tabName = "overview"
-      ),
+      menuItem(text = "Overview", tabName = "overview"),
 
-      # DATA Section
-      tags$div(class = "sidebar-section-header", "DATA"),
-      menuItem(
-        text = "Upload",
-        tabName = "upload"
-      ),
+      tags$div(class = "sidebar-section-header", "Workflow"),
+      menuItem(text = "Upload",    tabName = "upload"),
+      menuItem(text = "Wear Time", tabName = "wear_time"),
 
-      # VALIDATE Section
-      tags$div(class = "sidebar-section-header", "VALIDATE"),
-      menuItem(
-        text = "Wear Time",
-        tabName = "wear_time"
-      ),
-
-      # ANALYZE Section
-      tags$div(class = "sidebar-section-header", "ANALYZE"),
-      menuItem(
-        text = "Activity",
-        tabName = "activity"
-      ),
-      menuItem(
-        text = "Sleep",
-        tabName = "sleep"
-      ),
-      menuItem(
-        text = "Circadian",
-        tabName = "circadian"
-      ),
-      menuItem(
-        text = "Sedentary",
-        tabName = "sedentary"
-      ),
-
-      # OUTPUT Section
-      tags$div(class = "sidebar-section-header", "OUTPUT"),
+      tags$div(class = "sidebar-section-header", "Analysis"),
+      menuItem(text = "Activity",  tabName = "activity"),
+      menuItem(text = "Sleep",     tabName = "sleep"),
+      menuItem(text = "Circadian", tabName = "circadian"),
+      menuItem(text = "Sedentary", tabName = "sedentary"),
       menuItem(
         text = "Visualization",
         tabName = "graphing"
@@ -292,69 +260,20 @@ server <- function(input, output, session) {
     }
   })
 
-  output$header_workflow_progress <- renderUI({
-    # Determine workflow status
-    step1_complete <- shared$file_count > 0
-    step2_complete <- length(shared$results$wear_time) > 0
-    step3_complete <- length(shared$results$activity) > 0 ||
-                      length(shared$results$sleep) > 0 ||
-                      length(shared$results$circadian) > 0
-    step4_complete <- shared$visualization_complete
-
-    # Current active step
-    current_step <- if (!step1_complete) 1
-                    else if (!step2_complete) 2
-                    else if (!step3_complete) 3
-                    else if (!step4_complete) 4
-                    else 4
-
-    # Step definitions with labels
-    steps <- list(
-      list(label = "Upload Data", icon = "cloud-upload-alt"),
-      list(label = "Validate Data", icon = "check-circle"),
-      list(label = "Analyze Data", icon = "chart-line"),
-      list(label = "Visualize Data", icon = "download")
+  output$header_page_title <- renderUI({
+    labels <- c(
+      overview  = "Overview",
+      upload    = "Upload",
+      wear_time = "Wear Time",
+      activity  = "Activity",
+      sleep     = "Sleep",
+      circadian = "Circadian",
+      sedentary = "Sedentary",
+      graphing  = "Visualization"
     )
-    step_complete <- c(step1_complete, step2_complete, step3_complete, step4_complete)
-
-    tags$div(
-      class = "workflow-indicator",
-
-      # Step 1: Upload
-      tags$div(
-        class = paste("workflow-step",
-                      if (step1_complete) "completed" else if (current_step == 1) "active" else ""),
-        title = steps[[1]]$label,
-        if (step1_complete) icon("check") else "1"
-      ),
-      tags$div(class = paste("workflow-connector", if (step1_complete) "completed" else "")),
-
-      # Step 2: Validate
-      tags$div(
-        class = paste("workflow-step",
-                      if (step2_complete) "completed" else if (current_step == 2) "active" else ""),
-        title = steps[[2]]$label,
-        if (step2_complete) icon("check") else "2"
-      ),
-      tags$div(class = paste("workflow-connector", if (step2_complete) "completed" else "")),
-
-      # Step 3: Analyze
-      tags$div(
-        class = paste("workflow-step",
-                      if (step3_complete) "completed" else if (current_step == 3) "active" else ""),
-        title = steps[[3]]$label,
-        if (step3_complete) icon("check") else "3"
-      ),
-      tags$div(class = paste("workflow-connector", if (step3_complete) "completed" else "")),
-
-      # Step 4: Visualize
-      tags$div(
-        class = paste("workflow-step",
-                      if (step4_complete) "completed" else if (current_step == 4) "active" else ""),
-        title = steps[[4]]$label,
-        if (step4_complete) icon("check") else "4"
-      )
-    )
+    current <- input$tabs
+    if (is.null(current) || !current %in% names(labels)) return(NULL)
+    tags$div(class = "page-title", labels[[current]])
   })
 
   # Update workflow tracking

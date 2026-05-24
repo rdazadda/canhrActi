@@ -36,7 +36,11 @@ ui <- dashboardPage(
   skin = "blue",
 
   dashboardHeader(
-    title = "CANHRActi",
+    title = tags$span(
+      class = "header-brand",
+      tags$img(src = "logo.png", alt = "", class = "brand-logo-img"),
+      tags$span(class = "brand-name", "CANHRActi")
+    ),
     titleWidth = 260,
 
     # File info indicator (shown when data loaded)
@@ -70,8 +74,12 @@ ui <- dashboardPage(
 
     tags$div(
       class = "sidebar-brand-section",
-      tags$div(class = "sidebar-institution", "Center for Alaska Native Health Research"),
-      tags$div(class = "sidebar-tagline", "Accelerometer Analysis Suite")
+      title = "Center for Alaska Native Health Research",
+      tags$div(class = "sidebar-brand-mark", "CANHR"),
+      tags$div(
+        class = "sidebar-brand-descriptor",
+        "Center for Alaska Native Health Research"
+      )
     ),
 
     sidebarMenu(
@@ -145,7 +153,76 @@ ui <- dashboardPage(
       tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", as.character(packageVersion("canhrActi")))),
       # Favicon - add uaf_logo.png to www/ folder to enable
       # tags$link(rel = "icon", type = "image/png", href = "uaf_logo.png"),
-      tags$meta(name = "viewport", content = "width=device-width, initial-scale=1")
+      tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
+      tags$script(HTML("
+(function() {
+  'use strict';
+  const STORAGE_KEY = 'canhrActi.sidebar.collapsed';
+  const BREAKPOINT = 992;
+  const body = document.body;
+  let toggleBtn;
+
+  function isWide() { return window.innerWidth >= BREAKPOINT; }
+
+  function setCollapsed(collapsed, persist) {
+    body.classList.toggle('sidebar-collapse', collapsed);
+    if (persist) localStorage.setItem(STORAGE_KEY, String(collapsed));
+    if (toggleBtn) toggleBtn.setAttribute('aria-expanded', String(!collapsed));
+  }
+
+  function setOpen(open) {
+    body.classList.toggle('sidebar-open', open);
+    if (toggleBtn) toggleBtn.setAttribute('aria-expanded', String(open));
+  }
+
+  function onToggleClick(e) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (isWide()) {
+      setCollapsed(!body.classList.contains('sidebar-collapse'), true);
+    } else {
+      setOpen(!body.classList.contains('sidebar-open'));
+    }
+  }
+
+  function init() {
+    toggleBtn = document.querySelector('.sidebar-toggle');
+    if (!toggleBtn) return;
+
+    if (isWide()) {
+      setCollapsed(localStorage.getItem(STORAGE_KEY) === 'true', false);
+    }
+
+    toggleBtn.addEventListener('click', onToggleClick, true);
+
+    document.addEventListener('click', function(e) {
+      if (!isWide() && body.classList.contains('sidebar-open')) {
+        if (!e.target.closest('.main-sidebar') && !e.target.closest('.sidebar-toggle')) {
+          setOpen(false);
+        }
+      }
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && body.classList.contains('sidebar-open')) {
+        setOpen(false);
+      }
+    });
+
+    window.addEventListener('resize', function() {
+      if (isWide() && body.classList.contains('sidebar-open')) {
+        body.classList.remove('sidebar-open');
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+"))
     ),
 
     # Tab content

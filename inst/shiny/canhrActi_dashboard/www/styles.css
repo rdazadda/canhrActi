@@ -3183,9 +3183,23 @@ table.dataTable.table-striped tbody tr:nth-child(even):hover td {
   padding: var(--space-8) var(--space-7);
   margin: 0 0 var(--space-6) 0;
   border: 1px solid var(--border-default);
+  border-left: 4px solid var(--color-primary);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xs);
   text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.welcome-hero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--color-secondary);
+  pointer-events: none;
 }
 
 .hero-title {
@@ -3252,11 +3266,24 @@ table.dataTable.table-striped tbody tr:nth-child(even):hover td {
   background: var(--bg-surface);
   border: none;
   border-left: 4px solid var(--color-primary);
-  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   font-size: 15px;
   line-height: 1.7;
   color: #1a1a1a;
+  position: relative;
+  overflow: hidden;
+}
+
+.overview-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--color-secondary);
+  pointer-events: none;
 }
 
 .overview-card-text {
@@ -3284,38 +3311,41 @@ table.dataTable.table-striped tbody tr:nth-child(even):hover td {
   margin-top: 28px;
 }
 
-.btn-overview-cta,
-.btn-overview-cta.btn-default,
-button.btn-overview-cta {
-  background: var(--color-primary);
-  color: var(--text-inverse);
-  border: 1px solid var(--color-primary);
+.content-wrapper .btn-overview-cta,
+.content-wrapper button.btn-overview-cta,
+.content-wrapper .btn-overview-cta.btn-default {
+  background: var(--bg-surface) !important;
+  color: var(--color-primary) !important;
+  border: 1px solid var(--color-primary) !important;
   padding: 12px 28px;
   border-radius: var(--radius-md);
   font-size: 15px;
   font-weight: var(--font-semibold);
   cursor: pointer;
-  transition: background 120ms ease, box-shadow 120ms ease, transform 120ms ease;
-  box-shadow: var(--shadow-sm);
+  transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+  box-shadow: none;
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
 
-.btn-overview-cta:hover {
-  background: var(--color-primary-dark);
-  border-color: var(--color-primary-dark);
-  color: var(--text-inverse);
-  box-shadow: var(--shadow-md);
+.content-wrapper .btn-overview-cta:hover,
+.content-wrapper button.btn-overview-cta:hover,
+.content-wrapper .btn-overview-cta.btn-default:hover {
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  color: var(--text-inverse) !important;
+  box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
 }
 
-.btn-overview-cta:focus-visible {
-  background: var(--color-primary-dark);
-  border-color: var(--color-primary-dark);
-  color: var(--text-inverse);
+.content-wrapper .btn-overview-cta:focus-visible,
+.content-wrapper button.btn-overview-cta:focus-visible {
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  color: var(--text-inverse) !important;
   outline: none;
-  box-shadow: var(--shadow-md), 0 0 0 3px var(--color-primary-muted);
+  box-shadow: var(--shadow-sm), 0 0 0 3px var(--color-primary-muted);
 }
 
 /* Arrow micro-interaction: slides right ~3px on hover/focus, giving
@@ -3797,6 +3827,42 @@ button.btn-overview-cta {
   box-shadow: var(--shadow-sm);
 }
 
+.upload-hero::before,
+.upload-hero::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.upload-hero::before {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: repeating-linear-gradient(
+    to right,
+    var(--color-secondary) 0,
+    var(--color-secondary) 6px,
+    transparent 6px,
+    transparent 10px
+  );
+}
+
+.upload-hero::after {
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 4px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--color-primary) 0,
+    var(--color-primary) 6px,
+    transparent 6px,
+    transparent 10px
+  );
+}
+
 .upload-hero.drag-over {
   border-color: var(--color-secondary);
   background: var(--color-secondary-muted);
@@ -3916,6 +3982,31 @@ button.btn-overview-cta {
   border-radius: var(--radius-lg);
   padding: var(--space-3);
   box-shadow: var(--shadow-xs);
+  position: relative;
+  overflow: hidden;
+}
+
+.upload-actions::before,
+.upload-actions::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+
+.upload-actions::before {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--color-secondary);
+}
+
+.upload-actions::after {
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--color-primary);
 }
 
 .btn-upload-action {
@@ -3941,9 +4032,9 @@ button.btn-overview-cta {
 }
 
 .btn-browse:hover {
-  background: var(--color-primary-dark);
-  border-color: var(--color-primary-dark);
-  color: var(--text-inverse);
+  background: var(--color-primary-dark) !important;
+  border-color: var(--color-primary-dark) !important;
+  color: var(--text-inverse) !important;
   transform: translateY(-1px);
 }
 
@@ -3954,8 +4045,8 @@ button.btn-overview-cta {
 }
 
 .btn-folder:hover {
-  background: var(--color-primary);
-  color: var(--text-inverse);
+  background: var(--color-primary) !important;
+  color: var(--text-inverse) !important;
 }
 
 .btn.btn-demo,
@@ -3968,7 +4059,7 @@ button.btn-overview-cta {
 .btn.btn-demo:hover,
 .btn-default.btn-demo:hover {
   background: var(--color-primary) !important;
-  color: #1a1a2e !important;
+  color: #ffffff !important;
 }
 
 .upload-helper {
@@ -6419,11 +6510,12 @@ button.btn-overview-cta {
   line-height: 1.6;
 }
 
-/* FORM ELEMENTS - Clear labels and inputs */
-.content-wrapper label,
-.content-wrapper .control-label,
-.content-wrapper .shiny-input-container > label,
-.content-wrapper .form-group > label {
+/* FORM ELEMENTS - Clear labels and inputs.
+   Excludes labels styled as buttons (.btn) so they keep their own colors. */
+.content-wrapper label:not(.btn),
+.content-wrapper .control-label:not(.btn),
+.content-wrapper .shiny-input-container > label:not(.btn),
+.content-wrapper .form-group > label:not(.btn) {
   font-size: var(--text-base);
   font-weight: 600;
   color: #2d3748;
@@ -7192,10 +7284,11 @@ table.dataTable thead th,
   line-height: 1.6 !important;
 }
 
-/* 13. FORM CONTROLS - All labels and inputs */
-.content-wrapper label,
-.content-wrapper .control-label,
-.content-wrapper .shiny-input-container label {
+/* 13. FORM CONTROLS - All labels and inputs.
+   Excludes labels styled as buttons (.btn) so they keep their own colors. */
+.content-wrapper label:not(.btn),
+.content-wrapper .control-label:not(.btn),
+.content-wrapper .shiny-input-container label:not(.btn) {
   color: #2d3748 !important;
   font-size: var(--text-base);
   font-weight: 600 !important;
@@ -7616,8 +7709,8 @@ a:not(.btn):not([class*="nav"]):not([class*="sidebar"]) {
   color: #236192 !important;
 }
 
-/* Ensure all labels are readable */
-label, .label:not([class*="label-"]), .control-label {
+/* Ensure all labels are readable. Excludes button-styled labels. */
+label:not(.btn), .label:not([class*="label-"]):not(.btn), .control-label:not(.btn) {
   color: #1f2937 !important;
   font-size: var(--text-base);
 }
@@ -8909,10 +9002,11 @@ select.form-control {
 
 /* CONTROL PANEL IMPROVEMENTS */
 
-/* Control panel labels */
-.control-label,
-.shiny-input-container > label,
-.form-group > label {
+/* Control panel labels. Excludes labels styled as buttons (.btn) so they
+   keep their own colors. */
+.control-label:not(.btn),
+.shiny-input-container > label:not(.btn),
+.form-group > label:not(.btn) {
   font-size: 14px !important;
   font-weight: 600 !important;
   color: #1a202c !important;

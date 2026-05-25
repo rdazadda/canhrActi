@@ -96,8 +96,15 @@ local_pkg_dir <- tryCatch(
 )
 if (!is.na(local_pkg_dir) && file.exists(file.path(local_pkg_dir, "DESCRIPTION"))) {
   cat("\nInstalling canhrActi from LOCAL source:", local_pkg_dir, "\n")
-  pak::pkg_install(paste0("local::", local_pkg_dir),
-                   lib = lib, ask = FALSE, upgrade = FALSE, dependencies = FALSE)
+  # Base R install bypasses pak's local resolver (which fails on macos-14
+  # GHA runners - r-lib/pak#853). Deps were already pinned-installed above,
+  # so dependencies = FALSE preserves them.
+  install.packages(local_pkg_dir, repos = NULL, type = "source",
+                   lib = lib, INSTALL_opts = "--no-multiarch",
+                   dependencies = FALSE)
+  if (!"canhrActi" %in% rownames(installed.packages(lib.loc = lib))) {
+    stop("install.packages failed to install canhrActi from ", local_pkg_dir)
+  }
 } else {
   cat("\nInstalling canhrActi from rdazadda/canhrActi on GitHub\n")
   pak::pkg_install("github::rdazadda/canhrActi",

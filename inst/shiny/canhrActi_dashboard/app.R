@@ -38,7 +38,7 @@ ui <- dashboardPage(
   dashboardHeader(
     title = tags$span(
       class = "header-brand",
-      tags$img(src = "logo.png", alt = "", class = "brand-logo-img"),
+      tags$img(src = paste0("logo.png?v=", as.integer(file.info(file.path("www","logo.png"))$mtime)), alt = "", class = "brand-logo-img"),
       tags$span(class = "brand-name", "CANHRActi")
     ),
     titleWidth = 260,
@@ -118,7 +118,9 @@ ui <- dashboardPage(
     useShinyjs(),
 
     tags$head(
-      tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", as.character(packageVersion("canhrActi")))),
+      tags$title("CANHRActi"),
+      tags$script(HTML("document.title = 'CANHRActi';")),
+      tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", as.integer(file.info(file.path("www","styles.css"))$mtime))),
       # Favicon - add uaf_logo.png to www/ folder to enable
       # tags$link(rel = "icon", type = "image/png", href = "uaf_logo.png"),
       tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),

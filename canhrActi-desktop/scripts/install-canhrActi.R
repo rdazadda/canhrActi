@@ -80,12 +80,24 @@ if (length(skipped) > 0) {
 
 pak::pkg_install(specs, ask = FALSE, upgrade = FALSE)
 
-cat("\nInstalling canhrActi from rdazadda/canhrActi on GitHub\n")
 if ("canhrActi" %in% rownames(installed.packages(lib.loc = lib))) {
-  cat("Removing cached canhrActi so dashboard changes from main always ship.\n")
+  cat("Removing cached canhrActi so the next install always reflects current source.\n")
   remove.packages("canhrActi", lib = lib)
 }
-pak::pkg_install("github::rdazadda/canhrActi", ask = FALSE, upgrade = TRUE)
+
+# Prefer the local checkout (sibling of canhrActi-desktop). Falls back to
+# GitHub only when this script runs detached from the source tree.
+local_pkg_dir <- tryCatch(
+  normalizePath(file.path(getwd(), ".."), mustWork = TRUE),
+  error = function(e) NA_character_
+)
+if (!is.na(local_pkg_dir) && file.exists(file.path(local_pkg_dir, "DESCRIPTION"))) {
+  cat("\nInstalling canhrActi from LOCAL source:", local_pkg_dir, "\n")
+  pak::local_install(local_pkg_dir, ask = FALSE, upgrade = TRUE)
+} else {
+  cat("\nInstalling canhrActi from rdazadda/canhrActi on GitHub\n")
+  pak::pkg_install("github::rdazadda/canhrActi", ask = FALSE, upgrade = TRUE)
+}
 
 suppressPackageStartupMessages(library(canhrActi))
 cat("\ncanhrActi version:", as.character(utils::packageVersion("canhrActi")), "\n")

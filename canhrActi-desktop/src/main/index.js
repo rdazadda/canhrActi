@@ -127,6 +127,7 @@ async function createMainWindow(shinyUrl) {
 
 app.whenReady().then(async () => {
   applySecurityHeaders();
+  await session.defaultSession.clearCache();
   createSplash();
 
   try {

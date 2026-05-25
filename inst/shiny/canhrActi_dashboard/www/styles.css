@@ -3315,7 +3315,7 @@ table.dataTable.table-striped tbody tr:nth-child(even):hover td {
 .content-wrapper button.btn-overview-cta,
 .content-wrapper .btn-overview-cta.btn-default {
   background: var(--bg-surface) !important;
-  color: var(--color-primary) !important;
+  color: #1a1a1a !important;
   border: 1px solid var(--color-primary) !important;
   padding: 12px 28px;
   border-radius: var(--radius-md);
@@ -4041,7 +4041,7 @@ table.dataTable.table-striped tbody tr:nth-child(even):hover td {
 .btn-folder {
   background: var(--bg-surface);
   border: 1px solid var(--color-primary);
-  color: var(--color-primary);
+  color: #1a1a1a !important;
 }
 
 .btn-folder:hover {

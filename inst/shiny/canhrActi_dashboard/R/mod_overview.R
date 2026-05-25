@@ -37,115 +37,48 @@ mod_overview_server <- function(id, shared, parent_session = NULL) {
       paste0("canhrActi v", packageVersion("canhrActi"))
     })
 
-    # Welcome Section: Workflow guidance (before data loaded)
+    # Empty-state Overview: methods-manual front matter.
+    # A contents page, not a dashboard. Type and whitespace only.
     output$welcome_section <- renderUI({
-      # Show welcome content or minimal header based on data state
       if (!shared$data_loaded || shared$file_count == 0) {
-        # Full welcome view
+
         tagList(
           tags$div(
             class = "overview-shell",
-            # Hero Section
+
             tags$div(
               class = "welcome-hero",
               tags$div(
                 class = "hero-content",
                 tags$h1(class = "hero-title", "Welcome to CANHRActi"),
                 tags$p(class = "hero-subtitle",
-                       "Comprehensive accelerometer analysis for physical activity, sleep, and circadian research")
+                       "Accelerometer analysis for activity, sedentary behavior, sleep, and circadian research.")
               )
             ),
 
-            # Overview Grid
             tags$div(
-              class = "overview-grid",
-              tags$div(
-                class = "overview-panel overview-panel-steps",
-                tags$div(
-                  class = "overview-panel-header",
-                  tags$h2(class = "overview-panel-title", "Get Started"),
-                  tags$p(class = "overview-panel-subtitle", "Follow these steps to analyze your accelerometer data")
-                ),
-                tags$div(
-                  class = "overview-step-list",
-                  tags$div(
-                    class = "overview-step overview-step--no-icon",
-                    tags$div(class = "overview-step-number", "1"),
-                    tags$div(
-                      class = "overview-step-body",
-                      tags$h3(class = "overview-step-title", "Import Data"),
-                      tags$p(class = "overview-step-description",
-                             "Load AGD files from ActiLife. Batch import supported for multiple participants.")
-                    ),
-                    tags$div(
-                      class = "overview-step-meta",
-                      actionButton(
-                        ns("go_upload"),
-                        "Get Started",
-                        class = "btn-workflow btn-workflow-primary",
-                        icon = icon("arrow-right")
-                      )
-                    )
-                  ),
-                  tags$div(
-                    class = "overview-step overview-step--no-icon",
-                    tags$div(class = "overview-step-number", "2"),
-                    tags$div(
-                      class = "overview-step-body",
-                      tags$h3(class = "overview-step-title", "Validate Wear Time"),
-                      tags$p(class = "overview-step-description",
-                             "Identify valid recording periods using Choi, Troiano, or CANHR algorithms.")
-                    ),
-                    tags$div(
-                      class = "overview-step-meta",
-                      tags$div(class = "overview-step-hint",
-                        "After importing data"
-                      )
-                    )
-                  ),
-                  tags$div(
-                    class = "overview-step overview-step--no-icon",
-                    tags$div(class = "overview-step-number", "3"),
-                    tags$div(
-                      class = "overview-step-body",
-                      tags$h3(class = "overview-step-title", "Analyze & Export"),
-                      tags$p(class = "overview-step-description",
-                             "Run activity, sleep, and circadian analyses. Export publication-ready results.")
-                    ),
-                    tags$div(
-                      class = "overview-step-meta",
-                      tags$div(class = "overview-step-hint",
-                        "After validation"
-                      )
-                    )
-                  )
-                )
+              class = "overview-card",
+              tags$p(
+                class = "overview-card-text",
+                "CANHRActi reads ActiGraph files and produces epoch-level ",
+                tags$strong("activity-intensity classifications"), ", ",
+                tags$strong("sleep-period estimates"), ", ",
+                tags$strong("energy-expenditure estimates"), ", ",
+                tags$strong("sedentary-bout summaries"), ", and ",
+                tags$strong("circadian-rhythm parameters"), "."
+              ),
+              tags$p(
+                class = "overview-card-text",
+                "Outputs are wear-time corrected and exported as participant-level CSV and study-level summary tables ready for ",
+                tags$strong("Stata, SPSS, R, or Python"),
+                ", alongside publication-ready plots (activity heatmaps, hypnograms, circadian polar plots)."
               ),
               tags$div(
-                class = "overview-panel overview-panel-details",
-                tags$div(
-                  class = "overview-panel-header",
-                  tags$h2(class = "overview-panel-title", "Supported Formats & Methods"),
-                  tags$p(class = "overview-panel-subtitle", "Evidence-based algorithms for accelerometer research")
-                ),
-                tags$div(
-                  class = "overview-detail-block",
-                  tags$h4(class = "overview-detail-title", icon("file-alt"), "File Format"),
-                  tags$ul(class = "overview-detail-list",
-                    tags$li(tags$strong(".agd"), " - ActiGraph database files (from ActiLife)")
-                  ),
-                  tags$p(class = "overview-detail-note",
-                         "Contains epoch-level activity counts, steps, and inclinometer data")
-                ),
-                tags$div(
-                  class = "overview-detail-block",
-                  tags$h4(class = "overview-detail-title", icon("cogs"), "Analysis Methods"),
-                  tags$ul(class = "overview-detail-list",
-                    tags$li("Wear time: Choi, Troiano, CANHR2025"),
-                    tags$li("Activity: Freedson, Evenson, Puyau cutpoints"),
-                    tags$li("Sleep: Cole-Kripke, Sadeh, Tudor-Locke"),
-                    tags$li("Circadian: L5/M10, IS/IV, RA, cosinor")
-                  )
+                class = "overview-card-action",
+                actionButton(
+                  ns("go_upload"),
+                  HTML("Import data <span class=\"btn-arrow\" aria-hidden=\"true\">&rarr;</span>"),
+                  class = "btn btn-overview-cta"
                 )
               )
             )

@@ -25,10 +25,14 @@ mod_upload_ui <- function(id) {
         # Accessibility: describe the upload zone
         role = "region",
         `aria-label` = "File upload area",
+        # Clicking anywhere in the hero opens the file picker. The "Choose
+        # Files" label is still the primary keyboard-accessible affordance;
+        # this just makes the visible cursor: pointer feedback honest.
+        onclick = paste0("document.getElementById('", ns("files"), "').click()"),
         div(class = "upload-hero-icon", icon("cloud-upload-alt"), `aria-hidden` = "true"),
         div(class = "upload-hero-title", id = ns("upload_title"), "Import Accelerometer Data"),
         div(class = "upload-hero-subtitle",
-            "Drag and drop AGD files here, or use the options below"),
+            "Drag and drop data files here, or use the options below"),
 
         # Hidden file input that covers the entire hero zone
         fileInput(
@@ -38,13 +42,6 @@ mod_upload_ui <- function(id) {
           accept = ".agd",
           buttonLabel = "",
           placeholder = ""
-        ),
-
-        # Supported formats badges
-        div(
-          class = "upload-hero-formats",
-          span(class = "format-badge", ".agd"),
-          span(class = "text-sm text-muted", "ActiGraph Database Files")
         )
       ),
 

@@ -87,16 +87,21 @@ if ("canhrActi" %in% rownames(installed.packages(lib.loc = lib))) {
 
 # Prefer the local checkout (sibling of canhrActi-desktop). Falls back to
 # GitHub only when this script runs detached from the source tree.
+# upgrade = FALSE + dependencies = FALSE keeps the pinned deps installed
+# above intact - critical on macOS arm64 where the PPM snapshot may not
+# carry binaries for newer dep versions and source builds will fail.
 local_pkg_dir <- tryCatch(
   normalizePath(file.path(getwd(), ".."), mustWork = TRUE),
   error = function(e) NA_character_
 )
 if (!is.na(local_pkg_dir) && file.exists(file.path(local_pkg_dir, "DESCRIPTION"))) {
   cat("\nInstalling canhrActi from LOCAL source:", local_pkg_dir, "\n")
-  pak::local_install(local_pkg_dir, ask = FALSE, upgrade = TRUE)
+  pak::pkg_install(paste0("local::", local_pkg_dir),
+                   lib = lib, ask = FALSE, upgrade = FALSE, dependencies = FALSE)
 } else {
   cat("\nInstalling canhrActi from rdazadda/canhrActi on GitHub\n")
-  pak::pkg_install("github::rdazadda/canhrActi", ask = FALSE, upgrade = TRUE)
+  pak::pkg_install("github::rdazadda/canhrActi",
+                   lib = lib, ask = FALSE, upgrade = FALSE, dependencies = FALSE)
 }
 
 suppressPackageStartupMessages(library(canhrActi))

@@ -44,8 +44,7 @@ if (!rscript || !fs.existsSync(rscript)) {
 
 extraEnv.R_HOME = rRoot;
 
-// Clear any prior (possibly half-installed) canhrActi + leftover install lock
-// so the reinstall starts clean and a corrupt shell can never be packaged.
+// Remove any prior canhrActi + leftover lock so the reinstall starts clean.
 const libDir = path.join(rRoot, 'library');
 for (const d of ['canhrActi', '00LOCK-canhrActi']) {
   const stale = path.join(libDir, d);
@@ -70,8 +69,7 @@ const result = spawnSync(rscript, ['--vanilla', installScript], {
   env: { ...process.env, ...extraEnv },
 });
 
-// Integrity gate: a "successful" run must leave a real, complete package - not
-// the corrupt Meta/R/shiny shell (no DESCRIPTION/NAMESPACE) that shipped before.
+// A successful run must leave a complete package, not a half-installed shell.
 if ((result.status ?? 1) === 0) {
   const pkgDir = path.join(libDir, 'canhrActi');
   const required = [

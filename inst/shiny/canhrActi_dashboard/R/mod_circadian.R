@@ -249,11 +249,7 @@ mod_circadian_server <- function(id, shared) {
             wear_time <- shared$results$wear_time[[fid]]$wear
           }
 
-          # Sleep/wake state for the Sleep Regularity Index (SRI). circadian.rhythm()
-          # only computes SRI when given a per-epoch sleep_state. Prefer the state
-          # already scored on the Sleep tab; otherwise score it here from the
-          # vertical axis. The length guard keeps it aligned to the timestamps so
-          # the SRI epoch-of-day x day matrix lines up (a mismatch yields SRI = NA).
+          # Sleep/wake state for SRI: reuse the Sleep tab's if present, else score it.
           sleep_state <- NULL
           if (!is.null(shared$results$sleep[[fid]]) &&
               !is.null(shared$results$sleep[[fid]]$sleep_state)) {
@@ -956,10 +952,6 @@ mod_circadian_server <- function(id, shared) {
           NULL
         }
 
-        # Surface the real reason a per-recording plot fails instead of a
-        # generic message. A "could not find function" / "not an exported
-        # object" error means the installed canhrActi predates these plots,
-        # so point the user at updating the app rather than at their data.
         plot_fail <- function(title, what, e) {
           msg <- conditionMessage(e)
           hint <- if (grepl("could not find function|not an exported object|there is no package",

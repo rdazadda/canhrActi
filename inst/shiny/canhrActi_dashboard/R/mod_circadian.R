@@ -956,6 +956,21 @@ mod_circadian_server <- function(id, shared) {
           NULL
         }
 
+        # Surface the real reason a per-recording plot fails instead of a
+        # generic message. A "could not find function" / "not an exported
+        # object" error means the installed canhrActi predates these plots,
+        # so point the user at updating the app rather than at their data.
+        plot_fail <- function(title, what, e) {
+          msg <- conditionMessage(e)
+          hint <- if (grepl("could not find function|not an exported object|there is no package",
+                            msg, ignore.case = TRUE)) {
+            paste0("\n\nThe installed canhrActi package is out of date.\n",
+                   "Reinstall the latest app build to enable this view.")
+          } else ""
+          validate(need(FALSE, paste0("\n\n", title, "\n\n", what,
+                                      "\n\nReason: ", msg, hint)))
+        }
+
         if (tab == "periodogram") {
           tryCatch({
             p <- canhrActi::plot_periodogram(counts, timestamps)
@@ -964,9 +979,8 @@ mod_circadian_server <- function(id, shared) {
             }
             p + white_bg
           }, error = function(e) {
-            validate(need(FALSE, paste0(
-              "\n\nPeriodogram unavailable\n\n",
-              "Could not compute the Lomb-Scargle periodogram for this recording.")))
+            plot_fail("Periodogram unavailable",
+                      "Could not compute the Lomb-Scargle periodogram for this recording.", e)
           })
 
         } else if (tab == "extcosinor") {
@@ -977,9 +991,8 @@ mod_circadian_server <- function(id, shared) {
             }
             p + white_bg
           }, error = function(e) {
-            validate(need(FALSE, paste0(
-              "\n\nExtended cosinor unavailable\n\n",
-              "Could not compute the extended-cosinor fit for this recording.")))
+            plot_fail("Extended cosinor unavailable",
+                      "Could not compute the extended-cosinor fit for this recording.", e)
           })
 
         } else {
@@ -991,9 +1004,8 @@ mod_circadian_server <- function(id, shared) {
             }
             p + white_bg
           }, error = function(e) {
-            validate(need(FALSE, paste0(
-              "\n\nDFA unavailable\n\n",
-              "Could not compute detrended fluctuation analysis for this recording.")))
+            plot_fail("DFA unavailable",
+                      "Could not compute detrended fluctuation analysis for this recording.", e)
           })
         }
       }

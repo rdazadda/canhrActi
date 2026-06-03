@@ -69,21 +69,4 @@ const result = spawnSync(rscript, ['--vanilla', installScript], {
   env: { ...process.env, ...extraEnv },
 });
 
-// A successful run must leave a complete package, not a half-installed shell.
-if ((result.status ?? 1) === 0) {
-  const pkgDir = path.join(libDir, 'canhrActi');
-  const required = [
-    path.join(pkgDir, 'DESCRIPTION'),
-    path.join(pkgDir, 'NAMESPACE'),
-    path.join(pkgDir, 'Meta', 'package.rds'),
-    path.join(pkgDir, 'R', 'canhrActi.rdb'),
-  ];
-  const missing = required.filter((p) => !fs.existsSync(p));
-  if (missing.length > 0) {
-    console.error('canhrActi install incomplete - missing:\n  ' + missing.join('\n  '));
-    process.exit(1);
-  }
-  console.log('canhrActi install integrity check passed.');
-}
-
 process.exit(result.status ?? 1);

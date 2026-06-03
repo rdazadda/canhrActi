@@ -44,6 +44,21 @@ if (!rscript || !fs.existsSync(rscript)) {
 
 extraEnv.R_HOME = rRoot;
 
+// Clear any prior (possibly half-installed) canhrActi + leftover install lock
+// so the reinstall starts clean and a corrupt shell can never be packaged.
+const libDir = path.join(rRoot, 'library');
+for (const d of ['canhrActi', '00LOCK-canhrActi']) {
+  const stale = path.join(libDir, d);
+  if (fs.existsSync(stale)) {
+    try {
+      fs.rmSync(stale, { recursive: true, force: true });
+      console.log(`Removed prior ${d} from bundled library`);
+    } catch (e) {
+      console.warn(`Could not remove ${stale}: ${e.message}`);
+    }
+  }
+}
+
 const installScript = path.join(__dirname, 'install-canhrActi.R');
 console.log(`Running: ${rscript} ${installScript}`);
 if (extraEnv.LD_LIBRARY_PATH) console.log(`LD_LIBRARY_PATH: ${extraEnv.LD_LIBRARY_PATH}`);
@@ -54,5 +69,23 @@ const result = spawnSync(rscript, ['--vanilla', installScript], {
   cwd: projectRoot,
   env: { ...process.env, ...extraEnv },
 });
+
+// Integrity gate: a "successful" run must leave a real, complete package - not
+// the corrupt Meta/R/shiny shell (no DESCRIPTION/NAMESPACE) that shipped before.
+if ((result.status ?? 1) === 0) {
+  const pkgDir = path.join(libDir, 'canhrActi');
+  const required = [
+    path.join(pkgDir, 'DESCRIPTION'),
+    path.join(pkgDir, 'NAMESPACE'),
+    path.join(pkgDir, 'Meta', 'package.rds'),
+    path.join(pkgDir, 'R', 'canhrActi.rdb'),
+  ];
+  const missing = required.filter((p) => !fs.existsSync(p));
+  if (missing.length > 0) {
+    console.error('canhrActi install incomplete - missing:\n  ' + missing.join('\n  '));
+    process.exit(1);
+  }
+  console.log('canhrActi install integrity check passed.');
+}
 
 process.exit(result.status ?? 1);

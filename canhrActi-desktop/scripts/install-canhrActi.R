@@ -124,6 +124,19 @@ if (!is.na(local_pkg_dir) && file.exists(file.path(local_pkg_dir, "DESCRIPTION")
 
 suppressPackageStartupMessages(library(canhrActi))
 cat("\ncanhrActi version:", as.character(utils::packageVersion("canhrActi")), "\n")
+
+# Hard gate: a successful install MUST expose the current circadian plot
+# exports. If they are missing, the build is stale or incomplete - abort here
+# so an installer whose dashboard cannot draw these plots is never produced.
+needed_exports <- c("plot_periodogram", "plot_extended_cosinor", "plot_dfa")
+missing_exports <- setdiff(needed_exports, getNamespaceExports("canhrActi"))
+if (length(missing_exports) > 0) {
+  stop("canhrActi installed but missing expected exports: ",
+       paste(missing_exports, collapse = ", "),
+       "\n  Build is stale/incomplete - aborting so a stale package is not shipped.")
+}
+cat("Export check passed:", paste(needed_exports, collapse = ", "), "\n")
+
 dashboard_dir <- system.file("shiny", "canhrActi_dashboard", package = "canhrActi")
 cat("Dashboard located at:", dashboard_dir, "\n")
 if (!dir.exists(dashboard_dir)) {

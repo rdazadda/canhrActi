@@ -21,9 +21,9 @@ Internally converted to hours elapsed since the first timestamp.}
 \item{to}{Numeric. Upper bound of the period search window, in hours
 (default \code{30}).}
 
-\item{ofac}{Integer oversampling factor passed to \code{lomb::lsp}. Higher
-values give a finer period grid and a more precise peak location at the
-cost of computation (default \code{4}).}
+\item{ofac}{Integer oversampling factor controlling the period-grid
+resolution. Higher values give a finer period grid and a more precise peak
+location at the cost of computation (default \code{4}).}
 }
 \value{
 A named \code{list} with elements:
@@ -34,7 +34,7 @@ A named \code{list} with elements:
 \item{peak_power}{Numeric. Normalized power of that peak (the
 Lomb-Scargle peak statistic). \code{NA_real_} when insufficient.}
 \item{p_value}{Numeric. P-value of the peak under the null hypothesis of
-Gaussian noise, as returned by \code{lomb::lsp} (\code{$p.value}).
+Gaussian noise (Baluev 2008 analytic false-alarm probability).
 \code{NA_real_} when insufficient.}
 \item{oversampling}{The \code{ofac} oversampling factor used.}
 \item{n_used}{Integer. Number of non-\code{NA} observations actually
@@ -43,7 +43,7 @@ passed to the periodogram (\code{NA_integer_} when not run).}
 timestamp), used for the >= 2-day guard.}
 }
 On any edge case (too few points, too short a span, degenerate input, or an
-internal \code{lomb::lsp} failure) the function returns this same structure
+internal numerical failure) the function returns this same structure
 with \code{tau}, \code{peak_power} and \code{p_value} set to \code{NA};
 it never throws.
 }
@@ -67,11 +67,9 @@ dropped.
 insufficient data: the recording must span at least \strong{2 days}
 (otherwise a 18-30 h period cannot be resolved) and at least
 \strong{10 non-\code{NA}} observations must remain.
-\item \code{lomb::lsp(x = counts, times = t_hours, from = from, to = to,
-    type = "period", ofac = ofac, plot = FALSE)} is evaluated. With
-\code{type = "period"} the returned \code{$peak.at[1]} is the peak period
-in hours (its second element is the corresponding frequency and is
-ignored here).
+\item The standard-normalized Lomb-Scargle periodogram is evaluated over
+the period window. Its strongest peak gives the period (hours), and the
+Baluev (2008) analytic false-alarm probability gives the p-value.
 }
 
 The Lomb-Scargle periodogram is chosen specifically because actigraphy series

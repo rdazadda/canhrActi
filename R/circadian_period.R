@@ -12,6 +12,70 @@
 NULL
 
 
+# Standard-normalized Lomb-Scargle periodogram over a PERIOD window, with the
+# Baluev (2008) analytic false-alarm probability. Replicates the relevant path
+# of lomb::lsp(type = "period", normalize = "standard") so canhrActi does not
+# depend on lomb (and its plotly/data.table closure). Inputs are assumed finite
+# and length-matched; returns NULL on a degenerate grid/series.
+.lomb_scargle <- function(x, times, from, to, ofac = 4) {
+  ofac <- max(1L, as.integer(floor(ofac)))
+  o <- order(times)
+  t <- as.numeric(times)[o]
+  y <- as.numeric(x)[o]
+  n <- length(y)
+  tspan <- t[n] - t[1]
+  if (!is.finite(tspan) || tspan <= 0) return(NULL)
+
+  fr.d <- 1 / tspan
+  step <- 1 / (tspan * ofac)
+  # type = "period": the period window [from, to] maps to frequencies [1/to, 1/from].
+  freq <- seq(fr.d, 1 / from, by = step)
+  freq <- freq[freq >= 1 / to]
+  n.out <- length(freq)
+  if (n.out < 2L) return(NULL)
+
+  y <- y - mean(y)
+  ss <- sum(y^2)
+  if (!is.finite(ss) || ss == 0) return(NULL)
+  norm <- 1 / ss
+
+  w <- 2 * pi * freq
+  PN <- numeric(n.out)
+  for (i in seq_len(n.out)) {
+    wi <- w[i]
+    tau <- 0.5 * atan2(sum(sin(wi * t)), sum(cos(wi * t))) / wi
+    arg <- wi * (t - tau)
+    cs <- cos(arg)
+    sn <- sin(arg)
+    PN[i] <- (sum(y * cs))^2 / sum(cs * cs) + (sum(y * sn))^2 / sum(sn * sn)
+  }
+  PN <- norm * PN
+  PN.max <- max(PN)
+  peak.freq <- freq[which.max(PN)]
+
+  # Baluev (2008) false-alarm probability (lomb's pbaluev/ggamma).
+  ggamma <- function(N) sqrt(2 / N) * exp(lgamma(N / 2) - lgamma((N - 1) / 2))
+  Dt <- mean(t^2) - mean(t)^2
+  NH <- n - 1
+  NK <- n - 3
+  fsingle <- (1 - PN.max)^(0.5 * NK)
+  W <- max(freq) * sqrt(4 * pi * Dt)
+  tau_b <- ggamma(NH) * W * (1 - PN.max)^(0.5 * (NK - 1)) * sqrt(0.5 * NH * PN.max)
+  p.value <- -(exp(-tau_b) - 1) + fsingle * exp(-tau_b)
+
+  # Report on the ascending-period axis (lomb reverses the frequency order here).
+  list(
+    scanned = (1 / freq)[n.out:1],
+    power   = PN[n.out:1],
+    peak    = PN.max,
+    peak.at = c(1 / peak.freq, peak.freq),
+    p.value = p.value,
+    n.out   = n.out,
+    n       = n
+  )
+}
+
+
 #' Estimate Endogenous Circadian Period via the Lomb-Scargle Periodogram
 #'
 #' Computes the Lomb-Scargle periodogram of an activity \code{counts} series
@@ -32,9 +96,9 @@ NULL
 #'   (default \code{18}).
 #' @param to Numeric. Upper bound of the period search window, in hours
 #'   (default \code{30}).
-#' @param ofac Integer oversampling factor passed to \code{lomb::lsp}. Higher
-#'   values give a finer period grid and a more precise peak location at the
-#'   cost of computation (default \code{4}).
+#' @param ofac Integer oversampling factor controlling the period-grid
+#'   resolution. Higher values give a finer period grid and a more precise peak
+#'   location at the cost of computation (default \code{4}).
 #'
 #' @return A named \code{list} with elements:
 #'   \describe{
@@ -44,7 +108,7 @@ NULL
 #'     \item{peak_power}{Numeric. Normalized power of that peak (the
 #'       Lomb-Scargle peak statistic). \code{NA_real_} when insufficient.}
 #'     \item{p_value}{Numeric. P-value of the peak under the null hypothesis of
-#'       Gaussian noise, as returned by \code{lomb::lsp} (\code{$p.value}).
+#'       Gaussian noise (Baluev 2008 analytic false-alarm probability).
 #'       \code{NA_real_} when insufficient.}
 #'     \item{oversampling}{The \code{ofac} oversampling factor used.}
 #'     \item{n_used}{Integer. Number of non-\code{NA} observations actually
@@ -53,7 +117,7 @@ NULL
 #'       timestamp), used for the >= 2-day guard.}
 #'   }
 #'   On any edge case (too few points, too short a span, degenerate input, or an
-#'   internal \code{lomb::lsp} failure) the function returns this same structure
+#'   internal numerical failure) the function returns this same structure
 #'   with \code{tau}, \code{peak_power} and \code{p_value} set to \code{NA};
 #'   it never throws.
 #'
@@ -68,11 +132,9 @@ NULL
 #'     insufficient data: the recording must span at least \strong{2 days}
 #'     (otherwise a 18-30 h period cannot be resolved) and at least
 #'     \strong{10 non-\code{NA}} observations must remain.
-#'   \item \code{lomb::lsp(x = counts, times = t_hours, from = from, to = to,
-#'     type = "period", ofac = ofac, plot = FALSE)} is evaluated. With
-#'     \code{type = "period"} the returned \code{$peak.at[1]} is the peak period
-#'     in hours (its second element is the corresponding frequency and is
-#'     ignored here).
+#'   \item The standard-normalized Lomb-Scargle periodogram is evaluated over
+#'     the period window. Its strongest peak gives the period (hours), and the
+#'     Baluev (2008) analytic false-alarm probability gives the p-value.
 #' }
 #'
 #' The Lomb-Scargle periodogram is chosen specifically because actigraphy series
@@ -169,18 +231,10 @@ circadian.period <- function(counts, timestamps, from = 18, to = 30, ofac = 4) {
   }
 
   # --- Lomb-Scargle periodogram over the requested period window --------------
-  # 'lomb' is an allowed runtime Import, so call it directly. Wrap in tryCatch so
-  # any internal failure degrades gracefully to the NA structure.
+  # Native standard-normalized Lomb-Scargle; degrades to the NA structure on any
+  # failure rather than throwing.
   lsp <- tryCatch(
-    lomb::lsp(
-      x      = counts,
-      times  = t_hours,
-      from   = from,
-      to     = to,
-      type   = "period",
-      ofac   = ofac,
-      plot   = FALSE
-    ),
+    .lomb_scargle(x = counts, times = t_hours, from = from, to = to, ofac = ofac),
     error = function(e) NULL
   )
 
@@ -188,8 +242,8 @@ circadian.period <- function(counts, timestamps, from = 18, to = 30, ofac = 4) {
     return(na_result(n_used = n_used, span_days = span_days))
   }
 
-  # With type = "period", lsp$peak.at[1] is the peak PERIOD (hours); its second
-  # element is the matching frequency, which we ignore.
+  # peak.at[1] is the peak PERIOD (hours); its second element is the matching
+  # frequency, which we ignore.
   tau        <- suppressWarnings(as.numeric(lsp$peak.at[1]))
   peak_power <- suppressWarnings(as.numeric(lsp$peak))
   p_value    <- suppressWarnings(as.numeric(lsp$p.value))

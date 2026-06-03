@@ -224,16 +224,8 @@ plot_periodogram <- function(counts, timestamps, from = 18, to = 30,
   }
 
   # --- Full Lomb-Scargle spectrum --------------------------------------------
-  if (!requireNamespace("lomb", quietly = TRUE)) {
-    return(.circ_empty_plot("Package 'lomb' not available",
-                            title = "Lomb-Scargle Periodogram"))
-  }
-
   lsp <- tryCatch(
-    lomb::lsp(
-      x = cnt, times = t_hours, from = from, to = to,
-      type = "period", ofac = ofac, plot = FALSE
-    ),
+    .lomb_scargle(x = cnt, times = t_hours, from = from, to = to, ofac = ofac),
     error = function(e) NULL
   )
   if (is.null(lsp) || is.null(lsp$scanned) || is.null(lsp$power) ||

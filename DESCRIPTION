@@ -35,6 +35,7 @@ Imports:
     ggplot2,
     scales,
     tidyr,
+    lomb,
     Rcpp (>= 1.0.0)
 LinkingTo: Rcpp
 SystemRequirements: C++17
@@ -57,7 +58,11 @@ Suggests:
     shinydashboard,
     openxlsx,
     future,
-    promises
+    promises,
+    ActCR,
+    pracma,
+    cosinor2,
+    nonlinearTseries
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Config/roxygen2/version: 8.0.0

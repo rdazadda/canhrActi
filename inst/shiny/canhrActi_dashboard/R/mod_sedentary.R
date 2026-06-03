@@ -439,6 +439,17 @@ mod_sedentary_server <- function(id, shared) {
           wear_mask <- NULL
           if (use_wear_time && fid %in% names(wt_results)) {
             wear_mask <- wt_results[[fid]]$wear
+
+            # Apply day-level validity (NHANES/Troiano valid-day convention).
+            # The per-epoch wear mask alone still includes low-wear (invalid)
+            # days; AND in a per-epoch valid-day mask so sedentary totals/bouts/
+            # W50/breaks-per-hour match the Wear Time tab and exclude invalid days.
+            daily <- wt_results[[fid]]$daily
+            if (!is.null(daily) && "valid" %in% names(daily) && !is.null(wear_mask)) {
+              valid_dates <- as.Date(daily$date[daily$valid])
+              valid_day_mask <- as.Date(data$timestamp) %in% valid_dates
+              wear_mask <- as.logical(wear_mask) & valid_day_mask
+            }
           }
 
           # Get sleep mask (to exclude sleep from sedentary analysis)

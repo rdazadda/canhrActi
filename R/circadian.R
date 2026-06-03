@@ -311,21 +311,43 @@ circadian.rhythm <- function(counts,
   # 
 
   sri <- NA_real_
+  sri_n_pairs <- NA_integer_
   if (!is.null(sleep_state) && calculate_sri) {
     if (length(sleep_state) != length(counts)) {
       warning("sleep_state length doesn't match counts, skipping SRI calculation")
     } else {
-      sri <- .calculate.sri.fast(sleep_state, timestamps, epoch_length)
+      # Proper Phillips (2017) epoch-of-day x day concordance matrix - robust to
+      # gaps and non-midnight starts (supersedes the single-24h-lag form).
+      sri_res <- sri.matrix(sleep_state, timestamps, epoch_length)
+      sri <- sri_res$SRI
+      sri_n_pairs <- sri_res$n_valid_pairs
     }
   }
 
-  # 
+  # Endogenous period via the Lomb-Scargle periodogram (gap-robust).
+  period_res <- tryCatch(circadian.period(counts, timestamps),
+                         error = function(e) list(tau = NA_real_, peak_power = NA_real_, p_value = NA_real_))
+
+  #
 
   hourly_profile <- .calculate.hourly.profile(counts, timestamps)
   daily_metrics <- .calculate.daily.circadian(counts, timestamps, epoch_length)
 
-  # Onset timing variability (NOT the published Fischer/Roenneberg CPD)
+  # Onset timing variability (circular SD of daily L5/M10 onsets).
   otv <- .onset.timing.variability(daily_metrics)
+
+  # Published Fischer-Roenneberg Composite Phase Deviation + onset CIs, on the
+  # daily L5 onset times.
+  l5_onsets <- daily_metrics$L5_start_hour
+  if (is.null(l5_onsets)) {
+    l5_onsets <- vapply(daily_metrics$L5_start, function(s) {
+      if (is.na(s) || !nzchar(as.character(s))) return(NA_real_)
+      p <- strsplit(as.character(s), ":")[[1]]
+      as.numeric(p[1]) + as.numeric(p[2]) / 60
+    }, numeric(1))
+  }
+  cpd_res <- composite.phase.deviation(l5_onsets)
+  l5_onset_ci <- circadian.onset.ci(l5_onsets)
 
   # 
 
@@ -349,14 +371,26 @@ circadian.rhythm <- function(counts,
     IV = round(is_iv$IV, 4),
     phi = phi,
 
-    # Sleep-based metrics (Phillips et al., 2017)
-    SRI = sri,
+    # Endogenous period (Lomb-Scargle)
+    tau = period_res$tau,
+    period_power = period_res$peak_power,
+    period_p_value = period_res$p_value,
 
-    # Phase variability (onset_timing_variability is the mean circular SD of
-    # daily L5/M10 onset times; it is NOT the published Fischer/Roenneberg CPD)
+    # Sleep-based metrics (Phillips et al., 2017; matrix form)
+    SRI = sri,
+    SRI_n_valid_pairs = sri_n_pairs,
+
+    # Phase variability: circular SD of daily onsets (onset_timing_variability)
+    # AND the published Fischer-Roenneberg Composite Phase Deviation (CPD).
     onset_timing_variability = otv$onset_timing_variability,
     L5_variability_hours = otv$L5_variability,
     M10_variability_hours = otv$M10_variability,
+    CPD = cpd_res$CPD,
+    CPD_precision = cpd_res$precision,
+    CPD_accuracy = cpd_res$accuracy,
+    L5_onset_mean = l5_onset_ci$mean_onset,
+    L5_onset_ci_lower = l5_onset_ci$ci_lower,
+    L5_onset_ci_upper = l5_onset_ci$ci_upper,
 
     # Profiles
     hourly_profile = hourly_profile,

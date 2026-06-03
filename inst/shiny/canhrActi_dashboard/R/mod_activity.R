@@ -650,6 +650,19 @@ mod_activity_server <- function(id, shared) {
           analysis_mask <- rep(TRUE, n_epochs)
           if (use_wear_time && fid %in% names(wt_results)) {
             analysis_mask <- wt_results[[fid]]$wear
+
+            # Apply DAY-LEVEL validation so on-screen tables/cards match CSV exports
+            wear_result <- wt_results[[fid]]
+            if (!is.null(wear_result$daily) && "timestamp" %in% names(data)) {
+              daily_valid <- wear_result$daily
+              data_dates <- as.Date(data$timestamp)
+              for (d in seq_len(nrow(daily_valid))) {
+                if (!isTRUE(daily_valid$valid[d])) {
+                  day_date <- as.Date(daily_valid$date[d])
+                  analysis_mask[data_dates == day_date] <- FALSE
+                }
+              }
+            }
           }
 
           # Prepare data based on data type selection
@@ -2394,6 +2407,18 @@ mod_activity_server <- function(id, shared) {
             wear_result$wear
           } else {
             rep(TRUE, nrow(data))
+          }
+
+          # Apply DAY-LEVEL validation (match other exports / on-screen tables)
+          if (!is.null(wear_result) && !is.null(wear_result$daily) && "timestamp" %in% names(data)) {
+            daily_valid <- wear_result$daily
+            data_dates <- as.Date(data$timestamp)
+            for (d in seq_len(nrow(daily_valid))) {
+              if (!daily_valid$valid[d]) {
+                day_date <- as.Date(daily_valid$date[d])
+                wear_mask[data_dates == day_date] <- FALSE
+              }
+            }
           }
 
           # Use Vector Magnitude for sedentary detection

@@ -69,7 +69,16 @@ mod_circadian_ui <- function(id) {
                        "Actogram"),
             tags$button(id = ns("tab_cosinor"), class = "circadian-tab",
                        onclick = paste0("Shiny.setInputValue('", ns("active_tab"), "', 'cosinor', {priority: 'event'})"),
-                       "Cosinor Fit")
+                       "Cosinor Fit"),
+            tags$button(id = ns("tab_periodogram"), class = "circadian-tab",
+                       onclick = paste0("Shiny.setInputValue('", ns("active_tab"), "', 'periodogram', {priority: 'event'})"),
+                       "Periodogram"),
+            tags$button(id = ns("tab_extcosinor"), class = "circadian-tab",
+                       onclick = paste0("Shiny.setInputValue('", ns("active_tab"), "', 'extcosinor', {priority: 'event'})"),
+                       "Extended Cosinor"),
+            tags$button(id = ns("tab_dfa"), class = "circadian-tab",
+                       onclick = paste0("Shiny.setInputValue('", ns("active_tab"), "', 'dfa', {priority: 'event'})"),
+                       "DFA")
           ),
           div(class = "circadian-chart-content",
             conditionalPanel(
@@ -101,6 +110,12 @@ mod_circadian_ui <- function(id) {
         div(class = "circadian-cosinor-card",
           div(class = "circadian-card-header", "Cosinor Analysis"),
           uiOutput(ns("cosinor_panel"))
+        ),
+
+        # Advanced Rhythm Metrics Card
+        div(class = "circadian-cosinor-card",
+          div(class = "circadian-card-header", "Advanced Rhythm Metrics"),
+          uiOutput(ns("advanced_metrics_panel"))
         ),
 
         # Export
@@ -301,7 +316,18 @@ mod_circadian_server <- function(id, shared) {
             h12_power = h12_power,
             r_squared_improvement = if (!is.null(cosinor_ext)) cosinor_ext$r_squared_improvement else NA_real_,
             r_squared_single = if (!is.null(cosinor_ext)) cosinor_ext$r_squared_single else NA_real_,
-            hourly_profile = res$hourly_profile
+            hourly_profile = res$hourly_profile,
+            # New advanced rhythm metrics from circadian.rhythm()
+            tau = if (!is.null(res$tau)) res$tau else NA_real_,
+            period_p_value = if (!is.null(res$period_p_value)) res$period_p_value else NA_real_,
+            SRI = if (!is.null(res$SRI)) res$SRI else NA_real_,
+            SRI_n_valid_pairs = if (!is.null(res$SRI_n_valid_pairs)) res$SRI_n_valid_pairs else NA_real_,
+            CPD = if (!is.null(res$CPD)) res$CPD else NA_real_,
+            CPD_precision = if (!is.null(res$CPD_precision)) res$CPD_precision else NA_real_,
+            CPD_accuracy = if (!is.null(res$CPD_accuracy)) res$CPD_accuracy else NA_real_,
+            L5_onset_mean = if (!is.null(res$L5_onset_mean)) res$L5_onset_mean else NA_real_,
+            L5_onset_ci_lower = if (!is.null(res$L5_onset_ci_lower)) res$L5_onset_ci_lower else NA_real_,
+            L5_onset_ci_upper = if (!is.null(res$L5_onset_ci_upper)) res$L5_onset_ci_upper else NA_real_
           )
         }
       })
@@ -360,7 +386,16 @@ mod_circadian_server <- function(id, shared) {
           h12_amplitude = mean(sapply(res, function(r) r$h12_amplitude), na.rm = TRUE),
           h12_power = mean(sapply(res, function(r) r$h12_power), na.rm = TRUE),
           r_squared_improvement = mean(sapply(res, function(r) r$r_squared_improvement), na.rm = TRUE),
-          is_bimodal = any(sapply(res, function(r) isTRUE(r$is_bimodal)))
+          is_bimodal = any(sapply(res, function(r) isTRUE(r$is_bimodal))),
+          # New advanced rhythm metrics (averaged where sensible)
+          tau = mean(sapply(res, function(r) if (is.null(r$tau)) NA_real_ else r$tau), na.rm = TRUE),
+          period_p_value = mean(sapply(res, function(r) if (is.null(r$period_p_value)) NA_real_ else r$period_p_value), na.rm = TRUE),
+          SRI = mean(sapply(res, function(r) if (is.null(r$SRI)) NA_real_ else r$SRI), na.rm = TRUE),
+          CPD = mean(sapply(res, function(r) if (is.null(r$CPD)) NA_real_ else r$CPD), na.rm = TRUE),
+          CPD_precision = mean(sapply(res, function(r) if (is.null(r$CPD_precision)) NA_real_ else r$CPD_precision), na.rm = TRUE),
+          L5_onset_mean = mean(sapply(res, function(r) if (is.null(r$L5_onset_mean)) NA_real_ else r$L5_onset_mean), na.rm = TRUE),
+          L5_onset_ci_lower = mean(sapply(res, function(r) if (is.null(r$L5_onset_ci_lower)) NA_real_ else r$L5_onset_ci_lower), na.rm = TRUE),
+          L5_onset_ci_upper = mean(sapply(res, function(r) if (is.null(r$L5_onset_ci_upper)) NA_real_ else r$L5_onset_ci_upper), na.rm = TRUE)
         )
       } else if (sel %in% names(res)) {
         r <- res[[sel]]
@@ -385,7 +420,18 @@ mod_circadian_server <- function(id, shared) {
           h12_amplitude = r$h12_amplitude,
           h12_power = r$h12_power,
           r_squared_improvement = r$r_squared_improvement,
-          is_bimodal = r$is_bimodal
+          is_bimodal = r$is_bimodal,
+          # New advanced rhythm metrics
+          tau = r$tau,
+          period_p_value = r$period_p_value,
+          SRI = r$SRI,
+          SRI_n_valid_pairs = r$SRI_n_valid_pairs,
+          CPD = r$CPD,
+          CPD_precision = r$CPD_precision,
+          CPD_accuracy = r$CPD_accuracy,
+          L5_onset_mean = r$L5_onset_mean,
+          L5_onset_ci_lower = r$L5_onset_ci_lower,
+          L5_onset_ci_upper = r$L5_onset_ci_upper
         )
       } else {
         NULL
@@ -499,6 +545,80 @@ mod_circadian_server <- function(id, shared) {
             div(class = "circadian-fit-fill", style = sprintf("width: %s%%;", r2_pct))
           ),
           span(class = "circadian-fit-value", r2_val)
+        )
+      )
+    })
+
+    # Advanced rhythm metrics card (tau, SRI, CPD, L5 onset)
+    output$advanced_metrics_panel <- renderUI({
+      cd <- current_data()
+
+      # Helper: safe numeric check
+      has_val <- function(x) !is.null(x) && length(x) == 1 && !is.na(x)
+
+      if (is.null(cd)) {
+        return(div(class = "circadian-cosinor-empty",
+          "Run Analysis to see advanced rhythm metrics"
+        ))
+      }
+
+      # Endogenous period (tau) + p-value
+      tau_val <- if (has_val(cd$tau)) sprintf("%.2f h", cd$tau) else "--"
+      tau_detail <- if (has_val(cd$period_p_value)) {
+        sprintf("p = %s", if (cd$period_p_value < 0.001) "<0.001" else sprintf("%.3f", cd$period_p_value))
+      } else {
+        "Period significance"
+      }
+
+      # Sleep Regularity Index
+      sri_val <- if (has_val(cd$SRI)) sprintf("%.1f", cd$SRI) else "--"
+
+      # Circadian Phase Distribution / CPD with precision
+      cpd_val <- if (has_val(cd$CPD)) sprintf("%.2f", cd$CPD) else "--"
+      cpd_detail <- if (has_val(cd$CPD_precision)) {
+        sprintf("Precision: %.2f", cd$CPD_precision)
+      } else {
+        "Phase distribution"
+      }
+
+      # L5 onset mean + CI
+      l5_onset_val <- if (has_val(cd$L5_onset_mean)) sprintf("%.2f h", cd$L5_onset_mean) else "--"
+      l5_onset_detail <- if (has_val(cd$L5_onset_ci_lower) && has_val(cd$L5_onset_ci_upper)) {
+        sprintf("95%% CI: %.2f - %.2f h", cd$L5_onset_ci_lower, cd$L5_onset_ci_upper)
+      } else {
+        "Least-active onset"
+      }
+
+      tagList(
+        div(class = "circadian-cosinor-grid",
+          div(class = "circadian-cosinor-item",
+            div(class = "circadian-cosinor-value", tau_val),
+            div(class = "circadian-cosinor-label", "Period (tau)")
+          ),
+          div(class = "circadian-cosinor-item",
+            div(class = "circadian-cosinor-value", sri_val),
+            div(class = "circadian-cosinor-label", "SRI")
+          ),
+          div(class = "circadian-cosinor-item",
+            div(class = "circadian-cosinor-value", cpd_val),
+            div(class = "circadian-cosinor-label", "CPD")
+          ),
+          div(class = "circadian-cosinor-item",
+            div(class = "circadian-cosinor-value", l5_onset_val),
+            div(class = "circadian-cosinor-label", "L5 Onset")
+          )
+        ),
+        div(class = "circadian-cosinor-fit",
+          span(class = "circadian-fit-label", "Tau"),
+          span(class = "circadian-fit-value", tau_detail)
+        ),
+        div(class = "circadian-cosinor-fit",
+          span(class = "circadian-fit-label", "CPD"),
+          span(class = "circadian-fit-value", cpd_detail)
+        ),
+        div(class = "circadian-cosinor-fit",
+          span(class = "circadian-fit-label", "L5 Onset"),
+          span(class = "circadian-fit-value", l5_onset_detail)
         )
       )
     })
@@ -754,6 +874,109 @@ mod_circadian_server <- function(id, shared) {
               axis.title = element_text(color = "#1a202c"),
               plot.subtitle = element_text(color = "#64748b", size = 11)
             )
+        }
+
+      } else if (tab == "periodogram" || tab == "extcosinor" || tab == "dfa") {
+        # Per-recording epoch-level views (Lomb-Scargle periodogram,
+        # Marler extended cosinor, and DFA). These operate on raw epoch
+        # counts + timestamps for a single recording.
+
+        # White-background override to match the styling of other branches.
+        white_bg <- theme(
+          plot.background = element_rect(fill = "white", color = NA),
+          panel.background = element_rect(fill = "white", color = NA),
+          plot.subtitle = element_text(color = "#64748b", size = 11)
+        )
+
+        # Resolve which file's raw epoch data to use.
+        # For single-file mode use the selected file; for the
+        # multi/average case fall back to the first available recording
+        # and annotate the subtitle that this is a per-recording metric.
+        sel_fid <- NULL
+        sel_name <- NULL
+        is_fallback <- FALSE
+
+        if (cd$mode == "single") {
+          sel_fid <- cd$result$file_id
+          sel_name <- cd$result$name
+        } else {
+          # Multi/average: pick the first analyzed recording
+          first_r <- cd$results[[1]]
+          if (!is.null(first_r)) {
+            sel_fid <- first_r$file_id
+            sel_name <- first_r$name
+            is_fallback <- TRUE
+          }
+        }
+
+        validate(
+          need(!is.null(sel_fid) && !is.null(shared$files[[sel_fid]]),
+               paste0("\n\nPer-Recording View\n\n",
+                      "These views are computed per recording.\n",
+                      "Select a single subject above to display them."))
+        )
+
+        fdata <- shared$files[[sel_fid]]$data
+
+        # Build the activity counts using the same metric choice as the run.
+        counts <- if (input$metric == "vm" &&
+                      all(c("axis1", "axis2", "axis3") %in% names(fdata))) {
+          sqrt(fdata$axis1^2 + fdata$axis2^2 + fdata$axis3^2)
+        } else {
+          fdata$axis1
+        }
+        timestamps <- fdata$timestamp
+
+        validate(
+          need(!is.null(counts) && length(counts) > 0 && !is.null(timestamps),
+               "Raw epoch data not available for this recording.")
+        )
+
+        fallback_sub <- if (is_fallback) {
+          paste0("per-recording metric; showing ", sel_name)
+        } else {
+          NULL
+        }
+
+        if (tab == "periodogram") {
+          tryCatch({
+            p <- canhrActi::plot_periodogram(counts, timestamps)
+            if (!is.null(fallback_sub)) {
+              p <- p + labs(subtitle = fallback_sub)
+            }
+            p + white_bg
+          }, error = function(e) {
+            validate(need(FALSE, paste0(
+              "\n\nPeriodogram unavailable\n\n",
+              "Could not compute the Lomb-Scargle periodogram for this recording.")))
+          })
+
+        } else if (tab == "extcosinor") {
+          tryCatch({
+            p <- canhrActi::plot_extended_cosinor(counts, timestamps)
+            if (!is.null(fallback_sub)) {
+              p <- p + labs(subtitle = fallback_sub)
+            }
+            p + white_bg
+          }, error = function(e) {
+            validate(need(FALSE, paste0(
+              "\n\nExtended cosinor unavailable\n\n",
+              "Could not compute the extended-cosinor fit for this recording.")))
+          })
+
+        } else {
+          # tab == "dfa"
+          tryCatch({
+            p <- canhrActi::plot_dfa(counts)
+            if (!is.null(fallback_sub)) {
+              p <- p + labs(subtitle = fallback_sub)
+            }
+            p + white_bg
+          }, error = function(e) {
+            validate(need(FALSE, paste0(
+              "\n\nDFA unavailable\n\n",
+              "Could not compute detrended fluctuation analysis for this recording.")))
+          })
         }
       }
     })

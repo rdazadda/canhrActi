@@ -293,6 +293,18 @@ mod_sleep_server <- function(id, shared) {
       MIN_PLOT_HEIGHT = 320,       # Minimum plot height
       MAX_PLOT_HEIGHT = 800        # Maximum plot height
     )
+
+    # sleep.tudor.locke returns sleep_time / wake_time as EPOCH COUNTS
+    # (sum of "S"/"W" epochs), not minutes. Convert epoch counts to minutes
+    # using the file's epoch length: minutes = epochs * epoch_length / 60.
+    # For 60s epochs the factor is 1 (no change); for 15s/30s it scales down.
+    epoch_minutes_factor <- function(epoch_length) {
+      if (is.null(epoch_length) || length(epoch_length) == 0 ||
+          is.na(epoch_length[1]) || !is.numeric(epoch_length[1]) || epoch_length[1] <= 0) {
+        return(1)
+      }
+      epoch_length[1] / 60
+    }
     # Status badge for page header
     output$sleep_status_badge <- renderUI({
       res <- results()
@@ -444,10 +456,11 @@ mod_sleep_server <- function(id, shared) {
 
       if (sel == "all") {
         # Simple average of each participant's average
+        # avg_duration is in epoch counts; convert each to minutes before averaging
         durs <- sapply(res, function(r) {
           val <- r$avg_duration
           if (is.null(val) || length(val) == 0 || !is.numeric(val)) return(NA)
-          as.numeric(val[1])
+          as.numeric(val[1]) * epoch_minutes_factor(r$epoch_length)
         })
         avg <- mean(durs, na.rm = TRUE)
         if (is.na(avg) || !is.finite(avg)) return("--")
@@ -465,7 +478,8 @@ mod_sleep_server <- function(id, shared) {
         if (is.null(r)) return("--")
         val <- r$avg_duration
         if (is.null(val) || length(val) == 0 || !is.numeric(val)) return("--")
-        sprintf("%.1fh", as.numeric(val[1]) / 60)
+        # avg_duration is in epoch counts; convert to minutes then hours
+        sprintf("%.1fh", (as.numeric(val[1]) * epoch_minutes_factor(r$epoch_length)) / 60)
       }
     })
 
@@ -509,10 +523,11 @@ mod_sleep_server <- function(id, shared) {
 
       if (sel == "all") {
         # Simple average of each participant's average
+        # avg_waso is in epoch counts; convert each to minutes before averaging
         wasos <- sapply(res, function(r) {
           val <- r$avg_waso
           if (is.null(val) || length(val) == 0 || !is.numeric(val)) return(NA)
-          as.numeric(val[1])
+          as.numeric(val[1]) * epoch_minutes_factor(r$epoch_length)
         })
         avg <- mean(wasos, na.rm = TRUE)
         if (is.na(avg) || !is.finite(avg)) return("--")
@@ -530,7 +545,8 @@ mod_sleep_server <- function(id, shared) {
         if (is.null(r)) return("--")
         val <- r$avg_waso
         if (is.null(val) || length(val) == 0 || !is.numeric(val)) return("--")
-        sprintf("%.0fm", as.numeric(val[1]))
+        # avg_waso is in epoch counts; convert to minutes
+        sprintf("%.0fm", as.numeric(val[1]) * epoch_minutes_factor(r$epoch_length))
       }
     })
 
@@ -722,8 +738,9 @@ mod_sleep_server <- function(id, shared) {
             format(out_bed, "%I:%M %p")
           }, error = function(e) "--")
 
-          # Duration
-          duration_hrs <- round(period$sleep_time / 60, 1)
+          # Duration (sleep_time is an epoch count; convert epochs -> minutes -> hours)
+          sleep_min <- period$sleep_time * epoch_minutes_factor(r$epoch_length)
+          duration_hrs <- round(sleep_min / 60, 1)
 
           # Efficiency
           efficiency <- round(period$sleep_efficiency, 0)
@@ -982,7 +999,8 @@ mod_sleep_server <- function(id, shared) {
                     wake_time_end = wake_epochs,
                     min_sleep_period = input$min_sleep_period,
                     max_sleep_period = input$max_sleep_period,
-                    min_nonzero_epochs = if (input$use_min_nonzero) input$min_nonzero_epochs else 0
+                    min_nonzero_epochs = if (input$use_min_nonzero) input$min_nonzero_epochs else 0,
+                    epoch_length = f$epoch_length
                   )
                 }, prefix = paste0(f$name, ":"))
               }, error = function(e) {
@@ -1117,6 +1135,9 @@ mod_sleep_server <- function(id, shared) {
 
       rows <- lapply(res, function(r) {
         if (is.null(r)) return(NULL)
+        # Skip files that fail wear-time validity criteria (NULL-equivalent of next)
+        wt <- shared$results$wear_time[[r$file_id]]
+        if (!is.null(wt) && isFALSE(wt$meets_criteria)) return(NULL)
         n_periods <- r$n_periods
         if (is.null(n_periods) || length(n_periods) == 0) n_periods <- 0
         n_periods <- as.numeric(n_periods[1])
@@ -1136,14 +1157,16 @@ mod_sleep_server <- function(id, shared) {
         }
 
         periods <- r$periods
+        # sleep_time / wake_time are epoch counts; convert to minutes
+        emf <- epoch_minutes_factor(r$epoch_length)
 
         data.frame(
           Subject = r$subject_id %||% "Unknown",
           Algorithm = format_algorithm(r$algorithm),
           `Sleep Periods` = n_periods,
           `Avg Efficiency (%)` = round(mean(periods$sleep_efficiency, na.rm = TRUE), 1),
-          `Avg Duration (min)` = round(mean(periods$sleep_time, na.rm = TRUE), 0),
-          `Avg WASO (min)` = round(mean(periods$wake_time, na.rm = TRUE), 0),
+          `Avg Duration (min)` = round(mean(periods$sleep_time, na.rm = TRUE) * emf, 0),
+          `Avg WASO (min)` = round(mean(periods$wake_time, na.rm = TRUE) * emf, 0),
           `Avg Awakenings` = round(mean(periods$number_of_awakenings, na.rm = TRUE), 1),
           check.names = FALSE,
           stringsAsFactors = FALSE
@@ -1194,12 +1217,18 @@ mod_sleep_server <- function(id, shared) {
         if (is.null(r)) next
         if (is.null(r$periods)) next
         if (!is.data.frame(r$periods) || nrow(r$periods) == 0) next
+        # Skip files that fail wear-time validity criteria
+        wt <- shared$results$wear_time[[r$file_id]]
+        if (!is.null(wt) && isFALSE(wt$meets_criteria)) next
 
         alg <- r$algorithm
         if (is.null(alg) || length(alg) == 0) alg <- "unknown"
         algorithm_display <- if (alg == "cole.kripke") "Cole-Kripke"
                              else if (alg == "sadeh") "Sadeh"
                              else as.character(alg)
+
+        # sleep_time / wake_time are epoch counts; convert to minutes
+        emf <- epoch_minutes_factor(r$epoch_length)
 
         for (i in 1:nrow(r$periods)) {
           period <- r$periods[i, ]
@@ -1217,8 +1246,8 @@ mod_sleep_server <- function(id, shared) {
             `In Bed` = format(in_bed_posix, "%I:%M %p"),
             `Out Bed` = format(out_bed_posix, "%I:%M %p"),
             `Efficiency (%)` = round(period$sleep_efficiency, 1),
-            `TST (min)` = round(period$sleep_time, 0),
-            `WASO (min)` = round(period$wake_time, 0),
+            `TST (min)` = round(period$sleep_time * emf, 0),
+            `WASO (min)` = round(period$wake_time * emf, 0),
             Awakenings = period$number_of_awakenings,
             `Latency (min)` = round(latency, 0),
             `Frag Index` = round(sleep_frag, 3),
@@ -1326,6 +1355,9 @@ mod_sleep_server <- function(id, shared) {
 
         for (r in res) {
           if (is.null(r$periods) || nrow(r$periods) == 0) next
+          # Skip files that fail wear-time validity criteria
+          wt <- shared$results$wear_time[[r$file_id]]
+          if (!is.null(wt) && isFALSE(wt$meets_criteria)) next
 
           f <- shared$files[[r$file_id]]
           weight <- f$subject_info$weight_lbs %||% 0
@@ -1338,6 +1370,9 @@ mod_sleep_server <- function(id, shared) {
           algorithm_display <- if (r$algorithm == "cole.kripke") "Cole-Kripke"
                                else if (r$algorithm == "sadeh") "Sadeh"
                                else r$algorithm
+
+          # sleep_time / wake_time are epoch counts; convert to minutes
+          emf <- epoch_minutes_factor(r$epoch_length)
 
           for (i in 1:nrow(r$periods)) {
             period <- r$periods[i, ]
@@ -1361,8 +1396,8 @@ mod_sleep_server <- function(id, shared) {
               Efficiency = round(period$sleep_efficiency, 3),
               Onset = format_actilife_datetime(period$onset),
               Latency = round(latency, 0),
-              `Total Sleep Time` = round(period$sleep_time, 0),
-              WASO = round(period$wake_time, 0),
+              `Total Sleep Time` = round(period$sleep_time * emf, 0),
+              WASO = round(period$wake_time * emf, 0),
               `Number of Awakenings` = period$number_of_awakenings,
               `Length of Awakenings in Minutes` = round(period$average_awakening, 2),
               `Activity Counts` = round(period$total_counts, 0),
@@ -1402,6 +1437,9 @@ mod_sleep_server <- function(id, shared) {
 
         for (r in res) {
           if (is.null(r$periods) || nrow(r$periods) == 0) next
+          # Skip files that fail wear-time validity criteria
+          wt <- shared$results$wear_time[[r$file_id]]
+          if (!is.null(wt) && isFALSE(wt$meets_criteria)) next
 
           f <- shared$files[[r$file_id]]
           weight <- f$subject_info$weight_lbs %||% 0
@@ -1415,6 +1453,8 @@ mod_sleep_server <- function(id, shared) {
                                else if (r$algorithm == "sadeh") "Sadeh"
                                else r$algorithm
           periods <- r$periods
+          # sleep_time / wake_time are epoch counts; convert to minutes
+          emf <- epoch_minutes_factor(r$epoch_length)
 
           onset_times <- as.POSIXct(periods$onset)
           in_bed_times <- as.POSIXct(periods$in_bed_time)
@@ -1437,8 +1477,8 @@ mod_sleep_server <- function(id, shared) {
             `Average Efficiency` = round(mean(periods$sleep_efficiency, na.rm = TRUE), 3),
             `Average Onset` = format_average_time(onset_times),
             `Average Latency` = round(mean(latencies, na.rm = TRUE), 0),
-            `Average Total Sleep Time` = round(mean(periods$sleep_time, na.rm = TRUE), 0),
-            `Average WASO` = round(mean(periods$wake_time, na.rm = TRUE), 2),
+            `Average Total Sleep Time` = round(mean(periods$sleep_time, na.rm = TRUE) * emf, 0),
+            `Average WASO` = round(mean(periods$wake_time, na.rm = TRUE) * emf, 2),
             `Average Number of Awakenings` = round(mean(periods$number_of_awakenings, na.rm = TRUE), 2),
             `Average Length of Awakenings in Minutes` = round(mean(periods$average_awakening, na.rm = TRUE), 2),
             `Average Activity Counts` = round(mean(periods$total_counts, na.rm = TRUE), 2),

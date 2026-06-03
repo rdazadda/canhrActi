@@ -249,11 +249,29 @@ mod_circadian_server <- function(id, shared) {
             wear_time <- shared$results$wear_time[[fid]]$wear
           }
 
+          # Sleep/wake state for the Sleep Regularity Index (SRI). circadian.rhythm()
+          # only computes SRI when given a per-epoch sleep_state. Prefer the state
+          # already scored on the Sleep tab; otherwise score it here from the
+          # vertical axis. The length guard keeps it aligned to the timestamps so
+          # the SRI epoch-of-day x day matrix lines up (a mismatch yields SRI = NA).
+          sleep_state <- NULL
+          if (!is.null(shared$results$sleep[[fid]]) &&
+              !is.null(shared$results$sleep[[fid]]$sleep_state)) {
+            sleep_state <- shared$results$sleep[[fid]]$sleep_state
+          }
+          if (is.null(sleep_state) || length(sleep_state) != nrow(data)) {
+            sleep_state <- tryCatch(
+              canhrActi::sleep.cole.kripke(data$axis1, apply_rescoring = TRUE,
+                                           epoch_length = f$epoch_length),
+              error = function(e) NULL)
+          }
+
           res <- tryCatch({
             canhrActi::circadian.rhythm(
               counts = activity,
               timestamps = data$timestamp,
               wear_time = wear_time,
+              sleep_state = sleep_state,
               epoch_length = f$epoch_length,
               use_cpp = TRUE
             )

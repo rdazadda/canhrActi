@@ -4,7 +4,13 @@
 \alias{.calculate.alpha.robust}
 \title{Robust Power-Law Alpha with xmin Estimation}
 \usage{
-.calculate.alpha.robust(durations, xmin_candidates = NULL, bootstrap_n = 100)
+.calculate.alpha.robust(
+  durations,
+  xmin_candidates = NULL,
+  bootstrap_n = 100,
+  bootstrap_gof = FALSE,
+  gof_bootstrap_n = 200
+)
 }
 \arguments{
 \item{durations}{Numeric vector of bout durations}
@@ -12,9 +18,22 @@
 \item{xmin_candidates}{Candidate xmin values to test (default: unique durations)}
 
 \item{bootstrap_n}{Number of bootstrap iterations for CI (default: 100)}
+
+\item{bootstrap_gof}{Run Clauset et al. (2009, Sec 4.2) semiparametric Monte-Carlo
+bootstrap goodness-of-fit test? (default FALSE). When FALSE (the default, kept
+off so the interactive dashboard stays fast) no Clauset p-value is produced;
+instead an asymptotic Kolmogorov-Smirnov approximation (\code{ks_pvalue_approx})
+is reported and clearly labelled as an approximation, not a Clauset GoF p-value.
+When TRUE, \code{gof_pvalue} is the fraction of synthetic KS statistics that
+meet or exceed the empirical KS statistic.}
+
+\item{gof_bootstrap_n}{Number of synthetic datasets for the GoF bootstrap when
+\code{bootstrap_gof = TRUE} (default 200).}
 }
 \value{
-List with alpha, xmin, KS statistic, confidence intervals
+List with alpha, xmin, KS statistic, confidence intervals, and either a
+Clauset GoF p-value (\code{gof_pvalue}) or an asymptotic KS approximation
+(\code{ks_pvalue_approx}).
 }
 \description{
 Estimates the power-law exponent using the Clauset et al. (2009) method,
@@ -27,7 +46,13 @@ produces biased estimates. This function:
 \item Tests multiple xmin values
 \item Selects xmin that minimizes KS statistic
 \item Provides bootstrap confidence intervals
+\item Optionally runs the Clauset semiparametric GoF bootstrap
 }
+
+The asymptotic KS critical-value lookup (1.36/sqrt(n)) is NOT a valid power-law
+goodness-of-fit test (it is anti-conservative because alpha and xmin are estimated
+from the same data); it is surfaced only as \code{ks_pvalue_approx}. Set
+\code{bootstrap_gof = TRUE} for the Clauset (2009) semiparametric bootstrap p-value.
 }
 \references{
 Clauset A, Shalizi CR, Newman MEJ. (2009). Power-law distributions in

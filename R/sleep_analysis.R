@@ -11,7 +11,8 @@
 #' @return Character vector of sleep states: "S" (sleep) or "W" (wake)
 #'
 #' @details
-#' Uses 7-epoch window (4 previous + current + 2 next) with weighted coefficients:
+#' Uses a 7-epoch window: 4 epochs before, current, 2 epochs after, with weighted
+#' coefficients:
 #' D = 0.001 * (106*P4 + 54*P3 + 58*P2 + 76*P1 + 230*C + 74*N1 + 67*N2)
 #'
 #' Counts are divided by 100 and capped at 300.
@@ -56,8 +57,8 @@ sleep.cole.kripke <- function(counts, apply_rescoring = TRUE, epoch_length = 60)
 
   # Calculate sleep index D for each epoch using vectorized convolution
   # D = 0.001 * (106*P4 + 54*P3 + 58*P2 + 76*P1 + 230*C + 74*N1 + 67*N2)
-  # Window: N2(-2), N1(-1), C(0), P1(+1), P2(+2), P3(+3), P4(+4)
-  # This is a 7-epoch window centered with 2 before and 4 after current epoch
+  # Window: P4(-4), P3(-3), P2(-2), P1(-1), C(0), N1(+1), N2(+2)
+  # This is a 7-epoch window: 4 epochs before, current, 2 epochs after
   #
   # For stats::filter with sides=2 (centered), coefficients are applied symmetrically
   # But Cole-Kripke is asymmetric (2 before, 4 after), so we use manual convolution
@@ -71,7 +72,8 @@ sleep.cole.kripke <- function(counts, apply_rescoring = TRUE, epoch_length = 60)
   padded.counts <- c(rep(0, 4), scaled.counts, rep(0, 2))
 
   # Manual convolution for proper Cole-Kripke alignment
-  # For each epoch i, calculate: sum(coef * counts[i-4:i+2])
+  # For each epoch i, calculate: sum(coef * counts[(i-4):(i+2)])
+  # i.e. 4 epochs before, current, 2 epochs after
   sleep.index <- numeric(n)
   for (i in seq_len(n)) {
     idx <- (i + 4 - 4):(i + 4 + 2)  # 7-epoch window in padded array
@@ -240,9 +242,12 @@ sleep.sadeh <- function(counts, epoch_length = 60) {
   sumsq.padded <- stats::filter(padded.counts^2, sum.filter.6, sides = 1)
   sum.padded <- stats::filter(padded.counts, sum.filter.6, sides = 1)
 
-  # Extract valid indices (after first 5 padding + 5 more for the window)
-  sumsq <- as.numeric(sumsq.padded[11:(10 + n)])
-  sums <- as.numeric(sum.padded[11:(10 + n)])
+  # Extract the causal 6-epoch filter aligned at the current epoch, so the
+  # window covers the current epoch + 5 PRECEDING epochs (Sadeh 1994).
+  # Original epoch i sits at padded index 5 + i; the sides = 1 filter there
+  # sums padded indices i:(5 + i), i.e. original epochs (i-5):i.
+  sumsq <- as.numeric(sumsq.padded[6:(5 + n)])
+  sums <- as.numeric(sum.padded[6:(5 + n)])
 
   # Calculate variance: (sum_sq - sum^2/n) / (n-1)
   variance <- (sumsq - (sums^2) / 6) / 5
@@ -280,15 +285,33 @@ sleep.sadeh <- function(counts, epoch_length = 60) {
 #' @param min_nonzero_epochs Minimum non-zero activity epochs (default: 15)
 #' @param epoch_length Epoch length in seconds (default: 60). Parameters are
 #'   automatically scaled to epochs based on this value.
-#' @param filter_suspicious Logical. Filter suspicious periods that likely indicate
-#'   device removal or sedentary behavior? (default: TRUE)
+#' @param filter_suspicious Logical. Apply an optional post-detection heuristic
+#'   filter that drops periods likely reflecting device removal or sustained
+#'   sedentary behavior rather than sleep? (default: FALSE). These heuristics are
+#'   NOT part of the Tudor-Locke (2014) algorithm and can remove physiologically
+#'   plausible sleep (e.g. consolidated high-efficiency nights, naps), so they are
+#'   opt-in only. When enabled, the count of removed periods is surfaced via a
+#'   warning.
 #'
 #' @return Data frame with sleep periods and metrics (TST, SE, WASO, awakenings, etc.)
 #'
 #' @details
-#' When filter_suspicious is TRUE, periods meeting these criteria are removed:
-#' periods longer than 12 hours with over 99 percent efficiency and 0 awakenings,
-#' very low activity (under 5 counts/min), or daytime periods with unrealistic characteristics.
+#' The core detection follows Tudor-Locke (2014). The \code{filter_suspicious}
+#' option is an additional, non-Tudor-Locke heuristic pass (disabled by default).
+#' When enabled, a period is removed if it matches ANY of the following criteria:
+#' \enumerate{
+#'   \item sleep_time > 720 min, sleep_efficiency > 99\%, and 0 awakenings;
+#'   \item sleep_time > 120 min and mean activity < 5 counts/min;
+#'   \item sleep_time > 180 min, sleep_efficiency >= 99.5\%, and 0 awakenings;
+#'   \item 30 < sleep_time < 180 min, sleep_efficiency > 98\%, and 0 awakenings;
+#'   \item total_counts < 50 and sleep_time > 60 min;
+#'   \item activity CV < 0.5, sleep_efficiency > 95\%, < 2 awakenings, and
+#'         60 < sleep_time < 300 min;
+#'   \item in-bed start between 09:00-17:00, sleep_time < 180 min, and
+#'         sleep_efficiency > 90\% (daytime short consolidated period).
+#' }
+#' Because several of these can discard real sleep, prefer leaving
+#' \code{filter_suspicious = FALSE} and inspecting periods directly.
 #'
 #' @references
 #' Tudor-Locke C, Barreira TV, Schuna JM, Mire EF, Katzmarzyk PT (2014).
@@ -314,7 +337,7 @@ sleep.tudor.locke <- function(sleep.state,
                               max_sleep_period = 1440,
                               min_nonzero_epochs = 15,
                               epoch_length = 60,
-                              filter_suspicious = TRUE) {
+                              filter_suspicious = FALSE) {
 
   if (length(sleep.state) != length(timestamps)) {
     stop("Length of sleep.state (", length(sleep.state),
@@ -382,7 +405,7 @@ sleep.tudor.locke <- function(sleep.state,
                                   min_sleep_period, max_sleep_period,
                                   min_nonzero_epochs,
                                   epoch_length = 60,
-                                  filter_suspicious = TRUE) {
+                                  filter_suspicious = FALSE) {
 
   n <- length(sleep.state)
   periods <- list()
@@ -564,14 +587,13 @@ sleep.tudor.locke <- function(sleep.state,
   awakenings <- sum(wake_runs$values)  # Count of wake bouts
   awakening.lengths <- wake_runs$lengths[wake_runs$values]  # Lengths of wake bouts
   average.awakening <- if (length(awakening.lengths) > 0) mean(awakening.lengths) else 0
-  movement.index <- 100 * wake.minutes / total.minutes
-  fragmentation.index <- (awakenings + movement.index) / total.minutes
   sleep.efficiency <- 100 * sleep.minutes / total.minutes
 
   # Activity metrics for validation
   total.counts <- 0
   activity.sd <- 0
   activity.cv <- 0  # Coefficient of variation
+  period.counts <- NULL
 
   if (!is.null(counts)) {
     period.counts <- counts[start.idx:end.idx]
@@ -582,6 +604,29 @@ sleep.tudor.locke <- function(sleep.state,
     if (!is.na(mean.counts) && mean.counts > 0) {
       activity.cv <- activity.sd / mean.counts
     }
+  }
+
+  # Tudor-Locke / ActiLife Fragmentation Index (FI):
+  #   FI = 100 * (number of 1-epoch immobile/sleep bouts) / (number of sleep bouts)
+  sleep_runs <- rle(sleep.state == "S")
+  sleep.bout.lengths <- sleep_runs$lengths[sleep_runs$values]
+  fragmentation.index <- if (length(sleep.bout.lengths) > 0) {
+    100 * sum(sleep.bout.lengths == 1) / length(sleep.bout.lengths)
+  } else {
+    0
+  }
+
+  # Movement Index (MI): % of period epochs with non-zero activity counts.
+  # When counts are unavailable, fall back to the wake fraction of the period.
+  if (!is.null(period.counts)) {
+    n.scored <- sum(!is.na(period.counts))
+    movement.index <- if (n.scored > 0) {
+      100 * sum(period.counts > 0, na.rm = TRUE) / n.scored
+    } else {
+      0
+    }
+  } else {
+    movement.index <- 100 * wake.minutes / total.minutes
   }
 
   data.frame(
@@ -744,6 +789,8 @@ integrate.sleep.diary <- function(accel_sleep, diary, timestamps,
 #'
 #' @param sleep_state Character vector of sleep states ("S" or "W")
 #' @param timestamps POSIXt vector of timestamps corresponding to sleep_state
+#' @param epoch_length Epoch length in seconds (default: 60). Used to convert the
+#'   epoch count to hours when computing the per-hour transition rate.
 #'
 #' @return List containing:
 #'   - basic_metrics: Standard fragmentation metrics
@@ -758,12 +805,16 @@ integrate.sleep.diary <- function(accel_sleep, diary, timestamps,
 #' 3. Temporal pattern showing which hours have most fragmentation
 #' 4. Sleep Fragmentation Index (SFI) combining multiple metrics
 #'
+#' Note: the Sleep Fragmentation Index returned here is a custom composite metric
+#' (a weighted blend of transition rate, short-sleep-bout proportion, and wake
+#' proportion) and is not the Tudor-Locke/ActiLife Sleep Fragmentation Index.
+#'
 #' @references
 #' Lim J, Dinges DF (2008). Sleep deprivation and vigilant attention.
 #' Ann N Y Acad Sci, 1129:305-322.
 #'
 #' @export
-sleep.fragmentation.enhanced <- function(sleep_state, timestamps) {
+sleep.fragmentation.enhanced <- function(sleep_state, timestamps, epoch_length = 60) {
 
   if (length(sleep_state) == 0) {
     return(.empty.fragmentation.result())
@@ -828,7 +879,9 @@ sleep.fragmentation.enhanced <- function(sleep_state, timestamps) {
   # Sleep Fragmentation Index (SFI)
   # Combines: transition rate + short sleep bout proportion + wake proportion
   total_transitions <- sum(bout_values[-1] != bout_values[-n_bouts])
-  transition_rate <- total_transitions / (n / 60)  # Per hour
+  # Transitions per hour, scaled by epoch length (n epochs * epoch_length / 3600 s)
+  period_hours <- n * epoch_length / 3600
+  transition_rate <- if (period_hours > 0) total_transitions / period_hours else NA_real_
 
   short_sleep_threshold <- 10  # Minutes
   short_sleep_proportion <- if (length(sleep_bouts) > 0) {

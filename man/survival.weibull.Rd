@@ -12,10 +12,11 @@ survival.weibull(bout_durations)
 \value{
 List with Weibull parameters and interpretations:
 \describe{
-\item{shape}{Weibull shape parameter (k)}
-\item{scale}{Weibull scale parameter (lambda)}
+\item{shape}{Weibull shape parameter (k); NA if the MLE did not converge}
+\item{scale}{Weibull scale parameter (lambda); NA if the MLE did not converge}
 \item{median_survival}{Median survival time from Weibull}
 \item{mean_survival}{Mean survival time from Weibull}
+\item{converged}{Logical; did the shape MLE root-finder converge?}
 \item{hazard_interpretation}{Interpretation of hazard function}
 }
 }
@@ -25,6 +26,14 @@ Weibull is more flexible than exponential, with shape parameter indicating
 whether bout termination probability increases, decreases, or stays constant.
 }
 \details{
+The shape parameter k is the root of the Weibull profile score equation
+\deqn{g(k) = \frac{\sum x^k \log x}{\sum x^k} - \frac{1}{k} - \frac{1}{n}\sum \log x = 0,}
+which is monotonically increasing in k. It is solved with a bracketed
+root-finder (\code{\link[stats]{uniroot}}) rather than a fixed-point map. If a
+root cannot be bracketed/found, shape and scale are returned as NA (with
+\code{converged = FALSE}) instead of being silently forced to the exponential
+(k = 1) case.
+
 Weibull shape parameter interpretation:
 \itemize{
 \item k < 1: Decreasing hazard (longer bouts more likely to continue)

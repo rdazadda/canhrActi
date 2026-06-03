@@ -14,7 +14,7 @@ sleep.tudor.locke(
   max_sleep_period = 1440,
   min_nonzero_epochs = 15,
   epoch_length = 60,
-  filter_suspicious = TRUE
+  filter_suspicious = FALSE
 )
 }
 \arguments{
@@ -37,8 +37,13 @@ sleep.tudor.locke(
 \item{epoch_length}{Epoch length in seconds (default: 60). Parameters are
 automatically scaled to epochs based on this value.}
 
-\item{filter_suspicious}{Logical. Filter suspicious periods that likely indicate
-device removal or sedentary behavior? (default: TRUE)}
+\item{filter_suspicious}{Logical. Apply an optional post-detection heuristic
+filter that drops periods likely reflecting device removal or sustained
+sedentary behavior rather than sleep? (default: FALSE). These heuristics are
+NOT part of the Tudor-Locke (2014) algorithm and can remove physiologically
+plausible sleep (e.g. consolidated high-efficiency nights, naps), so they are
+opt-in only. When enabled, the count of removed periods is surfaced via a
+warning.}
 }
 \value{
 Data frame with sleep periods and metrics (TST, SE, WASO, awakenings, etc.)
@@ -47,9 +52,22 @@ Data frame with sleep periods and metrics (TST, SE, WASO, awakenings, etc.)
 Detects sleep periods and calculates sleep quality metrics.
 }
 \details{
-When filter_suspicious is TRUE, periods meeting these criteria are removed:
-periods longer than 12 hours with over 99 percent efficiency and 0 awakenings,
-very low activity (under 5 counts/min), or daytime periods with unrealistic characteristics.
+The core detection follows Tudor-Locke (2014). The \code{filter_suspicious}
+option is an additional, non-Tudor-Locke heuristic pass (disabled by default).
+When enabled, a period is removed if it matches ANY of the following criteria:
+\enumerate{
+\item sleep_time > 720 min, sleep_efficiency > 99\\%, and 0 awakenings;
+\item sleep_time > 120 min and mean activity < 5 counts/min;
+\item sleep_time > 180 min, sleep_efficiency >= 99.5\\%, and 0 awakenings;
+\item 30 < sleep_time < 180 min, sleep_efficiency > 98\\%, and 0 awakenings;
+\item total_counts < 50 and sleep_time > 60 min;
+\item activity CV < 0.5, sleep_efficiency > 95\\%, < 2 awakenings, and
+60 < sleep_time < 300 min;
+\item in-bed start between 09:00-17:00, sleep_time < 180 min, and
+sleep_efficiency > 90\\% (daytime short consolidated period).
+}
+Because several of these can discard real sleep, prefer leaving
+\code{filter_suspicious = FALSE} and inspecting periods directly.
 }
 \examples{
 \dontrun{

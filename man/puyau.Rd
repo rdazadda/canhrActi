@@ -30,13 +30,13 @@ Puyau MR, et al. (2002). Validation and calibration of physical activity
 monitors in children. Obes Res, 10(3), 150-157.
 }
 \seealso{
-Other children cut-points: 
-\code{\link{butte_preschool}()},
-\code{\link{chandler}()},
-\code{\link{copeland}()},
-\code{\link{evenson}()},
-\code{\link{mattocks}()},
-\code{\link{pate_preschool}()},
-\code{\link{romanzini}()}
+Other children cut-points:
+\code{\link[=butte_preschool]{butte_preschool()}},
+\code{\link[=chandler]{chandler()}},
+\code{\link[=copeland]{copeland()}},
+\code{\link[=evenson]{evenson()}},
+\code{\link[=mattocks]{mattocks()}},
+\code{\link[=pate_preschool]{pate_preschool()}},
+\code{\link[=romanzini]{romanzini()}}
 }
 \concept{children cut-points}

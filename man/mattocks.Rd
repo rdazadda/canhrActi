@@ -30,13 +30,13 @@ Mattocks C, et al. (2007). Calibration of an accelerometer during free-living
 activities in children. Int J Pediatr Obes, 2(4), 218-226.
 }
 \seealso{
-Other children cut-points: 
-\code{\link{butte_preschool}()},
-\code{\link{chandler}()},
-\code{\link{copeland}()},
-\code{\link{evenson}()},
-\code{\link{pate_preschool}()},
-\code{\link{puyau}()},
-\code{\link{romanzini}()}
+Other children cut-points:
+\code{\link[=butte_preschool]{butte_preschool()}},
+\code{\link[=chandler]{chandler()}},
+\code{\link[=copeland]{copeland()}},
+\code{\link[=evenson]{evenson()}},
+\code{\link[=pate_preschool]{pate_preschool()}},
+\code{\link[=puyau]{puyau()}},
+\code{\link[=romanzini]{romanzini()}}
 }
 \concept{children cut-points}

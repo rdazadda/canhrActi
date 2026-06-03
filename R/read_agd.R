@@ -113,61 +113,6 @@ read.agd <- function(filepath, include_sleep = TRUE, include_wear_time = TRUE, v
 }
 
 
-#' Check if File is AGD Format
-#'
-#' @param filepath Path to file
-#' @return Logical. TRUE if file has .agd extension
-#' @keywords internal
-.is.agd.file <- function(filepath) {
-  tolower(tools::file_ext(filepath)) == "agd"
-}
-
-
-#' Read AGD Metadata Only
-#'
-#' Quickly reads just the metadata/settings from an AGD file without loading data.
-#'
-#' @param filepath Path to .agd file
-#' @return List with file info including tables, settings, and row counts
-#' @keywords internal
-.read.agd.metadata <- function(filepath) {
-  con <- DBI::dbConnect(RSQLite::SQLite(), filepath)
-  on.exit(DBI::dbDisconnect(con), add = TRUE)
-
-  tables <- DBI::dbListTables(con)
-  has_epochs <- "data" %in% tables || "epochs" %in% tables
-
-  settings <- NULL
-  if ("settings" %in% tables) {
-    settings <- DBI::dbReadTable(con, "settings")
-  }
-
-  # Get row counts
-  n_rows <- 0
-  if (has_epochs) {
-    table_name <- if ("data" %in% tables) "data" else "epochs"
-    n_rows <- DBI::dbGetQuery(con, paste0("SELECT COUNT(*) FROM ", table_name))[[1]]
-  }
-
-  # Get epoch length from settings
-  epoch_length <- NA
-  if (!is.null(settings)) {
-    epoch_val <- settings$settingValue[settings$settingName == "epochlength"]
-    if (length(epoch_val) > 0) {
-      epoch_length <- as.numeric(epoch_val[1])
-    }
-  }
-
-  list(
-    has_epochs = has_epochs,
-    n_epochs = n_rows,
-    epoch_length = epoch_length,
-    tables = tables,
-    settings = settings
-  )
-}
-
-
 #' Extract Counts from .agd Data
 #'
 #' Extracts activity counts, timestamps, steps, and inclinometer data (if available)
@@ -267,11 +212,12 @@ agd.counts <- function(agd_data, convert.timestamps = TRUE, include_inclinometer
     }
   }
 
-  #  Issue warning instead of silent fallback to sequence
+  #  Hard stop when no real timestamp column is present. A sequential
+  #  fallback produces non-POSIXct integer "timestamps" that break all
+  #  downstream day-level and circadian analyses, so fail fast at read time.
   if (is.null(timestamps)) {
-    warning("No valid timestamp column found (dataTimestamp or timestamp). ",
-            "Using sequential epoch numbers instead. This may affect time-based analyses.")
-    timestamps <- seq_len(nrow(data))
+    stop("No valid timestamp column found (dataTimestamp or timestamp). ",
+         "Time-based, day-level, and circadian analyses require real timestamps.")
   }
 
   # Build base data frame with counts

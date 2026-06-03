@@ -12,8 +12,14 @@ usual.bout.percentiles(bout_durations, percentiles = c(25, 50, 75, 90))
 \item{percentiles}{Percentiles to calculate (default: c(25, 50, 75, 90))}
 }
 \value{
-Named numeric vector with W25, W50, W75, W90
+Named numeric vector with W25, W50, W75, W90 (monotonically increasing)
 }
 \description{
-Calculate Multiple Usual Bout Percentiles
+Time-weighted percentiles of the bout-duration distribution. WX is the bout
+duration at which X\\% of total sedentary time has accumulated when bouts are
+considered from SHORTEST to LONGEST. Defined this way the percentiles are
+monotonically INCREASING (W25 <= W50 <= W75 <= W90), so larger W corresponds
+to a longer-bout cutoff, matching the "25th/75th/90th weighted percentile"
+labels surfaced in the dashboard and print method. W50 is the time-weighted
+median (companion to \code{usual.bout.duration()}).
 }

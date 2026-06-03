@@ -10,7 +10,8 @@
   spike_tolerance,
   spike_stoplevel,
   validate_spikes = FALSE,
-  min_window_len = 30
+  min_window_len = 30,
+  max_spike_minutes = spike_tolerance
 )
 }
 \arguments{
@@ -25,6 +26,11 @@
 \item{validate_spikes}{Logical. If TRUE, use upstream/downstream validation (Choi/CANHR2025)}
 
 \item{min_window_len}{Upstream/downstream window length (for Choi/CANHR2025)}
+
+\item{max_spike_minutes}{Integer. Total number of spike (1-stoplevel) minutes permitted
+within a candidate non-wear window. This is the TOTAL spike-minute budget and is kept
+distinct from \code{spike_tolerance}, which caps the longest CONSECUTIVE spike run.
+Defaults to \code{spike_tolerance} to preserve historical behavior.}
 }
 \value{
 Logical vector where TRUE indicates wear time
@@ -33,4 +39,13 @@ Logical vector where TRUE indicates wear time
 Internal function implementing the core wear time detection logic.
 Used by Troiano, Choi, and CANHR2025 algorithms.
 }
+\section{NA handling}{
+
+Missing counts (\code{NA}) are imputed to 0 (treated as measured zero counts) before
+detection. This is a deliberate imputation choice, not part of Troiano (2008) or Choi
+(2011). Because zeros contribute to zero-windows, this biases detection TOWARD non-wear:
+missing epochs can create or extend non-wear bouts. Callers that need missingness to be
+methodologically distinct from a measured zero should pre-handle NA before calling.
+}
+
 \keyword{internal}

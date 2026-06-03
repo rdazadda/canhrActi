@@ -16,7 +16,7 @@ Ordered factor with intensity levels
 Cut-points for children (13-14 years) validated in free-living conditions.
 }
 \details{
-Copeland (2009) cutpoints:
+Copeland (2009) children cutpoints:
 \itemize{
 \item Sedentary: 0-100 CPM
 \item Light: 101-2220 CPM
@@ -25,17 +25,22 @@ Copeland (2009) cutpoints:
 }
 }
 \references{
-Copeland JL, Esliger DW. (2009). Accelerometer assessment of physical
-activity in active, healthy older adults. J Aging Phys Act, 17(1), 17-30.
+Source citation requires confirmation. The 0/100/2220/6130 CPM thresholds
+implemented here are child-magnitude cut-points and do NOT correspond to the
+older-adult paper (Copeland JL, Esliger DW. (2009). Accelerometer assessment
+of physical activity in active, healthy older adults. J Aging Phys Act,
+17(1), 17-30) that was previously (and incorrectly) cited here; that paper is
+the source for \code{\link{copeland_older}}, not this children function. The
+validation study for these specific child thresholds has not been confirmed.
 }
 \seealso{
-Other children cut-points: 
-\code{\link{butte_preschool}()},
-\code{\link{chandler}()},
-\code{\link{evenson}()},
-\code{\link{mattocks}()},
-\code{\link{pate_preschool}()},
-\code{\link{puyau}()},
-\code{\link{romanzini}()}
+Other children cut-points:
+\code{\link[=butte_preschool]{butte_preschool()}},
+\code{\link[=chandler]{chandler()}},
+\code{\link[=evenson]{evenson()}},
+\code{\link[=mattocks]{mattocks()}},
+\code{\link[=pate_preschool]{pate_preschool()}},
+\code{\link[=puyau]{puyau()}},
+\code{\link[=romanzini]{romanzini()}}
 }
 \concept{children cut-points}

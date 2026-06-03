@@ -30,10 +30,10 @@ Troiano RP, et al. (2008). Physical activity in the United States measured
 by accelerometer. Med Sci Sports Exerc, 40(1), 181-188.
 }
 \seealso{
-Other adult cut-points: 
-\code{\link{crouter}()},
-\code{\link{freedson}()},
-\code{\link{matthews}()},
-\code{\link{santos_lozano}()}
+Other adult cut-points:
+\code{\link[=crouter]{crouter()}},
+\code{\link[=freedson]{freedson()}},
+\code{\link[=matthews]{matthews()}},
+\code{\link[=santos_lozano]{santos_lozano()}}
 }
 \concept{adult cut-points}

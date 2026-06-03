@@ -33,7 +33,7 @@ Sasaki JE, et al. (2011). Validation and comparison of ActiGraph activity
 monitors. J Sci Med Sport, 14(5), 411-416.
 }
 \seealso{
-Other triaxial cut-points: 
-\code{\link{freedson_vm3}()}
+Other triaxial cut-points:
+\code{\link[=freedson_vm3]{freedson_vm3()}}
 }
 \concept{triaxial cut-points}

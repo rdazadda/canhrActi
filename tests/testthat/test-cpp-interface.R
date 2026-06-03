@@ -46,44 +46,6 @@ test_that("L5M10_cpp returns correct structure", {
   expect_true(is.list(result))
 })
 
-test_that("fragmentation_cpp returns correct structure", {
-  skip_if_not(cpp_available(), "C++ backend not available")
-
-  set.seed(42)
-  counts <- create.sedentary.pattern(n = 1440)
-  threshold <- 100
-  epoch_seconds <- 60
-
-  result <- fragmentation_cpp(counts, threshold, epoch_seconds)
-
-  expect_true(is.list(result))
-  expect_true("alpha" %in% names(result) || "n_bouts" %in% names(result))
-})
-
-test_that("sedentary_bouts_cpp returns a list", {
-  skip_if_not(cpp_available(), "C++ backend not available")
-
-  counts <- create.sedentary.pattern(n = 1440)
-  threshold <- 100
-
-  result <- sedentary_bouts_cpp(counts, threshold)
-
-  expect_true(is.list(result))
-})
-
-test_that("mvpa_bouts_cpp returns a list", {
-  skip_if_not(cpp_available(), "C++ backend not available")
-
-  counts <- create.active.pattern(n = 1440)
-  threshold <- 2020
-  min_bout <- 10
-  tolerance <- 2
-
-  result <- mvpa_bouts_cpp(counts, threshold, min_bout, tolerance)
-
-  expect_true(is.list(result))
-})
-
 test_that("sleep scoring with Cole-Kripke works", {
   skip_if_not(cpp_available(), "C++ backend not available")
 

@@ -48,6 +48,30 @@ to_cpm <- function(counts, epoch_length = 60) {
 }
 
 
+#' Warn About Negative Activity Counts (internal helper)
+#'
+#' Centralizes the negative-count contract shared by all cut-point algorithms so
+#' that every function warns consistently. Valid accelerometer data never has
+#' negative counts; when present they are treated as sedentary (count-threshold
+#' algorithms) via the lowest comparison, so this helper only surfaces a warning.
+#'
+#' @param counts Numeric vector of counts (CPM or VM CPM)
+#' @param algorithm Character name of the calling algorithm (for the message)
+#'
+#' @return Invisibly returns \code{counts} unchanged.
+#'
+#' @keywords internal
+#' @noRd
+.warn_negative_counts <- function(counts, algorithm = "cut-point") {
+  neg_counts <- sum(counts < 0, na.rm = TRUE)
+  if (neg_counts > 0) {
+    warning("Found ", neg_counts, " negative count values in ", algorithm, ". ",
+            "Negative counts are invalid and will be classified as sedentary.")
+  }
+  invisible(counts)
+}
+
+
 # ADULT CUT-POINTS (COUNT-BASED)
 
 #' Apply Freedson Adult (1998) Cut Points
@@ -88,11 +112,7 @@ freedson <- function(counts_per_minute) {
   intensity <- character(n)
 
   # Warn about negative counts (should not occur in valid accelerometer data)
-  neg_counts <- sum(counts_per_minute < 0, na.rm = TRUE)
-  if (neg_counts > 0) {
-    warning("Found ", neg_counts, " negative count values. ",
-            "Negative counts are invalid and will be classified as sedentary.")
-  }
+  .warn_negative_counts(counts_per_minute, "freedson")
 
   # Freedson (1998) cut-points: 0-99 sedentary, 100-1951 light, 1952-5724 moderate,
   # 5725-9498 vigorous, 9499+ very vigorous
@@ -138,6 +158,8 @@ troiano <- function(counts_per_minute) {
   n <- length(counts_per_minute)
   intensity <- character(n)
 
+  .warn_negative_counts(counts_per_minute, "troiano")
+
   intensity[counts_per_minute < 100]   <- "sedentary"
   intensity[counts_per_minute >= 100 & counts_per_minute < 2020] <- "light"
   intensity[counts_per_minute >= 2020 & counts_per_minute < 5999] <- "moderate"
@@ -178,6 +200,8 @@ troiano <- function(counts_per_minute) {
 matthews <- function(counts_per_minute) {
   n <- length(counts_per_minute)
   intensity <- character(n)
+
+  .warn_negative_counts(counts_per_minute, "matthews")
 
   intensity[counts_per_minute < 100]   <- "sedentary"
   intensity[counts_per_minute >= 100 & counts_per_minute < 760] <- "light"
@@ -230,6 +254,8 @@ santos_lozano <- function(counts_per_minute, age_group = c("younger", "older")) 
   n <- length(counts_per_minute)
   intensity <- character(n)
 
+  .warn_negative_counts(counts_per_minute, "santos_lozano")
+
   if (age_group == "younger") {
     intensity[counts_per_minute < 100]   <- "sedentary"
     intensity[counts_per_minute >= 100 & counts_per_minute < 3208] <- "light"
@@ -266,37 +292,52 @@ santos_lozano <- function(counts_per_minute, age_group = c("younger", "older")) 
 #'   \item CV >= 10: METs = 2.330519 + (0.001646 * CPM) - (1.2017e-7 * CPM^2)
 #' }
 #'
-#' Without CV, uses standard thresholds:
+#' Without CV (the default in this package's pipeline), a NON-VALIDATED count
+#' threshold approximation is used instead of the published 2-regression model:
 #' \itemize{
 #'   \item Sedentary: 0-50 CPM
 #'   \item Light: 51-1040 CPM (walking threshold)
 #'   \item Moderate: 1041-5724 CPM
 #'   \item Vigorous: >= 5725 CPM
 #' }
+#' \strong{Warning:} These single-cut count thresholds are ad-hoc and are NOT part
+#' of the Crouter, Clowers & Bassett (2006) two-regression method, which is a
+#' CV-driven MET-prediction model and does not define single count cut-points.
+#' The 1040 value is the Crouter walk/run separation count and 5724/5725 are
+#' borrowed from Freedson (1998). To run the published 2-regression model you
+#' must supply the per-epoch \code{cv} argument.
 #'
 #' @references
-#' Crouter SE, et al. (2006). Validity of 10 electronic pedometers for measuring
-#' steps, distance, and energy cost. Med Sci Sports Exerc, 38(7), 1255-1261.
+#' Crouter SE, Clowers KG, Bassett DR Jr. (2006). A novel method for using
+#' accelerometer data to predict energy expenditure. J Appl Physiol,
+#' 100(4), 1324-1331.
 #'
 #' @family adult cut-points
 #' @export
 crouter <- function(counts_per_minute, cv = NULL) {
   n <- length(counts_per_minute)
 
+  .warn_negative_counts(counts_per_minute, "crouter")
+
   if (!is.null(cv)) {
-    # Use 2-regression model
+    # Use 2-regression model.
+    # Clamp negative CPM to 0 so invalid inputs cannot be pushed into a
+    # non-sedentary class by the exp()/polynomial MET equations below.
+    cpm_clamped <- pmax(counts_per_minute, 0)
     mets <- numeric(n)
 
     # Low CV (continuous walking)
     low_cv <- !is.na(cv) & cv < 10
-    mets[low_cv] <- 2.379833 * exp(0.00013529 * counts_per_minute[low_cv])
+    mets[low_cv] <- 2.379833 * exp(0.00013529 * cpm_clamped[low_cv])
 
     # High CV (intermittent activity / lifestyle)
-    # Reference: Crouter SE et al. (2006). Med Sci Sports Exerc, 38(7):1255-1261
-    # Lifestyle equation: METs = 2.330519 + 0.001646 × CPM − 1.2017×10⁻⁷ × CPM²
+    # Reference: Crouter SE, Clowers KG, Bassett DR Jr. (2006). J Appl Physiol, 100(4):1324-1331
+    # Lifestyle equation (Crouter 2006, full 4-term cubic):
+    #   METs = 2.330519 + 0.001646*CPM - 1.2017e-7*CPM^2 + 3.3779e-12*CPM^3
     high_cv <- !is.na(cv) & cv >= 10
-    cpm_high <- counts_per_minute[high_cv]
-    mets[high_cv] <- 2.330519 + (0.001646 * cpm_high) - (1.2017e-7 * cpm_high^2)
+    cpm_high <- cpm_clamped[high_cv]
+    mets[high_cv] <- 2.330519 + (0.001646 * cpm_high) -
+      (1.2017e-7 * cpm_high^2) + (3.3779e-12 * cpm_high^3)
 
     # Convert METs to intensity
     intensity <- character(n)
@@ -355,6 +396,8 @@ sasaki_vm3 <- function(vm_counts_per_minute) {
   n <- length(vm_counts_per_minute)
   intensity <- character(n)
 
+  .warn_negative_counts(vm_counts_per_minute, "sasaki_vm3")
+
   # Sasaki et al. (2011) VM cut-points:
   # Sedentary: 0-199, Light: 200-2689, Moderate: 2690-6166, Vigorous: 6167-9642, Very Vigorous: >=9643
   # FIXED: Changed 2691 to 2690 to match published thresholds exactly
@@ -398,6 +441,8 @@ sasaki_vm3 <- function(vm_counts_per_minute) {
 freedson_vm3 <- function(vm_counts_per_minute) {
   n <- length(vm_counts_per_minute)
   intensity <- character(n)
+
+  .warn_negative_counts(vm_counts_per_minute, "freedson_vm3")
 
   intensity[vm_counts_per_minute < 100]   <- "sedentary"
   intensity[vm_counts_per_minute >= 100 & vm_counts_per_minute < 2453] <- "light"
@@ -444,6 +489,8 @@ evenson <- function(counts_per_minute) {
   n <- length(counts_per_minute)
   intensity <- character(n)
 
+  .warn_negative_counts(counts_per_minute, "evenson")
+
   intensity[counts_per_minute <= 100] <- "sedentary"
   intensity[counts_per_minute > 100 & counts_per_minute <= 2295] <- "light"
   intensity[counts_per_minute > 2295 & counts_per_minute <= 4011] <- "moderate"
@@ -483,6 +530,8 @@ evenson <- function(counts_per_minute) {
 puyau <- function(counts_per_minute) {
   n <- length(counts_per_minute)
   intensity <- character(n)
+
+  .warn_negative_counts(counts_per_minute, "puyau")
 
   intensity[counts_per_minute < 800] <- "sedentary"
   intensity[counts_per_minute >= 800 & counts_per_minute < 3200] <- "light"
@@ -524,6 +573,8 @@ mattocks <- function(counts_per_minute) {
   n <- length(counts_per_minute)
   intensity <- character(n)
 
+  .warn_negative_counts(counts_per_minute, "mattocks")
+
   intensity[counts_per_minute <= 100] <- "sedentary"
   intensity[counts_per_minute > 100 & counts_per_minute <= 3580] <- "light"
   intensity[counts_per_minute > 3580 & counts_per_minute <= 6129] <- "moderate"
@@ -564,6 +615,8 @@ pate_preschool <- function(counts_per_minute) {
   n <- length(counts_per_minute)
   intensity <- character(n)
 
+  .warn_negative_counts(counts_per_minute, "pate_preschool")
+
   intensity[counts_per_minute < 800] <- "sedentary"
   intensity[counts_per_minute >= 800 & counts_per_minute < 1680] <- "light"
   intensity[counts_per_minute >= 1680 & counts_per_minute < 3368] <- "moderate"
@@ -587,7 +640,10 @@ pate_preschool <- function(counts_per_minute) {
 #' @return Ordered factor with intensity levels
 #'
 #' @details
-#' Butte (2014) provides age-specific equations. Approximate cutpoints:
+#' Butte (2014) provides age-specific regression equations. This implementation
+#' is a COUNT-THRESHOLD APPROXIMATION of those equations: it varies only the
+#' single MVPA cut by age and applies fixed sedentary/light cuts for all ages.
+#' Approximate cutpoints:
 #' Age 3-4:
 #' \itemize{
 #'   \item Sedentary: 0-239 CPM
@@ -602,14 +658,17 @@ pate_preschool <- function(counts_per_minute) {
 #' }
 #'
 #' @references
-#' Butte NF, et al. (2014). A youth compendium of physical activities.
-#' Med Sci Sports Exerc, 46(7), 1359-1367.
+#' Butte NF, Wong WW, Lee JS, Adolph AL, Puyau MR, Zakeri IF. (2014). Prediction
+#' of energy expenditure and physical activity in preschoolers. Med Sci Sports
+#' Exerc, 46(7), 1216-1226.
 #'
 #' @family children cut-points
 #' @export
 butte_preschool <- function(counts_per_minute, age = 4) {
   n <- length(counts_per_minute)
   intensity <- character(n)
+
+  .warn_negative_counts(counts_per_minute, "butte_preschool")
 
   # Age-dependent moderate threshold
   mvpa_threshold <- if (age < 5) 2120 else 2296
@@ -625,17 +684,17 @@ butte_preschool <- function(counts_per_minute, age = 4) {
 }
 
 
-#' Apply Chandler (2016) Preschooler Cut Points
+#' Apply Chandler (2016) Children Cut Points
 #'
-#' Cut-points for preschoolers validated with indirect calorimetry.
-#' Specifically developed for 3-5 year olds.
+#' Cut-points for children validated with indirect calorimetry using a
+#' wrist-worn accelerometer. Specifically developed for 8-12 year olds.
 #'
 #' @param counts_per_minute Numeric vector of CPM
 #'
 #' @return Ordered factor with intensity levels
 #'
 #' @details
-#' Chandler (2016) cutpoints for preschoolers (15-sec epochs):
+#' Chandler (2016) cutpoints for 8-12 year-old children, wrist-worn (15-sec epochs):
 #' \itemize{
 #'   \item Sedentary: 0-5 counts/15s (0-20 CPM)
 #'   \item Light: 6-404 counts/15s (21-1616 CPM)
@@ -655,6 +714,8 @@ butte_preschool <- function(counts_per_minute, age = 4) {
 chandler <- function(counts_per_minute) {
   n <- length(counts_per_minute)
   intensity <- character(n)
+
+  .warn_negative_counts(counts_per_minute, "chandler")
 
   intensity[counts_per_minute <= 20] <- "sedentary"
   intensity[counts_per_minute > 20 & counts_per_minute <= 1616] <- "light"
@@ -677,7 +738,7 @@ chandler <- function(counts_per_minute) {
 #' @return Ordered factor with intensity levels
 #'
 #' @details
-#' Copeland (2009) cutpoints:
+#' Copeland (2009) children cutpoints:
 #' \itemize{
 #'   \item Sedentary: 0-100 CPM
 #'   \item Light: 101-2220 CPM
@@ -686,14 +747,21 @@ chandler <- function(counts_per_minute) {
 #' }
 #'
 #' @references
-#' Copeland JL, Esliger DW. (2009). Accelerometer assessment of physical
-#' activity in active, healthy older adults. J Aging Phys Act, 17(1), 17-30.
+#' Source citation requires confirmation. The 0/100/2220/6130 CPM thresholds
+#' implemented here are child-magnitude cut-points and do NOT correspond to the
+#' older-adult paper (Copeland JL, Esliger DW. (2009). Accelerometer assessment
+#' of physical activity in active, healthy older adults. J Aging Phys Act,
+#' 17(1), 17-30) that was previously (and incorrectly) cited here; that paper is
+#' the source for \code{\link{copeland_older}}, not this children function. The
+#' validation study for these specific child thresholds has not been confirmed.
 #'
 #' @family children cut-points
 #' @export
 copeland <- function(counts_per_minute) {
   n <- length(counts_per_minute)
   intensity <- character(n)
+
+  .warn_negative_counts(counts_per_minute, "copeland")
 
   intensity[counts_per_minute <= 100] <- "sedentary"
   intensity[counts_per_minute > 100 & counts_per_minute <= 2220] <- "light"
@@ -736,6 +804,8 @@ copeland <- function(counts_per_minute) {
 romanzini <- function(counts_per_minute) {
   n <- length(counts_per_minute)
   intensity <- character(n)
+
+  .warn_negative_counts(counts_per_minute, "romanzini")
 
   intensity[counts_per_minute <= 180] <- "sedentary"
   intensity[counts_per_minute > 180 & counts_per_minute <= 756] <- "light"
@@ -782,6 +852,8 @@ copeland_older <- function(counts_per_minute) {
   n <- length(counts_per_minute)
   intensity <- character(n)
 
+  .warn_negative_counts(counts_per_minute, "copeland_older")
+
   intensity[counts_per_minute < 100] <- "sedentary"
   intensity[counts_per_minute >= 100 & counts_per_minute <= 1040] <- "light"
   intensity[counts_per_minute > 1040 & counts_per_minute <= 1800] <- "moderate"
@@ -808,6 +880,8 @@ copeland_older <- function(counts_per_minute) {
 CANHR.Cutpoints <- function(counts_per_minute) {
   n <- length(counts_per_minute)
   intensity <- character(n)
+
+  .warn_negative_counts(counts_per_minute, "CANHR")
 
   intensity[counts_per_minute <= 150] <- "sedentary"
   intensity[counts_per_minute > 150 & counts_per_minute <= 2200] <- "light"
@@ -846,8 +920,19 @@ custom_cutpoints <- function(data,
                               labels = NULL) {
 
   if (is.null(labels)) {
+    if (is.null(names(thresholds)) || any(names(thresholds) == "")) {
+      stop("When 'labels' is NULL, 'thresholds' must be a fully named numeric ",
+           "vector (e.g., c(light = 100, moderate = 2020, vigorous = 5999)).")
+    }
     labels <- c("sedentary", names(thresholds))
   }
+
+  # Each threshold opens a new category above the base level, so the number of
+  # labels must be exactly one more than the number of thresholds; otherwise the
+  # classification loop would index out of range and produce NA factor levels.
+  stopifnot(length(labels) == length(thresholds) + 1)
+
+  .warn_negative_counts(data, "custom_cutpoints")
 
   thresholds <- sort(thresholds)
   n <- length(data)

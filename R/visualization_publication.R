@@ -368,8 +368,9 @@ plot_activity_clock <- function(data,
   # Aggregate by hour
   hourly <- aggregate(activity ~ hour, data = data, FUN = aggregate_func, na.rm = TRUE)
 
-  # Add hour 24 to close the loop (same as hour 0)
-  hourly <- rbind(hourly, data.frame(hour = 24, activity = hourly$activity[hourly$hour == 0]))
+  # Note: coord_polar() wraps the 0-24 scale automatically, so we do NOT
+  # append a duplicate hour = 24 row (doing so double-plots a point/segment
+  # at midnight because 0 and 24 map to the same polar angle).
 
   # Define color scheme
   if (color_scheme == "canhr") {
@@ -613,24 +614,44 @@ plot_activity_heatmap_wear <- function(data,
     data$wear <- TRUE
   }
 
-  # Set activity to NA for non-wear
+  # Keep the raw activity (pre-mask) for the non-wear fraction, and a masked
+  # copy (non-wear -> NA) for the displayed activity values.
+  data$activity_raw <- data$activity
   data$activity[!data$wear] <- NA
   data$is_nonwear <- !data$wear
 
-  # Aggregate by date and hour
-  heatmap_data <- aggregate(
-    cbind(activity, is_nonwear) ~ date + hour,
+  # Aggregate activity (masked) and the non-wear fraction with separate,
+  # explicit FUNs so the two quantities are not read from the wrong column.
+  # Guard all-NA cells: aggregate_func over an empty vector would warn/NaN.
+  activity_agg <- aggregate(
+    activity ~ date + hour,
     data = data,
-    FUN = function(x) c(
-      value = aggregate_func(x, na.rm = TRUE),
-      nonwear_pct = mean(is.na(x) | x == 0, na.rm = TRUE)
-    )
+    FUN = function(x) {
+      x <- x[!is.na(x)]
+      if (length(x) == 0) NA_real_ else aggregate_func(x)
+    },
+    na.action = na.pass
   )
 
-  # Extract aggregated values
-  heatmap_data$activity <- heatmap_data$activity[, "value"]
-  heatmap_data$nonwear_pct <- heatmap_data$is_nonwear[, "value"]
-  heatmap_data$is_nonwear <- NULL
+  # Non-wear fraction: share of epochs in the cell whose raw (pre-mask)
+  # activity is missing or zero. Computed from activity_raw so the fraction
+  # is NOT read from the mean of the 0/1 is_nonwear flag (the original bug).
+  nonwear_agg <- aggregate(
+    activity_raw ~ date + hour,
+    data = data,
+    FUN = function(x) {
+      if (length(x) == 0) NA_real_ else mean(is.na(x) | x == 0)
+    },
+    na.action = na.pass
+  )
+  names(nonwear_agg)[names(nonwear_agg) == "activity_raw"] <- "nonwear_pct"
+
+  # Combine the two aggregations on date + hour
+  heatmap_data <- merge(
+    activity_agg,
+    nonwear_agg[, c("date", "hour", "nonwear_pct")],
+    by = c("date", "hour")
+  )
 
   # Mark predominantly non-wear cells
   heatmap_data$display_nonwear <- heatmap_data$nonwear_pct > 0.5

@@ -185,10 +185,15 @@ ee.freedson.vm3 <- function(counts_data, body_mass, epoch_length) {
     vmcpm <- vm * scale
   }
 
-  # Use vmcpm (scaled to CPM) for the calculation, not raw vm
+  # Above threshold: Sasaki VM3 kcal model. Below threshold (light/sedentary),
+  # use the Williams (1998) work-energy estimate on vertical-axis counts rather
+  # than 0, which would undercount total energy expenditure (matches the
+  # ee.freedson.vm3.combination variant).
+  cpm <- counts_data$axis1
+  if (epoch_length != 60) cpm <- cpm * (60 / epoch_length)
   kcal_per_min <- ifelse(vmcpm > 2453,
                           0.001064 * vmcpm + 0.087512 * body_mass - 5.500229,
-                          0)
+                          cpm * 0.0000191 * body_mass)
 
   kcal_per_min[kcal_per_min < 0] <- 0
 

@@ -4,17 +4,27 @@
 \alias{compare.bout.distributions}
 \title{Compare Power-Law vs Exponential Distribution Fit}
 \usage{
-compare.bout.distributions(bout_durations)
+compare.bout.distributions(bout_durations, bootstrap_gof = FALSE)
 }
 \arguments{
 \item{bout_durations}{Numeric vector of bout durations}
+
+\item{bootstrap_gof}{Use the Clauset (2009) semiparametric bootstrap GoF test
+to decide whether the power-law is a plausible fit? (default FALSE, kept off
+for dashboard speed). When FALSE, plausibility is judged by the asymptotic KS
+approximation (anti-conservative); when TRUE, by the bootstrap p-value.}
 }
 \value{
 List with model comparison results
 }
 \description{
-Tests whether bout durations follow power-law or exponential distribution
-using likelihood ratio test (Vuong test).
+Tests whether bout durations follow a power-law or exponential distribution
+using a normalized likelihood-ratio (Vuong) test. The comparison is run over
+the SAME tail (durations >= xmin) used to estimate the power-law exponent
+alpha, per Clauset et al. (2009). Following Clauset, the "power_law" label is
+only assigned when (a) the Vuong test is significant AND favours the power
+law, AND (b) the power-law itself is a plausible fit to the tail; otherwise
+the result is reported as "inconclusive".
 }
 \details{
 Power-law: P(X >= x) ~ x^(-alpha+1) - "fat tail", many short + few very long

@@ -151,8 +151,8 @@ and 45-minute upstream/downstream validation. Custom algorithm.
 \itemize{
 \item \strong{Freedson (1998):} Validated cut points for adults worn at hip
 \itemize{
-\item Sedentary: 0-100 CPM
-\item Light: 101-1951 CPM
+\item Sedentary: 0-99 CPM
+\item Light: 100-1951 CPM
 \item Moderate: 1952-5724 CPM
 \item Vigorous: 5725-9498 CPM
 \item Very Vigorous: >=9499 CPM

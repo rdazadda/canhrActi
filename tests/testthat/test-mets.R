@@ -2,10 +2,11 @@ test_that("freedson.vm3 calculates METs correctly", {
   # Test using Sasaki et al. (2011) coefficients
   # Reference: Sasaki JE, John D, Freedson PS. Validation and comparison of
   # ActiGraph activity monitors. J Sci Med Sport. 2011;14(5):411-416.
-  # Equation: METs = 0.001064 × VM CPM + 0.6569
+  # Equation (published Sasaki 2011 VM3 MET regression):
+  #   METs = 0.000863 × VM3 + 0.668876
   counts.data <- data.frame(axis1 = 1000, axis2 = 800, axis3 = 600)
   vm <- sqrt(1000^2 + 800^2 + 600^2)
-  expected.mets <- 0.001064 * vm + 0.6569
+  expected.mets <- 0.000863 * vm + 0.668876
   result <- calculate.mets(counts.data, algorithm = "freedson.vm3")
   expect_equal(result, expected.mets, tolerance = 0.01)
 })

@@ -12,7 +12,8 @@ sedentary.fragmentation(
   epoch_length = 60,
   min_break_length = 5,
   robust_alpha = TRUE,
-  compare_distributions = TRUE
+  compare_distributions = TRUE,
+  bootstrap_gof = FALSE
 )
 }
 \arguments{
@@ -43,6 +44,12 @@ Lower values (1-2) may inflate break counts with non-meaningful movements.}
 \item{robust_alpha}{Use robust alpha estimation with xmin optimization? (default TRUE)}
 
 \item{compare_distributions}{Compare power-law vs exponential fit? (default TRUE)}
+
+\item{bootstrap_gof}{Run the Clauset et al. (2009) semiparametric bootstrap
+power-law goodness-of-fit test? (default FALSE). Off by default to keep the
+interactive dashboard fast. When FALSE, only an asymptotic KS approximation
+(\code{alpha_ks_pvalue_approx}) is reported - it is NOT a valid Clauset GoF
+p-value. When TRUE, \code{alpha_gof_pvalue} holds the bootstrap p-value.}
 }
 \value{
 A list with class "canhrActi_fragmentation" containing:

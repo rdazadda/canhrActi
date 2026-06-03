@@ -62,7 +62,8 @@ NULL
 #'     \item{IV}{Intradaily variability: within-day fragmentation (0=sine, ~2=noise)}
 #'     \item{phi}{First-order autocorrelation at 1-hour lag}
 #'     \item{SRI}{Sleep Regularity Index (-100 to 100, higher=more regular)}
-#'     \item{CPD}{Composite Phase Deviation (day-to-day phase variability)}
+#'     \item{onset_timing_variability}{Mean circular SD of daily L5/M10 onset times
+#'       (day-to-day phase variability). NOT the published Fischer/Roenneberg CPD.}
 #'     \item{hourly_profile}{Mean activity by hour of day}
 #'     \item{daily_metrics}{Per-day L5, M10, RA values}
 #'   }
@@ -253,15 +254,27 @@ circadian.rhythm <- function(counts,
     hourly_means <- tapply(counts, hours_factor, mean, na.rm = TRUE)
     hourly_means <- as.numeric(hourly_means[!is.na(hourly_means)])
 
+    # IS: always use the alignment-correct R implementation.
+    # calculate_IS_cpp buckets hours by array position mod 24, which only matches
+    # real clock hour-of-day when the recording starts at 00:00 AND no hour is
+    # dropped. Because any all-NA (non-wear) hour is removed above (shifting every
+    # later element) and recordings rarely start at midnight, the C++ buckets do
+    # not correspond to real clock hours and misalign the Witting (1990) profile.
+    # .calculate.IS.IV keys hourly means by POSIXlt$hour, so it stays aligned.
     is_val <- tryCatch({
-      calculate_IS_cpp(hourly_means, 24L)
+      .calculate.IS.IV(counts, timestamps, epoch_length)$IS
     }, error = function(e) NA_real_)
 
-    # IV requires consecutive hours - check for gaps before using C++
-    # Gap detection: if hourly data has fewer points than expected continuous hours,
-    # use R implementation which properly handles non-consecutive data
-    expected_hours <- as.numeric(difftime(max(timestamps), min(timestamps), units = "hours")) + 1
-    has_gaps <- length(hourly_means) < (expected_hours * 0.9)  # Allow 10% tolerance
+    # IV requires consecutive hours - check for gaps before using C++.
+    # calculate_IV_cpp differences consecutive ARRAY positions of the NA-dropped
+    # vector, so any missing hour makes a difference bridge a >1h gap and inflates
+    # the Witting (1990) successive-difference numerator. Only use C++ when EVERY
+    # expected hour is present; otherwise route through the gap-aware R fallback.
+    # floor() the span so a complete recording is not misflagged: N distinct
+    # clock hours span (N-1) full hours plus a fractional remainder, so
+    # floor(span) + 1 == N exactly when every expected hour is present.
+    expected_hours <- floor(as.numeric(difftime(max(timestamps), min(timestamps), units = "hours"))) + 1
+    has_gaps <- length(hourly_means) < expected_hours  # require all expected hours present
 
     iv_val <- tryCatch({
       if (has_gaps) {
@@ -311,8 +324,8 @@ circadian.rhythm <- function(counts,
   hourly_profile <- .calculate.hourly.profile(counts, timestamps)
   daily_metrics <- .calculate.daily.circadian(counts, timestamps, epoch_length)
 
-  # Composite Phase Deviation
-  cpd <- .composite.phase.deviation(daily_metrics)
+  # Onset timing variability (NOT the published Fischer/Roenneberg CPD)
+  otv <- .onset.timing.variability(daily_metrics)
 
   # 
 
@@ -339,10 +352,11 @@ circadian.rhythm <- function(counts,
     # Sleep-based metrics (Phillips et al., 2017)
     SRI = sri,
 
-    # Phase variability
-    CPD = cpd$CPD,
-    L5_variability_hours = cpd$L5_variability,
-    M10_variability_hours = cpd$M10_variability,
+    # Phase variability (onset_timing_variability is the mean circular SD of
+    # daily L5/M10 onset times; it is NOT the published Fischer/Roenneberg CPD)
+    onset_timing_variability = otv$onset_timing_variability,
+    L5_variability_hours = otv$L5_variability,
+    M10_variability_hours = otv$M10_variability,
 
     # Profiles
     hourly_profile = hourly_profile,
@@ -590,11 +604,12 @@ circadian.rhythm <- function(counts,
   }
 
   # Intradaily Variability (IV)
-  # IV = n * sum((Xi - Xi-1)^2) / ((n-1) * sum((Xi - X_mean)^2))
+  # Standard Witting (1990): IV = n * sum((Xi - Xi-1)^2) / ((n-1) * sum((Xi - X_mean)^2)).
   # IMPORTANT: Only include differences between CONSECUTIVE hours to avoid
-
   # inflated IV values when there are data gaps (e.g., non-wear periods).
-  # A gap of >1 hour would incorrectly inflate the squared differences.
+  # A gap of >1 hour would incorrectly inflate the squared differences. We use a
+  # gap-aware variant (see IV computation below) with a single consistent count
+  # for the numerator (consecutive pairs) and denominator (all hourly points).
   hourly_data <- hourly_data[order(hourly_data$date, hourly_data$hour), ]
 
   # Calculate time differences in hours between consecutive data points
@@ -612,14 +627,24 @@ circadian.rhythm <- function(counts,
     activity_diffs <- diff(hourly_data$activity)
     consecutive_diffs <- activity_diffs[is_consecutive]
     successive_diff_sq <- sum(consecutive_diffs^2, na.rm = TRUE)
-    n_consecutive <- sum(is_consecutive, na.rm = TRUE) + 1  # +1 because diff reduces length by 1
+    # Number of consecutive diff pairs actually contributing to the numerator
+    n_pairs <- sum(is_consecutive, na.rm = TRUE)
   } else {
     successive_diff_sq <- 0
-    n_consecutive <- 0
+    n_pairs <- 0
   }
 
-  IV <- if (total_var > 0 && n_consecutive > 1) {
-    (n_consecutive * successive_diff_sq) / ((n_consecutive - 1) * total_var)
+  # Intradaily Variability (gap-aware variant of Witting et al., 1990).
+  # The published IV = [n * sum((Xi - Xi-1)^2)] / [(n-1) * sum((Xi - Xmean)^2)]
+  # uses a single n throughout, i.e. IV = mean(successive squared diff) / variance.
+  # To keep a consistent count in numerator and denominator while excluding
+  # gap-bridging differences, we form:
+  #   mean successive squared diff = successive_diff_sq / n_pairs   (over consecutive pairs only)
+  #   variance of the full series   = total_var / n                 (over all n hourly points)
+  # IV = (mean successive squared diff) / (variance). For a fully consecutive
+  # series this reduces to the standard n/(n-1) Witting normalization.
+  IV <- if (total_var > 0 && n_pairs > 0) {
+    (successive_diff_sq / n_pairs) / (total_var / n)
   } else NA_real_
 
   list(IS = IS, IV = IV)
@@ -640,8 +665,11 @@ circadian.rhythm <- function(counts,
 #' Higher phi indicates more consistent, predictable activity patterns.
 #' Low or negative phi indicates fragmented, unpredictable activity.
 #'
-#' This is the AR(1) coefficient from an autoregressive model fit to
-#' hourly activity data.
+#' This is the lag-1 autocorrelation of the hourly activity series. The series
+#' is placed on a regular hourly grid (NA for missing/non-wear hours) so the
+#' "1-hour lag" only correlates genuinely adjacent clock hours rather than
+#' bridging multi-hour gaps. It equals the AR(1) coefficient only for a true
+#' AR(1) process.
 #'
 #' @references
 #' van Hees VT, et al. (2015). A Novel, Open Access Method to Assess Sleep
@@ -653,17 +681,26 @@ circadian.rhythm <- function(counts,
 #' @keywords internal
 .calculate.phi <- function(counts, timestamps) {
 
-  # Aggregate to hourly means
+  # Aggregate to hourly means on a REGULAR hourly grid.
+  # cut(..., breaks = "hour") produces a factor whose levels span every clock
+  # hour from the first to the last timestamp, so empty (non-wear) hours appear
+  # as NA in the tapply result. We KEEP those NAs in place (ordered by the factor
+  # levels) instead of dropping them, so adjacent array positions correspond to
+  # adjacent clock hours. Dropping NAs would let the lag-1 ACF silently bridge a
+  # multi-hour gap and correlate points that are not actually 1 hour apart.
   hours_factor <- cut(timestamps, breaks = "hour")
   hourly_means <- tapply(counts, hours_factor, mean, na.rm = TRUE)
-  hourly_means <- hourly_means[!is.na(hourly_means)]
+  # Order by the (time-ordered) factor levels so the series is on a regular grid
+  hourly_means <- as.numeric(hourly_means[levels(hours_factor)])
 
+  # Need at least 2 days of hourly slots (including NA gaps)
   n <- length(hourly_means)
-  if (n < 48) {  # Need at least 2 days
+  if (n < 48 || sum(!is.na(hourly_means)) < 48) {
     return(NA_real_)
   }
 
-  # AR(1) coefficient = lag-1 autocorrelation
+  # Lag-1 autocorrelation. na.pass keeps the regular grid; acf computes the
+  # covariance only over genuinely adjacent (non-NA) hourly pairs.
   acf_result <- tryCatch({
     acf(hourly_means, lag.max = 1, plot = FALSE, na.action = na.pass)
   }, error = function(e) NULL)
@@ -772,21 +809,29 @@ sleep.regularity.index <- function(sleep_state, timestamps, epoch_length = 60) {
 }
 
 
-#' Calculate Composite Phase Deviation
+#' Calculate Onset Timing Variability
 #'
-#' Measures day-to-day variability in circadian timing using circular statistics.
+#' Measures day-to-day variability in the timing of the L5 and M10 activity
+#' windows using circular statistics.
 #'
 #' @param daily_metrics Data frame with daily L5_start, M10_start
 #'
-#' @return List with CPD and component variabilities
+#' @return List with onset_timing_variability and component (L5/M10) variabilities
 #'
 #' @details
 #' Uses circular standard deviation to properly handle midnight wraparound.
 #' For example, if L5 starts at 23:00 one day and 01:00 the next, the
 #' actual variability is 2 hours, not 22 hours.
 #'
+#' NOTE: This is the mean of the circular SD of daily L5 and M10 onset times. It
+#' is NOT the published Composite Phase Deviation (CPD) of Fischer & Roenneberg
+#' (2016), which combines each day's precision (deviation from the individual's
+#' own mean phase) and accuracy (deviation from a reference phase) as
+#' mean(sqrt(precision^2 + accuracy^2)). It is named here to reflect exactly what
+#' it computes so it is not mistaken for the established CPD metric.
+#'
 #' @keywords internal
-.composite.phase.deviation <- function(daily_metrics) {
+.onset.timing.variability <- function(daily_metrics) {
 
   # Convert time strings to decimal hours
   to_decimal <- function(time_str) {
@@ -826,11 +871,12 @@ sleep.regularity.index <- function(sleep_state, timestamps, epoch_length = 60) {
   sd_l5 <- circular_sd(l5_hours)
   sd_m10 <- circular_sd(m10_hours)
 
-  # CPD = mean of phase variabilities
-  cpd <- mean(c(sd_l5, sd_m10), na.rm = TRUE)
+  # Onset timing variability = mean of the L5/M10 onset-time circular SDs.
+  # (Not the published Fischer/Roenneberg CPD; see @details.)
+  otv <- mean(c(sd_l5, sd_m10), na.rm = TRUE)
 
   list(
-    CPD = round(cpd, 2),
+    onset_timing_variability = round(otv, 2),
     L5_variability = round(sd_l5, 2),
     M10_variability = round(sd_m10, 2)
   )
@@ -1134,9 +1180,15 @@ cosinor.analysis <- function(counts, timestamps, period = 24, wear_time = NULL) 
   acrophase <- (acrophase_rad * period / (2 * pi)) %% period
   if (acrophase < 0) acrophase <- acrophase + period
 
-  # Calculate fit statistics on the averaged profile
+  # Calculate fit statistics on the averaged profile.
+  # The model is fit by weighted least squares (weights = sqrt(profile_n)), so the
+  # total sum of squares MUST be taken about the WEIGHTED mean for the
+  # decomposition SS_total = SS_model + SS_resid to hold (and R^2 in [0,1] and the
+  # F-test to be valid). Using the unweighted mean(profile_y) here would break the
+  # decomposition and mis-scale r_squared/percent_rhythm/f_statistic/p_value.
   y_pred <- mesor + amplitude * cos(omega * t_hours - acrophase_rad)
-  ss_total <- sum(weights^2 * (profile_y - mean(profile_y))^2)
+  ybar_w <- sum(weights^2 * profile_y) / sum(weights^2)  # weighted mean baseline
+  ss_total <- sum(weights^2 * (profile_y - ybar_w)^2)
   ss_resid <- sum(weights^2 * (profile_y - y_pred)^2)
   r_squared <- if (ss_total > 0) 1 - ss_resid / ss_total else NA_real_
 
@@ -1433,7 +1485,11 @@ cosinor.extended <- function(counts, timestamps, harmonics = c(24, 12),
     y_pred <- y_pred + components$amplitude[i] * cos(omega * t_hours - acro_rad)
   }
 
-  ss_total <- sum(weights^2 * (profile_y - mean(profile_y))^2)
+  # Use the WEIGHTED mean as the SS-total baseline to match the weighted least
+  # squares fit (see cosinor.analysis); the unweighted mean would break the
+  # SS decomposition and mis-scale r_squared / percent_rhythm / F-test.
+  ybar_w <- sum(weights^2 * profile_y) / sum(weights^2)
+  ss_total <- sum(weights^2 * (profile_y - ybar_w)^2)
   ss_resid <- sum(weights^2 * (profile_y - y_pred)^2)
   r_squared <- if (ss_total > 0) 1 - ss_resid / ss_total else NA_real_
 
@@ -1789,7 +1845,7 @@ print.canhrActi_circadian <- function(x, ...) {
   } else {
     cat("  Sleep Regularity Index:   Not calculated (requires sleep_state input)\n")
   }
-  cat(sprintf("  Composite Phase Deviation: %.2f hours\n", x$CPD))
+  cat(sprintf("  Onset timing variability: %.2f hours\n", x$onset_timing_variability))
   cat(sprintf("  L5 timing variability:    %.2f hours (circular SD)\n", x$L5_variability_hours))
   cat(sprintf("  M10 timing variability:   %.2f hours (circular SD)\n", x$M10_variability_hours))
 

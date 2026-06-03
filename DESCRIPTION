@@ -36,7 +36,7 @@ Imports:
     scales,
     tidyr,
     Rcpp (>= 1.0.0)
-LinkingTo: Rcpp, RcppArmadillo
+LinkingTo: Rcpp
 SystemRequirements: C++17
 Suggests:
     knitr,
@@ -60,4 +60,4 @@ Suggests:
     promises
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
+Config/roxygen2/version: 8.0.0

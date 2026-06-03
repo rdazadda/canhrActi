@@ -9,14 +9,26 @@
 #' @param spike_stoplevel Maximum count value for spike
 #' @param validate_spikes Logical. If TRUE, use upstream/downstream validation (Choi/CANHR2025)
 #' @param min_window_len Upstream/downstream window length (for Choi/CANHR2025)
+#' @param max_spike_minutes Integer. Total number of spike (1-stoplevel) minutes permitted
+#'   within a candidate non-wear window. This is the TOTAL spike-minute budget and is kept
+#'   distinct from \code{spike_tolerance}, which caps the longest CONSECUTIVE spike run.
+#'   Defaults to \code{spike_tolerance} to preserve historical behavior.
 #' @return Logical vector where TRUE indicates wear time
 #' @keywords internal
+#'
+#' @section NA handling:
+#' Missing counts (\code{NA}) are imputed to 0 (treated as measured zero counts) before
+#' detection. This is a deliberate imputation choice, not part of Troiano (2008) or Choi
+#' (2011). Because zeros contribute to zero-windows, this biases detection TOWARD non-wear:
+#' missing epochs can create or extend non-wear bouts. Callers that need missingness to be
+#' methodologically distinct from a measured zero should pre-handle NA before calling.
 .detect_wear_time_base <- function(counts_per_minute,
                                    non_wear_window,
                                    spike_tolerance,
                                    spike_stoplevel,
                                    validate_spikes = FALSE,
-                                   min_window_len = 30) {
+                                   min_window_len = 30,
+                                   max_spike_minutes = spike_tolerance) {
 
   n.minutes <- length(counts_per_minute)
   if (n.minutes == 0) return(logical(0))
@@ -24,8 +36,12 @@
 
   wear.time <- rep(TRUE, n.minutes)
 
-  # Handle NA values - treat as zeros
-
+  # NA handling (deliberate imputation choice, documented in the function's
+  # @section NA handling): missing counts are imputed to 0. Neither Troiano (2008)
+  # nor Choi (2011) specifies this; treating NA as a measured zero biases detection
+  # TOWARD non-wear, because imputed zeros contribute to zero-windows and can create
+  # or extend non-wear bouts. Callers needing missingness handled distinctly from a
+  # measured zero should pre-process NA before calling this function.
   counts_per_minute[is.na(counts_per_minute)] <- 0
 
   # OPTIMIZED: Pre-compute key indicators using vectorized operations
@@ -42,11 +58,32 @@
   n_zeros_in_window <- zero_cumsum[(non_wear_window + 1):(n.minutes + 1)] - zero_cumsum[1:(n.minutes - non_wear_window + 1)]
   n_above_in_window <- above_cumsum[(non_wear_window + 1):(n.minutes + 1)] - above_cumsum[1:(n.minutes - non_wear_window + 1)]
 
-  # Candidate windows: enough zeros, no above-stoplevel values
-  min_zeros_required <- non_wear_window - spike_tolerance
+  # Candidate windows: enough zeros, no above-stoplevel values.
+  # Two DISTINCT spike notions are enforced separately:
+  #   - max_spike_minutes: TOTAL spike-minute budget in the window (used here to set the
+  #     minimum required zeros). Because n_above_in_window == 0, every non-zero minute in a
+  #     candidate window is a spike, so allowing up to max_spike_minutes spikes is equivalent
+  #     to requiring (non_wear_window - max_spike_minutes) zeros.
+  #   - spike_tolerance: longest CONSECUTIVE spike run permitted (enforced below via RLE).
+  min_zeros_required <- non_wear_window - max_spike_minutes
   candidate_starts <- which(n_zeros_in_window >= min_zeros_required & n_above_in_window == 0)
 
   if (length(candidate_starts) == 0) return(wear.time)
+
+  # Choi/CANHR2025 spike rule: a spike at position `pos` is a valid part of a non-wear
+  # period only if flanked by min_window_len consecutive zeros on BOTH sides. Shared by the
+  # initial-window validation and the extension loop so both branches use the identical rule.
+  .spike_has_flanking_zeros <- function(pos) {
+    up_start <- max(1L, pos - min_window_len)
+    up_end <- pos - 1L
+    has_upstream <- up_end >= up_start && all(counts_per_minute[up_start:up_end] == 0)
+
+    down_start <- pos + 1L
+    down_end <- min(n.minutes, pos + min_window_len)
+    has_downstream <- down_start <= down_end && all(counts_per_minute[down_start:down_end] == 0)
+
+    has_upstream && has_downstream
+  }
 
   # Process candidates (still need some iteration but much fewer)
   i <- 1L
@@ -72,17 +109,7 @@
       for (sp_idx in spike_positions) {
         actual_pos <- window.start + sp_idx - 1L
 
-        # Check upstream zeros
-        up_start <- max(1L, actual_pos - min_window_len)
-        up_end <- actual_pos - 1L
-        has_upstream <- up_end >= up_start && all(counts_per_minute[up_start:up_end] == 0)
-
-        # Check downstream zeros
-        down_start <- actual_pos + 1L
-        down_end <- min(n.minutes, actual_pos + min_window_len)
-        has_downstream <- down_start <= down_end && all(counts_per_minute[down_start:down_end] == 0)
-
-        if (!has_upstream || !has_downstream) {
+        if (!.spike_has_flanking_zeros(actual_pos)) {
           valid_nonwear <- FALSE
           break
         }
@@ -111,9 +138,25 @@
         }
         spike_len <- extend_pos - spike_start
 
-        if (spike_len <= spike_tolerance) {
+        # For Choi/CANHR2025: the extended portion must obey the SAME upstream/downstream
+        # zero-window rule as the initial window, not just the consecutive-run cap. Every
+        # spike epoch in this run must be flanked by min_window_len zeros on both sides;
+        # otherwise the extension stops here (the spike marks real wear).
+        spikes_valid <- spike_len <= spike_tolerance
+        if (spikes_valid && validate_spikes) {
+          for (sp_pos in spike_start:(extend_pos - 1L)) {
+            if (!.spike_has_flanking_zeros(sp_pos)) {
+              spikes_valid <- FALSE
+              break
+            }
+          }
+        }
+
+        if (spikes_valid) {
           wear.time[spike_start:(extend_pos - 1L)] <- FALSE
         } else {
+          # Roll back to the start of the failing spike run so it is treated as wear.
+          extend_pos <- spike_start
           break
         }
       } else {
@@ -121,8 +164,12 @@
       }
     }
 
-    # Skip to candidates after this non-wear period
-    i <- which(candidate_starts > extend_pos)[1]
+    # Advance to the next candidate that begins OUTSIDE the region just marked as non-wear.
+    # The marked region is [window.start, extend_pos - 1L]; extend_pos is the first epoch NOT
+    # marked (the epoch that broke extension, or n.minutes + 1L if extension reached the end).
+    # Using >= extend_pos (rather than > extend_pos) ensures a legitimate later bout whose
+    # start coincides with extend_pos is not skipped.
+    i <- which(candidate_starts >= extend_pos)[1]
     if (is.na(i)) break
   }
 

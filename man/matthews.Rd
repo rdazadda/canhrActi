@@ -31,10 +31,10 @@ Matthews CE, et al. (2005). Sources of variance in daily physical activity
 levels as measured by an accelerometer. Med Sci Sports Exerc, 37(2), 290-298.
 }
 \seealso{
-Other adult cut-points: 
-\code{\link{crouter}()},
-\code{\link{freedson}()},
-\code{\link{santos_lozano}()},
-\code{\link{troiano}()}
+Other adult cut-points:
+\code{\link[=crouter]{crouter()}},
+\code{\link[=freedson]{freedson()}},
+\code{\link[=santos_lozano]{santos_lozano()}},
+\code{\link[=troiano]{troiano()}}
 }
 \concept{adult cut-points}

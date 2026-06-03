@@ -40,10 +40,10 @@ Santos-Lozano A, et al. (2013). Validation and determination
 of physical activity intensity cut points. Int J Sports Med, 34(11), 975-982.
 }
 \seealso{
-Other adult cut-points: 
-\code{\link{crouter}()},
-\code{\link{freedson}()},
-\code{\link{matthews}()},
-\code{\link{troiano}()}
+Other adult cut-points:
+\code{\link[=crouter]{crouter()}},
+\code{\link[=freedson]{freedson()}},
+\code{\link[=matthews]{matthews()}},
+\code{\link[=troiano]{troiano()}}
 }
 \concept{adult cut-points}

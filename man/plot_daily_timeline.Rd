@@ -9,7 +9,7 @@ plot_daily_timeline(
   timestamp_col = "timestamp",
   show_axes = c("axis1"),
   show_cutpoints = TRUE,
-  cutpoints = c(sedentary = 100, light = 1952, moderate = 5725, vigorous = 9498),
+  cutpoints = NULL,
   show_inclinometer = FALSE,
   inclinometer_col = "inclinometer",
   equal_scales = TRUE,
@@ -29,7 +29,9 @@ plot_daily_timeline(
 
 \item{show_cutpoints}{Logical. Show activity intensity cut-point lines? (default: TRUE)}
 
-\item{cutpoints}{Named numeric vector of cut-points (default: Freedson adult)}
+\item{cutpoints}{Cut-points for threshold lines: either an algorithm name
+(e.g. "freedson", "evenson") resolved via \code{get_cutpoint_thresholds()},
+or a named numeric vector. Default NULL uses canonical Freedson adult.}
 
 \item{show_inclinometer}{Logical. Show inclinometer posture as background? (default: FALSE)}
 

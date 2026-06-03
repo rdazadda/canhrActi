@@ -22,7 +22,8 @@ Character vector of sleep states: "S" (sleep) or "W" (wake)
 Implements the Cole-Kripke sleep/wake scoring algorithm for adults (ages 35-65).
 }
 \details{
-Uses 7-epoch window (4 previous + current + 2 next) with weighted coefficients:
+Uses a 7-epoch window: 4 epochs before, current, 2 epochs after, with weighted
+coefficients:
 D = 0.001 * (106\emph{P4 + 54}P3 + 58\emph{P2 + 76}P1 + 230\emph{C + 74}N1 + 67*N2)
 
 Counts are divided by 100 and capped at 300.

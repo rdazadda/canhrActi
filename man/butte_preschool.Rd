@@ -19,7 +19,10 @@ Cut-points for preschoolers validated against room calorimetry in the
 VIVA project. Provides age-specific thresholds.
 }
 \details{
-Butte (2014) provides age-specific equations. Approximate cutpoints:
+Butte (2014) provides age-specific regression equations. This implementation
+is a COUNT-THRESHOLD APPROXIMATION of those equations: it varies only the
+single MVPA cut by age and applies fixed sedentary/light cuts for all ages.
+Approximate cutpoints:
 Age 3-4:
 \itemize{
 \item Sedentary: 0-239 CPM
@@ -34,17 +37,18 @@ Age 5-6:
 }
 }
 \references{
-Butte NF, et al. (2014). A youth compendium of physical activities.
-Med Sci Sports Exerc, 46(7), 1359-1367.
+Butte NF, Wong WW, Lee JS, Adolph AL, Puyau MR, Zakeri IF. (2014). Prediction
+of energy expenditure and physical activity in preschoolers. Med Sci Sports
+Exerc, 46(7), 1216-1226.
 }
 \seealso{
-Other children cut-points: 
-\code{\link{chandler}()},
-\code{\link{copeland}()},
-\code{\link{evenson}()},
-\code{\link{mattocks}()},
-\code{\link{pate_preschool}()},
-\code{\link{puyau}()},
-\code{\link{romanzini}()}
+Other children cut-points:
+\code{\link[=chandler]{chandler()}},
+\code{\link[=copeland]{copeland()}},
+\code{\link[=evenson]{evenson()}},
+\code{\link[=mattocks]{mattocks()}},
+\code{\link[=pate_preschool]{pate_preschool()}},
+\code{\link[=puyau]{puyau()}},
+\code{\link[=romanzini]{romanzini()}}
 }
 \concept{children cut-points}

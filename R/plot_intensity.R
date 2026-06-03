@@ -657,6 +657,19 @@ plot_daily_summary <- function(x) {
 
   epoch_data <- x$epoch_data
 
+  # Derive epoch length (seconds) so epoch counts convert correctly to minutes.
+  # Prefer the stored analysis parameter; fall back to the median timestamp diff.
+  epoch_length <- x$parameters$epoch_length
+  if (is.null(epoch_length) || is.na(epoch_length) || epoch_length <= 0) {
+    if (nrow(epoch_data) > 1) {
+      epoch_length <- as.numeric(median(diff(as.numeric(epoch_data$timestamp))))
+    }
+    if (is.null(epoch_length) || is.na(epoch_length) || epoch_length <= 0) {
+      epoch_length <- 60
+    }
+  }
+  minutes_per_epoch <- epoch_length / 60
+
   daily_data <- aggregate(
     cbind(wear_time = as.numeric(wear_time),
           mvpa = as.numeric(intensity %in% c("moderate", "vigorous", "very_vigorous")),
@@ -665,6 +678,11 @@ plot_daily_summary <- function(x) {
     data = epoch_data,
     FUN = sum
   )
+
+  # Convert summed epoch counts to minutes (steps are already a count, not time)
+  daily_data$wear_time <- daily_data$wear_time * minutes_per_epoch
+  daily_data$mvpa <- daily_data$mvpa * minutes_per_epoch
+  daily_data$sedentary <- daily_data$sedentary * minutes_per_epoch
 
   daily_data$wear_hours <- daily_data$wear_time / 60
 

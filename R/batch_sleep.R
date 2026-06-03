@@ -118,12 +118,18 @@ canhrActi.sleep <- function(agd_file_path,
       )
 
       # Build summary row
+      # NOTE: raw_sleep_epochs_24h / raw_wake_epochs_24h are counts of S/W over
+      # the ENTIRE 24h recording from raw Cole-Kripke/Sadeh scoring, NOT epochs
+      # within detected sleep periods. Because these algorithms classify daytime
+      # sedentary behaviour as sleep, the raw 24h count overstates actual sleep
+      # and is intentionally distinct from total_sleep_time_min (summed only from
+      # detected sleep_periods).
       summary_row <- data.frame(
         file_name = basename(file_path),
         algorithm = sleep_algorithm,
         total_epochs = nrow(analysis$epoch_data),
-        sleep_epochs = sum(analysis$epoch_data$sleep_wake == "S"),
-        wake_epochs = sum(analysis$epoch_data$sleep_wake == "W"),
+        raw_sleep_epochs_24h = sum(analysis$epoch_data$sleep_wake == "S"),
+        raw_wake_epochs_24h = sum(analysis$epoch_data$sleep_wake == "W"),
         sleep_periods_detected = nrow(analysis$sleep_periods),
         total_sleep_time_min = if (nrow(analysis$sleep_periods) > 0) sum(analysis$sleep_periods$sleep_time) else 0,
         avg_sleep_efficiency = if (nrow(analysis$sleep_periods) > 0) round(mean(analysis$sleep_periods$sleep_efficiency), 2) else 0,
@@ -140,7 +146,7 @@ canhrActi.sleep <- function(agd_file_path,
       result$summary_row <- data.frame(
         file_name = basename(file_path),
         algorithm = sleep_algorithm,
-        total_epochs = NA, sleep_epochs = NA, wake_epochs = NA,
+        total_epochs = NA, raw_sleep_epochs_24h = NA, raw_wake_epochs_24h = NA,
         sleep_periods_detected = 0, total_sleep_time_min = 0,
         avg_sleep_efficiency = 0, avg_awakenings = 0,
         stringsAsFactors = FALSE

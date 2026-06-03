@@ -383,12 +383,6 @@ canhrActi.batch <- function(files,
       analysis$parameters$epoch_length
     } else 60
 
-    # Use epoch_data from analysis (already filtered and processed)
-    raw_data <- analysis$epoch_data
-    if (is.null(raw_data) || nrow(raw_data) == 0) {
-      raw_data <- data.frame(axis1 = 0, axis2 = 0, axis3 = 0)
-    }
-
     # Safe max function that returns 0 instead of -Inf for empty/all-NA vectors
     safe_max <- function(x) {
       x <- x[!is.na(x)]
@@ -396,67 +390,84 @@ canhrActi.batch <- function(files,
       max(x)
     }
 
-    # Calculate axis statistics
-    axis1_total <- sum(raw_data$axis1, na.rm = TRUE)
-    axis2_total <- if ("axis2" %in% names(raw_data)) sum(raw_data$axis2, na.rm = TRUE) else 0
-    axis3_total <- if ("axis3" %in% names(raw_data)) sum(raw_data$axis3, na.rm = TRUE) else 0
-    axis1_avg <- mean(raw_data$axis1, na.rm = TRUE)
-    axis2_avg <- if ("axis2" %in% names(raw_data)) mean(raw_data$axis2, na.rm = TRUE) else 0
-    axis3_avg <- if ("axis3" %in% names(raw_data)) mean(raw_data$axis3, na.rm = TRUE) else 0
-    axis1_max <- safe_max(raw_data$axis1)
-    axis2_max <- if ("axis2" %in% names(raw_data)) safe_max(raw_data$axis2) else 0
-    axis3_max <- if ("axis3" %in% names(raw_data)) safe_max(raw_data$axis3) else 0
+    # Compute the canonical ActiLife Summary via the SHARED helper so this batch
+    # summary row reports IDENTICAL intensity numbers to export_summary and
+    # export_summary_internal. The helper:
+    #   - uses the already-classified epoch_data$intensity (NOT a 3rd re-classification)
+    #   - restricts to VALID-DAY & WEAR epochs (excludes non-wear / invalid days)
+    #   - uses ONE percentage denominator = wear-epoch count
+    s <- .build_actilife_summary(analysis)
+
+    if (is.null(s)) {
+      # No valid days/epochs: emit zeroed intensity numbers but still report file
+      epoch_sec <- epoch_len
+      n_wear_epochs <- 0
+      wear_data <- analysis$epoch_data[0, , drop = FALSE]
+      sedentary_min <- light_min <- moderate_min <- vigorous_min <- 0
+      very_vigorous_min <- mvpa_min <- 0
+      sed_pct_str <- light_pct_str <- mod_pct_str <- "0.00%"
+      vig_pct_str <- vvig_pct_str <- mvpa_pct_str <- "0.00%"
+      calendar_days <- 1
+    } else {
+      epoch_sec <- s$epoch_sec
+      n_wear_epochs <- s$n_wear_epochs
+      wear_data <- s$wear_valid_epochs
+      # Epoch counts -> minutes (consistent with the helper's epoch length)
+      sedentary_min     <- s$sedentary     * (epoch_sec / 60)
+      light_min         <- s$light         * (epoch_sec / 60)
+      moderate_min      <- s$moderate      * (epoch_sec / 60)
+      vigorous_min      <- s$vigorous      * (epoch_sec / 60)
+      very_vigorous_min <- s$very_vigorous * (epoch_sec / 60)
+      mvpa_min          <- s$total_mvpa    * (epoch_sec / 60)
+      sed_pct_str   <- s$sed_pct_str
+      light_pct_str <- s$light_pct_str
+      mod_pct_str   <- s$mod_pct_str
+      vig_pct_str   <- s$vig_pct_str
+      vvig_pct_str  <- s$vvig_pct_str
+      mvpa_pct_str  <- s$mvpa_pct_str
+      calendar_days <- s$n_valid_days
+    }
+
+    # Axis/VM/steps statistics computed over the SAME valid-day wear epochs the
+    # ActiLife Summary export uses, so all reported columns share one epoch universe.
+    if (is.null(wear_data) || nrow(wear_data) == 0) {
+      wear_data <- data.frame(axis1 = numeric(0), axis2 = numeric(0),
+                              axis3 = numeric(0))
+    }
+    has_rows <- nrow(wear_data) > 0
+
+    axis1_total <- if (has_rows) sum(wear_data$axis1, na.rm = TRUE) else 0
+    axis2_total <- if (has_rows && "axis2" %in% names(wear_data)) sum(wear_data$axis2, na.rm = TRUE) else 0
+    axis3_total <- if (has_rows && "axis3" %in% names(wear_data)) sum(wear_data$axis3, na.rm = TRUE) else 0
+    axis1_avg <- if (has_rows) mean(wear_data$axis1, na.rm = TRUE) else 0
+    axis2_avg <- if (has_rows && "axis2" %in% names(wear_data)) mean(wear_data$axis2, na.rm = TRUE) else 0
+    axis3_avg <- if (has_rows && "axis3" %in% names(wear_data)) mean(wear_data$axis3, na.rm = TRUE) else 0
+    axis1_max <- if (has_rows) safe_max(wear_data$axis1) else 0
+    axis2_max <- if (has_rows && "axis2" %in% names(wear_data)) safe_max(wear_data$axis2) else 0
+    axis3_max <- if (has_rows && "axis3" %in% names(wear_data)) safe_max(wear_data$axis3) else 0
 
     # Vector magnitude
-    if (all(c("axis1", "axis2", "axis3") %in% names(raw_data))) {
-      vm <- sqrt(raw_data$axis1^2 + raw_data$axis2^2 + raw_data$axis3^2)
+    if (has_rows && all(c("axis1", "axis2", "axis3") %in% names(wear_data))) {
+      vm <- sqrt(wear_data$axis1^2 + wear_data$axis2^2 + wear_data$axis3^2)
+    } else if (has_rows) {
+      vm <- wear_data$axis1
     } else {
-      vm <- raw_data$axis1
+      vm <- numeric(0)
     }
-    vm_total <- sum(vm, na.rm = TRUE)
-    vm_avg <- mean(vm, na.rm = TRUE)
+    vm_total <- if (length(vm) > 0) sum(vm, na.rm = TRUE) else 0
+    vm_avg <- if (length(vm) > 0) mean(vm, na.rm = TRUE) else 0
     vm_max <- safe_max(vm)
 
     # Steps
-    steps_total <- if ("steps" %in% names(raw_data)) sum(raw_data$steps, na.rm = TRUE) else 0
-    steps_avg <- if ("steps" %in% names(raw_data)) mean(raw_data$steps, na.rm = TRUE) else 0
-    steps_max <- if ("steps" %in% names(raw_data)) safe_max(raw_data$steps) else 0
+    steps_total <- if (has_rows && "steps" %in% names(wear_data)) sum(wear_data$steps, na.rm = TRUE) else 0
+    steps_avg <- if (has_rows && "steps" %in% names(wear_data)) mean(wear_data$steps, na.rm = TRUE) else 0
+    steps_max <- if (has_rows && "steps" %in% names(wear_data)) safe_max(wear_data$steps) else 0
 
     # Lux
-    lux_avg <- if ("lux" %in% names(raw_data)) mean(raw_data$lux, na.rm = TRUE) else NA
-    lux_max <- if ("lux" %in% names(raw_data)) safe_max(raw_data$lux) else NA
+    lux_avg <- if (has_rows && "lux" %in% names(wear_data)) mean(wear_data$lux, na.rm = TRUE) else NA
+    lux_max <- if (has_rows && "lux" %in% names(wear_data)) safe_max(wear_data$lux) else NA
 
-    # Intensity classification - convert counts to CPM first
-    counts <- if (axis_to_analyze == "axis1") raw_data$axis1 else vm
-    cpm <- to_cpm(counts, epoch_len)
-    intensity <- if (intensity_algorithm == "freedson1998") {
-      freedson(cpm)
-    } else {
-      CANHR.Cutpoints(cpm)
-    }
-
-    # Calculate time in each intensity
-    sedentary_min <- sum(intensity == "sedentary") * (epoch_len / 60)
-    light_min <- sum(intensity == "light") * (epoch_len / 60)
-    moderate_min <- sum(intensity == "moderate") * (epoch_len / 60)
-    vigorous_min <- sum(intensity == "vigorous") * (epoch_len / 60)
-    very_vigorous_min <- sum(intensity == "very_vigorous") * (epoch_len / 60)
-    mvpa_min <- moderate_min + vigorous_min + very_vigorous_min
-
-    total_min <- nrow(raw_data) * (epoch_len / 60)
-    total_hours <- total_min / 60
-
-    # Percentages
-    sed_pct <- if (total_min > 0) (sedentary_min / total_min) * 100 else 0
-    light_pct <- if (total_min > 0) (light_min / total_min) * 100 else 0
-    mod_pct <- if (total_min > 0) (moderate_min / total_min) * 100 else 0
-    vig_pct <- if (total_min > 0) (vigorous_min / total_min) * 100 else 0
-    vvig_pct <- if (total_min > 0) (very_vigorous_min / total_min) * 100 else 0
-    mvpa_pct <- if (total_min > 0) (mvpa_min / total_min) * 100 else 0
-
-    calendar_days <- if (!is.null(analysis$overall_summary$valid_days)) {
-      analysis$overall_summary$valid_days
-    } else 1
+    total_hours <- (n_wear_epochs * (epoch_sec / 60)) / 60
     avg_mvpa_per_day <- mvpa_min / max(calendar_days, 1)
 
     # Build row
@@ -472,13 +483,13 @@ canhrActi.batch <- function(files,
       Moderate = round(moderate_min),
       Vigorous = round(vigorous_min),
       "Very Vigorous" = round(very_vigorous_min),
-      "% in Sedentary" = paste0(round(sed_pct, 2), "%"),
-      "% in Light" = paste0(round(light_pct, 2), "%"),
-      "% in Moderate" = paste0(round(mod_pct, 2), "%"),
-      "% in Vigorous" = paste0(round(vig_pct, 2), "%"),
-      "% in Very Vigorous" = paste0(round(vvig_pct, 2), "%"),
+      "% in Sedentary" = sed_pct_str,
+      "% in Light" = light_pct_str,
+      "% in Moderate" = mod_pct_str,
+      "% in Vigorous" = vig_pct_str,
+      "% in Very Vigorous" = vvig_pct_str,
       "Total MVPA" = round(mvpa_min),
-      "% in MVPA" = paste0(round(mvpa_pct, 2), "%"),
+      "% in MVPA" = mvpa_pct_str,
       "Average MVPA Per day" = round(avg_mvpa_per_day, 1),
       "Axis 1 Counts" = axis1_total,
       "Axis 2 Counts" = axis2_total,
@@ -489,20 +500,20 @@ canhrActi.batch <- function(files,
       "Axis 1 Max Counts" = axis1_max,
       "Axis 2 Max Counts" = axis2_max,
       "Axis 3 Max Counts" = axis3_max,
-      "Axis 1 CPM" = round(axis1_avg * (60 / epoch_len), 1),
-      "Axis 2 CPM" = round(axis2_avg * (60 / epoch_len), 1),
-      "Axis 3 CPM" = round(axis3_avg * (60 / epoch_len), 1),
+      "Axis 1 CPM" = round(axis1_avg * (60 / epoch_sec), 1),
+      "Axis 2 CPM" = round(axis2_avg * (60 / epoch_sec), 1),
+      "Axis 3 CPM" = round(axis3_avg * (60 / epoch_sec), 1),
       "Vector Magnitude Counts" = round(vm_total, 1),
       "Vector Magnitude Average Counts" = round(vm_avg, 1),
       "Vector Magnitude Max Counts" = round(vm_max, 1),
-      "Vector Magnitude CPM" = round(vm_avg * (60 / epoch_len), 1),
+      "Vector Magnitude CPM" = round(vm_avg * (60 / epoch_sec), 1),
       "Steps Counts" = steps_total,
       "Steps Average Counts" = round(steps_avg, 1),
       "Steps Max Counts" = steps_max,
       "Steps Per Minute" = round(steps_avg, 1),
       "Lux Average Counts" = if (is.na(lux_avg)) NA else round(lux_avg, 1),
       "Lux Max Counts" = if (is.na(lux_max)) NA else round(lux_max, 1),
-      "Number of Epochs" = nrow(raw_data),
+      "Number of Epochs" = n_wear_epochs,
       Time = round(total_hours, 1),
       "Calendar Days" = calendar_days,
       check.names = FALSE,

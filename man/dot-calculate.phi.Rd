@@ -22,8 +22,11 @@ at a 1-hour lag. Used in GGIR as a measure of activity predictability.
 Higher phi indicates more consistent, predictable activity patterns.
 Low or negative phi indicates fragmented, unpredictable activity.
 
-This is the AR(1) coefficient from an autoregressive model fit to
-hourly activity data.
+This is the lag-1 autocorrelation of the hourly activity series. The series
+is placed on a regular hourly grid (NA for missing/non-wear hours) so the
+"1-hour lag" only correlates genuinely adjacent clock hours rather than
+bridging multi-hour gaps. It equals the AR(1) coefficient only for a true
+AR(1) process.
 }
 \references{
 van Hees VT, et al. (2015). A Novel, Open Access Method to Assess Sleep

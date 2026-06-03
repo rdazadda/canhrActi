@@ -209,7 +209,7 @@ test_that("tudor-locke filters suspicious periods (>12h, >99% efficiency, 0 awak
   timestamps <- seq(as.POSIXct("2024-01-01 22:00:00"), by = 60, length.out = 825)
 
   expect_warning(
-    result <- sleep.tudor.locke(sleep.state, timestamps),
+    result <- sleep.tudor.locke(sleep.state, timestamps, filter_suspicious = TRUE),
     "suspicious"
   )
 

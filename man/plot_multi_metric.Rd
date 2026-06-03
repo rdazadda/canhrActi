@@ -10,7 +10,7 @@ plot_multi_metric(
   metrics = list(`Axis 1` = "axis1", VM = "vm"),
   date_filter = NULL,
   show_cutpoints = TRUE,
-  cutpoints = c(sedentary = 100, light = 1952, moderate = 5725, vigorous = 9498),
+  cutpoints = NULL,
   epoch_length = NULL,
   normalize = FALSE,
   facet = FALSE,
@@ -28,7 +28,9 @@ plot_multi_metric(
 
 \item{show_cutpoints}{Logical. Show cut-point lines?}
 
-\item{cutpoints}{Named vector of cut-point values}
+\item{cutpoints}{Cut-points for threshold lines: an algorithm name resolved
+via \code{get_cutpoint_thresholds()} or a named numeric vector. Default
+NULL uses canonical Freedson adult.}
 
 \item{epoch_length}{Epoch length in seconds (optional)}
 

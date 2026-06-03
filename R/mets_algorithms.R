@@ -106,51 +106,27 @@ mets.freedson.vm3 <- function(counts_data) {
   # Reference: Sasaki JE, John D, Freedson PS. Validation and comparison of
   # ActiGraph activity monitors. J Sci Med Sport. 2011;14(5):411-416.
   #
-  # This uses the SIMPLIFIED equation (no body mass):
-  #   METs = 0.001064 × VM CPM + 0.6569
-  #
-  # The full equation from Sasaki 2011 includes body mass:
-  #   METs = 0.001064 × VM + 0.087512 × BM - 5.500229
-  #
-  # Design decision: We use the simplified form for:
-  # 1. Compatibility with ActiLife software output
-  # 2. Applicability when body mass is not available
-  # 3. Consistency with most published accelerometry studies
-  #
-  # Use freedson.adult or brooks.bm algorithms for body-mass adjusted METs
+  # Published Sasaki (2011) VM3 MET prediction equation:
+  #   METs = 0.000863 * VM3 + 0.668876
+  # where VM3 is the triaxial vector magnitude in counts/min. The earlier
+  # 0.001064 slope was the kcal energy-expenditure coefficient (not the MET
+  # slope) and 0.6569 did not match any published source.
   vm <- vm(counts_data$axis1, counts_data$axis2, counts_data$axis3)
-  mets <- 0.001064 * vm + 0.6569
+  mets <- 0.000863 * vm + 0.668876
   return(mets)
 }
 
 
 mets.freedson.adult <- function(counts_data, subject_info) {
 
-  body_mass <- extract.body.mass(subject_info)
   cpm <- counts_data$axis1
 
-
-  # Freedson et al. (1998) energy expenditure equations:
-
-  # For CPM > 1951: kcal/min = 0.00094*CPM + 0.1346*mass - 7.37418
-
-  # For CPM <= 1951: kcal/min = 0.0000191*CPM*mass (Williams Work-Energy)
-  #
-  # To convert kcal/min to METs:
-  # 1 MET = 3.5 mL O2/kg/min
-  # kcal/min = VO2 (L/min) * 5 kcal/L
-  # VO2 (mL/kg/min) = kcal/min * 200 / body_mass
-  # METs = VO2 / 3.5 = kcal/min * 200 / (body_mass * 3.5)
-  #
+  # Published Freedson (1998) MET prediction equation (body-mass independent):
+  #   METs = 1.439008 + 0.000795 * counts/min (vertical axis)
+  # This is the canonical Freedson MET regression (also what ActiLife reports
+  # as Freedson METs), distinct from the 1998 kcal work-energy equation.
   # Reference: Freedson PS et al. (1998). Med Sci Sports Exerc. 30(5):777-781
-
-  kcal_per_min <- ifelse(cpm > 1951,
-                          (0.00094 * cpm) + (0.1346 * body_mass) - 7.37418,
-                          cpm * 0.0000191 * body_mass)
-
-  # Correct conversion from kcal/min to METs
-  # METs = kcal/min * 200 / (body_mass * 3.5)
-  mets <- (kcal_per_min * 200) / (body_mass * 3.5)
+  mets <- 1.439008 + 0.000795 * cpm
 
   # Ensure minimum of 1.0 MET (resting)
   mets[mets < 1.0] <- 1.0
@@ -194,7 +170,10 @@ mets.crouter <- function(counts_data, verbose = FALSE) {
 
   for (i in 1:n_epochs) {
     # Use a centered 6-epoch window for CV calculation
-    # This represents ~6 minutes when using 1-minute epochs
+    # This represents ~6 minutes when using 1-minute epochs. NOTE: the true
+    # Crouter CV requires the six 10-second epochs within a minute and is not
+    # recoverable from 60-second data; this is a documented approximation (the
+    # 2010 regression coefficients below are exact - see the header note).
     start_idx <- max(1, i - 2)
     end_idx <- min(n_epochs, i + 3)
     window_size <- end_idx - start_idx + 1
@@ -305,7 +284,7 @@ mets.brooks.bm <- function(counts_data, subject_info) {
 
 
 mets.freedson.children <- function(counts_data, subject_info) {
-  if (is.null(subject_info$age) || is.na(subject_info$age)) {
+  if (is.null(subject_info$age) || is.na(subject_info$age) || subject_info$age <= 0) {
     stop("Freedson Children algorithm requires subject age")
   }
 

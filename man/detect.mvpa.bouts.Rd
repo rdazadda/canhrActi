@@ -52,13 +52,18 @@ to drop below MVPA without breaking the bout. This method follows NHANES and
 CDC standards.
 
 Example: With 10-minute minimum and 2-minute allowance, a valid bout could be:
-M-M-M-L-M-M-M-M-M-M (8 MVPA + 2 light = valid 10-minute bout)
+M-M-M-M-L-L-M-M-M-M (8 MVPA + 2 light = valid 10-minute bout)
 
 \strong{80\% Rule Method:}
 
 Requires at least 80\% of minutes within a bout to be at MVPA level. For a
-10-minute bout, this means at least 8 minutes must be MVPA. This is equivalent
-to the standard method for 10-minute bouts but differs for longer bouts.
+10-minute bout, this means at least 8 minutes must be MVPA. This method
+differs from the drop-time method even at 10 minutes: the drop-time method
+enforces a maximum consecutive run of below-MVPA epochs
+(\code{drop_time_allowance}), whereas the 80\% rule enforces only an aggregate
+MVPA fraction over the bout and places no cap on the length of a single
+interruption. As a result the two methods can accept or reject different
+windows, and the divergence grows for longer bouts.
 }
 \examples{
 \dontrun{

@@ -2,6 +2,6 @@
 # Enable C++17 for modern features
 CXX_STD = CXX17
 
-# Compiler flags
+# Compiler flags (RcppArmadillo/LAPACK/BLAS no longer needed - pure Rcpp)
 PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
-PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS)

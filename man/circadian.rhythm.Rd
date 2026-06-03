@@ -40,7 +40,8 @@ List with class 'canhrActi_circadian' containing:
 \item{IV}{Intradaily variability: within-day fragmentation (0=sine, ~2=noise)}
 \item{phi}{First-order autocorrelation at 1-hour lag}
 \item{SRI}{Sleep Regularity Index (-100 to 100, higher=more regular)}
-\item{CPD}{Composite Phase Deviation (day-to-day phase variability)}
+\item{onset_timing_variability}{Mean circular SD of daily L5/M10 onset times
+(day-to-day phase variability). NOT the published Fischer/Roenneberg CPD.}
 \item{hourly_profile}{Mean activity by hour of day}
 \item{daily_metrics}{Per-day L5, M10, RA values}
 }

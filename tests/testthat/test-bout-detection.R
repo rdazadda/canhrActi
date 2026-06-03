@@ -103,19 +103,29 @@ test_that("detect.mvpa.bouts handles drop time at end of data", {
   intensity <- c(rep("moderate", 10), "light", "light")
   result <- detect.mvpa.bouts(intensity, min_bout_length = 10, drop_time_allowance = 2)
 
+  # Trailing non-MVPA (drop) epochs at the end of data are trimmed so the bout
+  # ends on an MVPA epoch, matching the mid-data branch (position-independent).
   expect_equal(nrow(result), 1)
-  expect_equal(result$bout_length, 12)
+  expect_equal(result$bout_length, 10)
   expect_equal(result$mvpa_minutes, 10)
 })
 
 test_that("detect.mvpa.bouts 80 percent rule identifies valid bout", {
+  # An MVPA-anchored 10-minute bout requires the span to BEGIN and END on MVPA.
+  # A window of 8 MVPA epochs followed by 2 light epochs trims to an 8-epoch
+  # MVPA span, which is below the 10-minute minimum and is correctly rejected.
   intensity <- c(rep("moderate", 8), "light", "light", rep("sedentary", 10))
   result <- detect.mvpa.bouts(intensity, min_bout_length = 10, use_80_percent_rule = TRUE)
 
-  expect_equal(nrow(result), 1)
-  expect_equal(result$bout_length, 10)
-  expect_equal(result$mvpa_minutes, 8)
-  expect_equal(result$mvpa_percent, 80)
+  expect_equal(nrow(result), 0)
+
+  # A genuine 10-minute MVPA-bounded bout (with an interior interruption) is kept.
+  intensity2 <- c(rep("moderate", 9), "light", "moderate", rep("sedentary", 10))
+  result2 <- detect.mvpa.bouts(intensity2, min_bout_length = 10, use_80_percent_rule = TRUE)
+
+  expect_equal(nrow(result2), 1)
+  expect_equal(result2$bout_length, 11)
+  expect_equal(result2$mvpa_minutes, 10)
 })
 
 test_that("detect.mvpa.bouts 80 percent rule rejects invalid bout", {
@@ -322,8 +332,11 @@ test_that("detect.mvpa.bouts 80 percent vs drop time comparison", {
                                    drop_time_allowance = 2, use_80_percent_rule = FALSE)
   result_80 <- detect.mvpa.bouts(intensity, min_bout_length = 10, use_80_percent_rule = TRUE)
 
+  # Both methods reject this pattern: trailing non-MVPA epochs are not counted
+  # toward the bout (drop-time trims them, and the 80% rule anchors the span to
+  # MVPA), leaving only 8 MVPA epochs, below the 10-minute minimum.
   expect_equal(nrow(result_drop), 0)
-  expect_equal(nrow(result_80), 1)
+  expect_equal(nrow(result_80), 0)
 })
 
 test_that("detect.mvpa.bouts handles minimum bout length of 1", {

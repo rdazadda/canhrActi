@@ -30,7 +30,7 @@ Freedson PS, et al. (2011). Evaluation of artificial neural network algorithms
 for predicting METs and activity type from accelerometer data. J Sci Med Sport.
 }
 \seealso{
-Other triaxial cut-points: 
-\code{\link{sasaki_vm3}()}
+Other triaxial cut-points:
+\code{\link[=sasaki_vm3]{sasaki_vm3()}}
 }
 \concept{triaxial cut-points}

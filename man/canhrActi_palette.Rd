@@ -12,7 +12,9 @@ canhrActi_palette(
 \arguments{
 \item{palette}{Character. Which palette to retrieve:
 \itemize{
-\item \code{"intensity"} - 5 colors for activity intensity levels
+\item \code{"intensity"} - Canonical colors for every activity
+intensity level (sedentary, light, lifestyle, moderate, vigorous,
+very_vigorous, and combined mvpa)
 \item \code{"status"} - Colors for valid/invalid, wear/nonwear
 \item \code{"sleep"} - Colors for sleep states
 \item \code{"primary"} - All 6 primary colors

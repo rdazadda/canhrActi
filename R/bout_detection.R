@@ -33,13 +33,18 @@
 #' CDC standards.
 #'
 #' Example: With 10-minute minimum and 2-minute allowance, a valid bout could be:
-#' M-M-M-L-M-M-M-M-M-M (8 MVPA + 2 light = valid 10-minute bout)
+#' M-M-M-M-L-L-M-M-M-M (8 MVPA + 2 light = valid 10-minute bout)
 #'
 #' \strong{80% Rule Method:}
 #'
 #' Requires at least 80% of minutes within a bout to be at MVPA level. For a
-#' 10-minute bout, this means at least 8 minutes must be MVPA. This is equivalent
-#' to the standard method for 10-minute bouts but differs for longer bouts.
+#' 10-minute bout, this means at least 8 minutes must be MVPA. This method
+#' differs from the drop-time method even at 10 minutes: the drop-time method
+#' enforces a maximum consecutive run of below-MVPA epochs
+#' (\code{drop_time_allowance}), whereas the 80% rule enforces only an aggregate
+#' MVPA fraction over the bout and places no cap on the length of a single
+#' interruption. As a result the two methods can accept or reject different
+#' windows, and the divergence grows for longer bouts.
 #'
 #' @references
 #' Troiano RP, et al. (2008). Physical activity in the United States measured by
@@ -190,7 +195,11 @@ detect.mvpa.bouts <- function(intensity,
       }
 
       if (j > n) {
-        bout.end <- j - 1 - max(0, consecutive.drops - drop_time_allowance)
+        # End of data: trim the ENTIRE trailing drop run so the bout always
+        # ends on an MVPA epoch (mirrors the mid-data branch above). This keeps
+        # bout boundaries position-independent and avoids counting trailing
+        # non-MVPA epochs into the bout.
+        bout.end <- j - 1 - consecutive.drops
         bout.length <- bout.end - bout.start + 1
 
         if (bout.length >= min_bout_length) {
@@ -250,8 +259,30 @@ detect.mvpa.bouts <- function(intensity,
         }
       }
 
-      bouts[[length(bouts) + 1]] <- list(start = bout.start, end = bout.end)
-      i <- bout.end + 1
+      # Anchor the bout to MVPA epochs: trim any leading/trailing non-MVPA
+      # epochs so the stored start/end land on MVPA. The 80% scan above only
+      # checks the aggregate fraction, so a window/extension can begin or end
+      # on light/sedentary minutes, inflating bout_length and biasing
+      # mvpa_percent.
+      scan.end <- bout.end
+      while (bout.start <= bout.end && !is_mvpa[bout.start]) {
+        bout.start <- bout.start + 1
+      }
+      while (bout.end >= bout.start && !is_mvpa[bout.end]) {
+        bout.end <- bout.end - 1
+      }
+
+      # Re-verify min_bout_length and the 80% criterion on the trimmed span.
+      trimmed.length <- bout.end - bout.start + 1
+      if (trimmed.length >= min_bout_length) {
+        trimmed.mvpa <- sum(is_mvpa[bout.start:bout.end])
+        if (trimmed.mvpa >= ceiling(0.8 * trimmed.length)) {
+          bouts[[length(bouts) + 1]] <- list(start = bout.start, end = bout.end)
+        }
+      }
+
+      # Advance past the scanned region regardless of whether a bout was stored.
+      i <- scan.end + 1
     } else {
       i <- i + 1
     }

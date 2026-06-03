@@ -10,7 +10,9 @@ NULL
 #'
 #' @param palette Character. Which palette to retrieve:
 #'   \itemize{
-#'     \item \code{"intensity"} - 5 colors for activity intensity levels
+#'     \item \code{"intensity"} - Canonical colors for every activity
+#'       intensity level (sedentary, light, lifestyle, moderate, vigorous,
+#'       very_vigorous, and combined mvpa)
 #'     \item \code{"status"} - Colors for valid/invalid, wear/nonwear
 #'     \item \code{"sleep"} - Colors for sleep states
 #'     \item \code{"primary"} - All 6 primary colors
@@ -32,13 +34,20 @@ canhrActi_palette <- function(palette = c("intensity", "status", "sleep", "prima
   palette <- match.arg(palette)
 
   palettes <- list(
-    # Activity intensity levels (sedentary -> very vigorous)
+    # Activity intensity levels (sedentary -> very vigorous).
+    # This is the single canonical intensity palette: all plotting
+    # functions should resolve intensity colors through this table.
+    # Keys cover every intensity factor level produced by cut_points.R,
+    # including the algorithm-specific "lifestyle" and combined "mvpa"
+    # levels, so scale_*_manual() never falls through to NA/grey.
     intensity = c(
       sedentary      = "#1A4D7A",  # Darker deep blue - rest/base
       light          = "#4DB8E8",  # Richer sky blue - gentle activity
+      lifestyle      = "#7FD0A6",  # Soft green - lifestyle/incidental activity
       moderate       = "#FFB800",  # Richer golden yellow - active
       vigorous       = "#D95520",  # Darker burnt orange - high energy
-      very_vigorous  = "#E6358B"   # Darker hot pink - peak intensity
+      very_vigorous  = "#E6358B",  # Darker hot pink - peak intensity
+      mvpa           = "#FFB800"   # Combined moderate-to-vigorous (matches moderate)
     ),
 
     # Status and quality indicators
@@ -106,12 +115,14 @@ canhrActi_color <- function(name) {
     green          = "#71984A",
     pink           = "#F45197",
 
-    # Semantic colors
+    # Semantic colors (intensity levels mirror canhrActi_palette("intensity"))
     sedentary      = "#1A4D7A",
     light          = "#4DB8E8",
+    lifestyle      = "#7FD0A6",
     moderate       = "#FFB800",
     vigorous       = "#D95520",
     very_vigorous  = "#E6358B",
+    mvpa           = "#FFB800",
     valid          = "#71984A",
     invalid        = "#E8E8E8",
     wear           = "#71984A",

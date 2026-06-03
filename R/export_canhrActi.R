@@ -1,3 +1,121 @@
+#' Build Canonical ActiLife Summary (Internal Shared Helper)
+#'
+#' Single source of truth for the ActiLife Summary numbers. Computes intensity
+#' minutes, counts, and percentages from VALID-DAY & WEAR epochs only, using ONE
+#' percentage denominator equal to the wear-epoch count (so intensity percentages
+#' sum to 100). All three CSV summary paths (\code{export_summary},
+#' \code{export_summary_internal}, and the batch row builder
+#' \code{.build_summary_row}) route through this helper so they report identical
+#' numbers.
+#'
+#' @param analysis An canhrActi_analysis object from canhrActi()
+#'
+#' @return A list of pre-computed summary scalars and the underlying epoch
+#'   subsets, or NULL if there are no valid days / no valid epochs.
+#' @keywords internal
+.build_actilife_summary <- function(analysis) {
+  epoch_data <- analysis$epoch_data
+  daily <- analysis$daily_summary
+
+  if (is.null(epoch_data) || nrow(epoch_data) == 0) {
+    return(NULL)
+  }
+
+  # Epoch length (seconds) from the timestamp spacing
+  if (nrow(epoch_data) >= 2) {
+    epoch_sec <- as.numeric(difftime(epoch_data$timestamp[2],
+                                     epoch_data$timestamp[1],
+                                     units = "secs"))
+  } else {
+    epoch_sec <- 60
+  }
+  if (is.na(epoch_sec) || epoch_sec <= 0) epoch_sec <- 60
+
+  # Restrict to valid days
+  if (!is.null(daily) && "is_valid_day" %in% names(daily)) {
+    valid_daily <- daily[daily$is_valid_day == TRUE, ]
+    valid_dates <- as.Date(valid_daily$date)
+  } else if (!is.null(daily) && "is.valid" %in% names(daily)) {
+    valid_daily <- daily[daily$is.valid == TRUE, ]
+    valid_dates <- as.Date(valid_daily$date)
+  } else if ("is_valid_day" %in% names(epoch_data)) {
+    # Fall back to the epoch-level validity flag
+    valid_daily <- NULL
+    valid_dates <- unique(as.Date(epoch_data$date[epoch_data$is_valid_day == TRUE]))
+  } else {
+    valid_daily <- NULL
+    valid_dates <- unique(as.Date(epoch_data$date))
+  }
+
+  n_valid_days <- if (!is.null(valid_daily)) nrow(valid_daily) else length(valid_dates)
+
+  if (length(valid_dates) == 0) {
+    return(NULL)
+  }
+
+  all_valid_epochs <- epoch_data[as.Date(epoch_data$date) %in% valid_dates, ]
+  if (nrow(all_valid_epochs) == 0) {
+    return(NULL)
+  }
+
+  # Wear-time epochs within valid days (the single epoch universe used for ALL
+  # intensity numerators AND the percentage denominator)
+  wear_valid_epochs <- all_valid_epochs[all_valid_epochs$wear_time, ]
+  n_wear_epochs <- nrow(wear_valid_epochs)
+
+  intensity <- all_valid_epochs$intensity
+  wear <- all_valid_epochs$wear_time
+
+  sedentary     <- sum(intensity == "sedentary"      & wear)
+  light         <- sum(intensity == "light"          & wear)
+  moderate      <- sum(intensity == "moderate"       & wear)
+  vigorous      <- sum(intensity == "vigorous"       & wear)
+  very_vigorous <- sum(intensity == "very_vigorous"  & wear)
+  total_mvpa    <- moderate + vigorous + very_vigorous
+
+  # Single percentage denominator: wear-epoch count (intensities sum to 100%)
+  pct <- function(x) if (n_wear_epochs > 0) sprintf("%.2f%%", 100 * x / n_wear_epochs) else "0.00%"
+
+  if (n_wear_epochs > 0) {
+    vm_counts <- sqrt(wear_valid_epochs$axis1^2 +
+                        wear_valid_epochs$axis2^2 +
+                        wear_valid_epochs$axis3^2)
+  } else {
+    vm_counts <- numeric(0)
+  }
+
+  avg_mvpa_per_day <- if (n_valid_days > 0) total_mvpa / n_valid_days else 0
+
+  list(
+    epoch_sec = epoch_sec,
+    n_valid_days = n_valid_days,
+    n_wear_epochs = n_wear_epochs,
+    wear_valid_epochs = wear_valid_epochs,
+    vm_counts = vm_counts,
+    sedentary = sedentary,
+    light = light,
+    moderate = moderate,
+    vigorous = vigorous,
+    very_vigorous = very_vigorous,
+    total_mvpa = total_mvpa,
+    avg_mvpa_per_day = avg_mvpa_per_day,
+    sed_pct_str   = pct(sedentary),
+    light_pct_str = pct(light),
+    mod_pct_str   = pct(moderate),
+    vig_pct_str   = pct(vigorous),
+    vvig_pct_str  = pct(very_vigorous),
+    mvpa_pct_str  = pct(total_mvpa),
+    # Numeric percentages (for callers that build their own strings/columns)
+    sed_pct   = if (n_wear_epochs > 0) 100 * sedentary / n_wear_epochs else 0,
+    light_pct = if (n_wear_epochs > 0) 100 * light / n_wear_epochs else 0,
+    mod_pct   = if (n_wear_epochs > 0) 100 * moderate / n_wear_epochs else 0,
+    vig_pct   = if (n_wear_epochs > 0) 100 * vigorous / n_wear_epochs else 0,
+    vvig_pct  = if (n_wear_epochs > 0) 100 * very_vigorous / n_wear_epochs else 0,
+    mvpa_pct  = if (n_wear_epochs > 0) 100 * total_mvpa / n_wear_epochs else 0
+  )
+}
+
+
 #' Export ActiLife-Compatible Summary Report
 #'
 #' Exports a summary CSV file matching ActiLife's Desktop_Summary.csv format.
@@ -39,62 +157,33 @@ export_summary <- function(analysis_results,
   if (is.null(age) || is.na(age)) age <- 0
   if (is.null(gender) || is.na(gender)) gender <- ""
 
-  epoch_data <- analysis_results$epoch_data
   daily <- analysis_results$daily_summary
-
-  if (nrow(epoch_data) >= 2) {
-    epoch_sec <- as.numeric(difftime(epoch_data$timestamp[2],
-                                     epoch_data$timestamp[1],
-                                     units = "secs"))
-  } else {
-    epoch_sec <- 60  # default
-  }
 
   filename <- basename(analysis_results$parameters$file_path)
 
-  if ("is_valid_day" %in% names(daily)) {
-    valid_daily <- daily[daily$is_valid_day == TRUE, ]
-  } else if ("is.valid" %in% names(daily)) {
-    valid_daily <- daily[daily$is.valid == TRUE, ]
-  } else {
-    stop("Could not find validity column (is_valid_day or is.valid) in daily_summary")
+  if (!is.null(daily)) {
+    if (!("is_valid_day" %in% names(daily)) && !("is.valid" %in% names(daily))) {
+      stop("Could not find validity column (is_valid_day or is.valid) in daily_summary")
+    }
   }
 
-  if (nrow(valid_daily) == 0) {
-    warning("No valid days to export")
+  # Compute the canonical summary (valid-day & wear epochs, single denominator)
+  s <- .build_actilife_summary(analysis_results)
+  if (is.null(s)) {
+    warning("No valid days/epochs to export")
     return(invisible(NULL))
   }
 
-  valid_dates <- as.Date(valid_daily$date)
-  all_valid_epochs <- epoch_data[epoch_data$date %in% valid_dates, ]
-
-  # Only count wear time epochs for intensity calculations (non-wear excluded)
-  sedentary <- sum(all_valid_epochs$intensity == "sedentary" & all_valid_epochs$wear_time)
-  light <- sum(all_valid_epochs$intensity == "light" & all_valid_epochs$wear_time)
-  moderate <- sum(all_valid_epochs$intensity == "moderate" & all_valid_epochs$wear_time)
-  vigorous <- sum(all_valid_epochs$intensity == "vigorous" & all_valid_epochs$wear_time)
-  very_vigorous <- sum(all_valid_epochs$intensity == "very_vigorous" & all_valid_epochs$wear_time)
-  total_mvpa <- moderate + vigorous + very_vigorous
-  total_epochs <- nrow(all_valid_epochs)
-
-  # Guard against division by zero
-  if (total_epochs == 0) {
-    warning("No valid epochs to export")
-    return(invisible(NULL))
-  }
-
-  wear_valid_epochs <- all_valid_epochs[all_valid_epochs$wear_time, ]
-
-  if (nrow(wear_valid_epochs) > 0) {
-    vm_counts <- sqrt(wear_valid_epochs$axis1^2 + wear_valid_epochs$axis2^2 + wear_valid_epochs$axis3^2)
-  } else {
-    vm_counts <- numeric(0)
-  }
-
-  avg_mvpa_per_day <- if (nrow(valid_daily) > 0) total_mvpa / nrow(valid_daily) else 0
-
-  # Use wear epochs for percentage calculations (not total epochs)
-  n_wear_epochs <- nrow(wear_valid_epochs)
+  epoch_sec <- s$epoch_sec
+  n_wear_epochs <- s$n_wear_epochs
+  wear_valid_epochs <- s$wear_valid_epochs
+  vm_counts <- s$vm_counts
+  sedentary <- s$sedentary
+  light <- s$light
+  moderate <- s$moderate
+  vigorous <- s$vigorous
+  very_vigorous <- s$very_vigorous
+  total_mvpa <- s$total_mvpa
 
   summary_data <- data.frame(
     "Subject" = subject_id,
@@ -108,14 +197,14 @@ export_summary <- function(analysis_results,
     "Moderate" = moderate,
     "Vigorous" = vigorous,
     "Very Vigorous" = very_vigorous,
-    "% in Sedentary" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * sedentary / n_wear_epochs) else "0.00%",
-    "% in Light" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * light / n_wear_epochs) else "0.00%",
-    "% in Moderate" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * moderate / n_wear_epochs) else "0.00%",
-    "% in Vigorous" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * vigorous / n_wear_epochs) else "0.00%",
-    "% in Very Vigorous" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * very_vigorous / n_wear_epochs) else "0.00%",
+    "% in Sedentary" = s$sed_pct_str,
+    "% in Light" = s$light_pct_str,
+    "% in Moderate" = s$mod_pct_str,
+    "% in Vigorous" = s$vig_pct_str,
+    "% in Very Vigorous" = s$vvig_pct_str,
     "Total MVPA" = total_mvpa,
-    "% in MVPA" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * total_mvpa / n_wear_epochs) else "0.00%",
-    "Average MVPA Per day" = round(avg_mvpa_per_day, 1),
+    "% in MVPA" = s$mvpa_pct_str,
+    "Average MVPA Per day" = round(s$avg_mvpa_per_day, 1),
     "Axis 1 Counts" = if(n_wear_epochs > 0) sum(wear_valid_epochs$axis1) else 0,
     "Axis 2 Counts" = if(n_wear_epochs > 0) sum(wear_valid_epochs$axis2) else 0,
     "Axis 3 Counts" = if(n_wear_epochs > 0) sum(wear_valid_epochs$axis3) else 0,
@@ -140,7 +229,7 @@ export_summary <- function(analysis_results,
     "Lux Max Counts" = 0,
     "Number of Epochs" = n_wear_epochs,
     "Time" = round(n_wear_epochs * (epoch_sec / 60), 1),
-    "Calendar Days" = nrow(valid_daily),
+    "Calendar Days" = s$n_valid_days,
     stringsAsFactors = FALSE,
     check.names = FALSE
   )
@@ -717,59 +806,36 @@ export_summary_internal <- function(analysis_results) {
   if (is.null(age) || is.na(age)) age <- 0
   if (is.null(gender) || is.na(gender)) gender <- ""
 
-  epoch_data <- analysis_results$epoch_data
   daily <- analysis_results$daily_summary
-
-  if (nrow(epoch_data) >= 2) {
-    epoch_sec <- as.numeric(difftime(epoch_data$timestamp[2],
-                                     epoch_data$timestamp[1],
-                                     units = "secs"))
-  } else {
-    epoch_sec <- 60  # default
-  }
 
   filename <- basename(analysis_results$parameters$file_path)
 
-  if ("is_valid_day" %in% names(daily)) {
-    valid_daily <- daily[daily$is_valid_day == TRUE, ]
-  } else if ("is.valid" %in% names(daily)) {
-    valid_daily <- daily[daily$is.valid == TRUE, ]
-  } else {
-    stop("Could not find validity column (is_valid_day or is.valid) in daily_summary")
+  if (!is.null(daily)) {
+    if (!("is_valid_day" %in% names(daily)) && !("is.valid" %in% names(daily))) {
+      stop("Could not find validity column (is_valid_day or is.valid) in daily_summary")
+    }
   }
 
-  if (nrow(valid_daily) == 0) {
-    warning("No valid days to export")
+  # Route through the shared helper so this batch path reports IDENTICAL numbers
+  # to export_summary / .build_summary_row. Percentage denominator is the
+  # wear-epoch count (NOT total epochs), so numerator and denominator share the
+  # same epoch universe and intensity percentages sum to 100%.
+  s <- .build_actilife_summary(analysis_results)
+  if (is.null(s)) {
+    warning("No valid days/epochs to export")
     return(NULL)
   }
 
-  valid_dates <- as.Date(valid_daily$date)
-  all_valid_epochs <- epoch_data[epoch_data$date %in% valid_dates, ]
-
-  # Only count wear time epochs for intensity calculations (non-wear excluded)
-  sedentary <- sum(all_valid_epochs$intensity == "sedentary" & all_valid_epochs$wear_time)
-  light <- sum(all_valid_epochs$intensity == "light" & all_valid_epochs$wear_time)
-  moderate <- sum(all_valid_epochs$intensity == "moderate" & all_valid_epochs$wear_time)
-  vigorous <- sum(all_valid_epochs$intensity == "vigorous" & all_valid_epochs$wear_time)
-  very_vigorous <- sum(all_valid_epochs$intensity == "very_vigorous" & all_valid_epochs$wear_time)
-  total_mvpa <- moderate + vigorous + very_vigorous
-  total_epochs <- nrow(all_valid_epochs)
-
-  # Guard against division by zero
-  if (total_epochs == 0) {
-    warning("No valid epochs to export")
-    return(invisible(NULL))
-  }
-
-  wear_valid_epochs <- all_valid_epochs[all_valid_epochs$wear_time, ]
-
-  if (nrow(wear_valid_epochs) > 0) {
-    vm_counts <- sqrt(wear_valid_epochs$axis1^2 + wear_valid_epochs$axis2^2 + wear_valid_epochs$axis3^2)
-  } else {
-    vm_counts <- numeric(0)
-  }
-
-  avg_mvpa_per_day <- if (nrow(valid_daily) > 0) total_mvpa / nrow(valid_daily) else 0
+  epoch_sec <- s$epoch_sec
+  n_wear_epochs <- s$n_wear_epochs
+  wear_valid_epochs <- s$wear_valid_epochs
+  vm_counts <- s$vm_counts
+  sedentary <- s$sedentary
+  light <- s$light
+  moderate <- s$moderate
+  vigorous <- s$vigorous
+  very_vigorous <- s$very_vigorous
+  total_mvpa <- s$total_mvpa
 
   summary_data <- data.frame(
     "Subject" = subject_id,
@@ -783,14 +849,14 @@ export_summary_internal <- function(analysis_results) {
     "Moderate" = moderate,
     "Vigorous" = vigorous,
     "Very Vigorous" = very_vigorous,
-    "% in Sedentary" = sprintf("%.2f%%", 100 * sedentary / total_epochs),
-    "% in Light" = sprintf("%.2f%%", 100 * light / total_epochs),
-    "% in Moderate" = sprintf("%.2f%%", 100 * moderate / total_epochs),
-    "% in Vigorous" = sprintf("%.2f%%", 100 * vigorous / total_epochs),
-    "% in Very Vigorous" = sprintf("%.2f%%", 100 * very_vigorous / total_epochs),
+    "% in Sedentary" = s$sed_pct_str,
+    "% in Light" = s$light_pct_str,
+    "% in Moderate" = s$mod_pct_str,
+    "% in Vigorous" = s$vig_pct_str,
+    "% in Very Vigorous" = s$vvig_pct_str,
     "Total MVPA" = total_mvpa,
-    "% in MVPA" = sprintf("%.2f%%", 100 * total_mvpa / total_epochs),
-    "Average MVPA Per day" = round(avg_mvpa_per_day, 1),
+    "% in MVPA" = s$mvpa_pct_str,
+    "Average MVPA Per day" = round(s$avg_mvpa_per_day, 1),
     "Axis 1 Counts" = if(nrow(wear_valid_epochs) > 0) sum(wear_valid_epochs$axis1) else 0,
     "Axis 2 Counts" = if(nrow(wear_valid_epochs) > 0) sum(wear_valid_epochs$axis2) else 0,
     "Axis 3 Counts" = if(nrow(wear_valid_epochs) > 0) sum(wear_valid_epochs$axis3) else 0,
@@ -813,9 +879,9 @@ export_summary_internal <- function(analysis_results) {
     "Steps Per Minute" = if(nrow(wear_valid_epochs) > 0) round(mean(wear_valid_epochs$steps, na.rm = TRUE), 1) else 0,
     "Lux Average Counts" = 0,
     "Lux Max Counts" = 0,
-    "Number of Epochs" = total_epochs,
-    "Time" = round(total_epochs * (epoch_sec / 60), 1),
-    "Calendar Days" = nrow(valid_daily),
+    "Number of Epochs" = n_wear_epochs,
+    "Time" = round(n_wear_epochs * (epoch_sec / 60), 1),
+    "Calendar Days" = s$n_valid_days,
     stringsAsFactors = FALSE,
     check.names = FALSE
   )

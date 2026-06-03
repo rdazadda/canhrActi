@@ -16,29 +16,6 @@ validate_counts <- function(counts, name = "counts", replace_na = TRUE) {
   counts
 }
 
-#' Validate Vector Lengths Match
-#' @param ... Named vectors to check
-#' @keywords internal
-validate_lengths <- function(...) {
-  args <- list(...)
-  lens <- sapply(args, length)
-  if (length(unique(lens)) > 1) {
-    msg <- paste(names(args), "=", lens, collapse = ", ")
-    stop("Length mismatch: ", msg)
-  }
-  invisible(TRUE)
-}
-
-#' Validate Timestamps
-#' @param ts Timestamps to validate
-#' @keywords internal
-validate_timestamps <- function(ts) {
-  if (!inherits(ts, "POSIXct") && !inherits(ts, "POSIXt")) {
-    stop("timestamps must be POSIXct class")
-  }
-  invisible(TRUE)
-}
-
 #' Load ActiGraph CSV Data
 #'
 #' @param filepath Character. Path to the CSV file

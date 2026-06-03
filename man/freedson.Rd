@@ -40,10 +40,10 @@ Applications, Inc. accelerometer. Med Sci Sports Exerc. 1998;30(5):777-781.
 \seealso{
 \code{\link{to_cpm}} for epoch conversion
 
-Other adult cut-points: 
-\code{\link{crouter}()},
-\code{\link{matthews}()},
-\code{\link{santos_lozano}()},
-\code{\link{troiano}()}
+Other adult cut-points:
+\code{\link[=crouter]{crouter()}},
+\code{\link[=matthews]{matthews()}},
+\code{\link[=santos_lozano]{santos_lozano()}},
+\code{\link[=troiano]{troiano()}}
 }
 \concept{adult cut-points}

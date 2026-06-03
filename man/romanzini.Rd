@@ -32,13 +32,13 @@ Romanzini M, et al. (2014). Calibration of accelerometers
 in adolescents. Eur J Sport Sci, 14(1), 91-99.
 }
 \seealso{
-Other children cut-points: 
-\code{\link{butte_preschool}()},
-\code{\link{chandler}()},
-\code{\link{copeland}()},
-\code{\link{evenson}()},
-\code{\link{mattocks}()},
-\code{\link{pate_preschool}()},
-\code{\link{puyau}()}
+Other children cut-points:
+\code{\link[=butte_preschool]{butte_preschool()}},
+\code{\link[=chandler]{chandler()}},
+\code{\link[=copeland]{copeland()}},
+\code{\link[=evenson]{evenson()}},
+\code{\link[=mattocks]{mattocks()}},
+\code{\link[=pate_preschool]{pate_preschool()}},
+\code{\link[=puyau]{puyau()}}
 }
 \concept{children cut-points}

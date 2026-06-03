@@ -2,7 +2,7 @@
 % Please edit documentation in R/cut_points.R
 \name{chandler}
 \alias{chandler}
-\title{Apply Chandler (2016) Preschooler Cut Points}
+\title{Apply Chandler (2016) Children Cut Points}
 \usage{
 chandler(counts_per_minute)
 }
@@ -13,11 +13,11 @@ chandler(counts_per_minute)
 Ordered factor with intensity levels
 }
 \description{
-Cut-points for preschoolers validated with indirect calorimetry.
-Specifically developed for 3-5 year olds.
+Cut-points for children validated with indirect calorimetry using a
+wrist-worn accelerometer. Specifically developed for 8-12 year olds.
 }
 \details{
-Chandler (2016) cutpoints for preschoolers (15-sec epochs):
+Chandler (2016) cutpoints for 8-12 year-old children, wrist-worn (15-sec epochs):
 \itemize{
 \item Sedentary: 0-5 counts/15s (0-20 CPM)
 \item Light: 6-404 counts/15s (21-1616 CPM)
@@ -33,13 +33,13 @@ using a wrist-worn accelerometer in 8-12-year-old children.
 Pediatr Obes, 11(2), 120-127.
 }
 \seealso{
-Other children cut-points: 
-\code{\link{butte_preschool}()},
-\code{\link{copeland}()},
-\code{\link{evenson}()},
-\code{\link{mattocks}()},
-\code{\link{pate_preschool}()},
-\code{\link{puyau}()},
-\code{\link{romanzini}()}
+Other children cut-points:
+\code{\link[=butte_preschool]{butte_preschool()}},
+\code{\link[=copeland]{copeland()}},
+\code{\link[=evenson]{evenson()}},
+\code{\link[=mattocks]{mattocks()}},
+\code{\link[=pate_preschool]{pate_preschool()}},
+\code{\link[=puyau]{puyau()}},
+\code{\link[=romanzini]{romanzini()}}
 }
 \concept{children cut-points}

@@ -9,14 +9,12 @@
 // - Blume C, et al. (2016). nparACT: Non-parametric measures of actigraphy data.
 //   R package.
 
-// RcppArmadillo includes Rcpp - do not include Rcpp.h separately
-#include <RcppArmadillo.h>
+#include <Rcpp.h>
 #include <vector>
 #include <cmath>
 #include <algorithm>
 #include <numeric>
 
-// [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::plugins(cpp17)]]
 
 using namespace Rcpp;

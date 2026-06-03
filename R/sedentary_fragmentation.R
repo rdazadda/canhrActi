@@ -68,6 +68,11 @@ NULL
 #'   Lower values (1-2) may inflate break counts with non-meaningful movements.
 #' @param robust_alpha Use robust alpha estimation with xmin optimization? (default TRUE)
 #' @param compare_distributions Compare power-law vs exponential fit? (default TRUE)
+#' @param bootstrap_gof Run the Clauset et al. (2009) semiparametric bootstrap
+#'   power-law goodness-of-fit test? (default FALSE). Off by default to keep the
+#'   interactive dashboard fast. When FALSE, only an asymptotic KS approximation
+#'   (\code{alpha_ks_pvalue_approx}) is reported - it is NOT a valid Clauset GoF
+#'   p-value. When TRUE, \code{alpha_gof_pvalue} holds the bootstrap p-value.
 #'
 #' @return A list with class "canhrActi_fragmentation" containing:
 #'   \describe{
@@ -150,7 +155,8 @@ sedentary.fragmentation <- function(intensity,
                                      epoch_length = 60,
                                      min_break_length = 5,
                                      robust_alpha = TRUE,
-                                     compare_distributions = TRUE) {
+                                     compare_distributions = TRUE,
+                                     bootstrap_gof = FALSE) {
 
   # Input validation
   if (!is.factor(intensity) && !is.character(intensity)) {
@@ -250,8 +256,10 @@ sedentary.fragmentation <- function(intensity,
   # Option 1: Calculate from already-detected bouts (more accurate)
   # Option 2: Apply same preprocessing to intensity vector
   #
-  # Using Option 1: Calculate SATP/ASTP directly from detected bout durations
-  # This ensures perfect consistency with other bout-based metrics
+  # Using Option 1: Calculate SATP/ASTP directly from detected bout durations,
+  # and derive active bouts from a vector bridged with the SAME two-sided
+  # flanking rule as detect.sedentary.bouts(), keeping ASTP/SATP consistent
+  # with W50/alpha/Gini.
 
   # Calculate SATP from sedentary bout durations (already gap-bridged)
   mean_sed_bout_epochs <- mean(durations) / epoch_min  # Convert minutes to epochs
@@ -274,16 +282,27 @@ sedentary.fragmentation <- function(intensity,
     is_sedentary_processed <- is_sedentary_processed & !is_sleep
   }
 
-  # Apply gap bridging to the processed intensity (same as detect.sedentary.bouts)
+  # Apply gap bridging to the processed intensity using the IDENTICAL two-sided
+  # flanking rule as detect.sedentary.bouts(): only bridge a short non-sedentary
+  # gap when it is flanked by sedentary periods on BOTH sides. This guarantees
+  # ASTP/SATP are derived from the same bridged vector used for W50/alpha/Gini.
   min_break_epochs <- ceiling(min_break_length * 60 / epoch_length)
-  if (min_break_epochs > 0) {
+  if (min_break_epochs > 0 && length(is_sedentary_processed) > 0) {
     rle_sed <- rle(is_sedentary_processed)
-    end_indices_temp <- cumsum(rle_sed$lengths)
-    start_indices_temp <- c(1, end_indices_temp[-length(end_indices_temp)] + 1)
-    short_gaps <- !rle_sed$values & rle_sed$lengths <= min_break_epochs
-    if (any(short_gaps)) {
-      for (i in which(short_gaps)) {
-        is_sedentary_processed[start_indices_temp[i]:end_indices_temp[i]] <- TRUE
+    n_runs <- length(rle_sed$lengths)
+    if (n_runs > 1) {
+      end_indices_temp <- cumsum(rle_sed$lengths)
+      start_indices_temp <- c(1, end_indices_temp[-n_runs] + 1)
+      for (i in seq_len(n_runs)) {
+        # Only consider short non-sedentary runs (potential gaps)
+        if (!rle_sed$values[i] && rle_sed$lengths[i] <= min_break_epochs) {
+          # Require sedentary flanks on BOTH sides (two-sided rule)
+          has_sed_before <- i > 1 && rle_sed$values[i - 1]
+          has_sed_after <- i < n_runs && rle_sed$values[i + 1]
+          if (has_sed_before && has_sed_after) {
+            is_sedentary_processed[start_indices_temp[i]:end_indices_temp[i]] <- TRUE
+          }
+        }
       }
     }
   }
@@ -313,9 +332,10 @@ sedentary.fragmentation <- function(intensity,
   w50 <- usual.bout.duration(durations)
   w_percentiles <- usual.bout.percentiles(durations, c(25, 50, 75, 90))
 
-  # 
+  #
   if (robust_alpha && n_bouts >= 10) {
-    alpha_result <- .calculate.alpha.robust(durations, bootstrap_n = 100)
+    alpha_result <- .calculate.alpha.robust(durations, bootstrap_n = 100,
+                                            bootstrap_gof = bootstrap_gof)
   } else {
     alpha_result <- list(
       alpha = .calculate.alpha.simple(durations, xmin = 1),
@@ -326,7 +346,8 @@ sedentary.fragmentation <- function(intensity,
       n_total = n_bouts,
       pct_in_tail = 100,
       ks_stat = NA_real_,
-      p_value = NA_character_
+      gof_pvalue = NA_real_,
+      ks_pvalue_approx = NA_character_
     )
   }
 
@@ -342,7 +363,7 @@ sedentary.fragmentation <- function(intensity,
   # 
   dist_comparison <- NULL
   if (compare_distributions && n_bouts >= 10) {
-    dist_comparison <- compare.bout.distributions(durations)
+    dist_comparison <- compare.bout.distributions(durations, bootstrap_gof = bootstrap_gof)
   }
 
   # 
@@ -350,13 +371,28 @@ sedentary.fragmentation <- function(intensity,
   # Count based on detected bouts, not raw transitions (filters noise)
   # Each bout that ended = 1 break (except last bout if still ongoing at end of data)
 
-  # Check if the last detected bout extends to the end of the data
+  # Check if the last detected bout extends to the end of the VALID data.
+  # The ongoing-bout test must reference the last wear & waking (valid) epoch,
+  # not the raw length n: trailing non-wear/sleep epochs are not real "active"
+  # time and must not turn an end-of-data sedentary bout into a counted break.
+  valid_epoch <- rep(TRUE, n)
+  if (!is.null(wear_time)) {
+    wear_valid <- as.logical(wear_time)
+    wear_valid[is.na(wear_valid)] <- FALSE  # NA wear treated as non-valid
+    valid_epoch <- valid_epoch & wear_valid
+  }
+  if (!is.null(sleep_mask)) {
+    # is_sleep was derived above with NA -> FALSE handling
+    valid_epoch <- valid_epoch & !is_sleep
+  }
+  last_valid_index <- if (any(valid_epoch)) max(which(valid_epoch)) else n
+
   last_bout_ongoing <- FALSE
   if (n_bouts > 0) {
     last_bout_end <- bouts$end_index[n_bouts]
-    # Check if data ends within a few epochs of the last bout ending
-    # (allowing for small gaps due to wear time filtering)
-    last_bout_ongoing <- (n - last_bout_end) <= 2
+    # Bout is "ongoing" if it ends at (or within a small gap of) the last valid
+    # epoch, so no sustained active period follows it within the measurement.
+    last_bout_ongoing <- (last_valid_index - last_bout_end) <= 2
   }
 
   # Breaks = number of completed sedentary bouts
@@ -432,6 +468,10 @@ sedentary.fragmentation <- function(intensity,
     alpha_n_tail = alpha_result$n_tail,
     alpha_pct_in_tail = alpha_result$pct_in_tail,
     alpha_ks_stat = alpha_result$ks_stat,
+    # Clauset semiparametric bootstrap GoF p-value (NA unless bootstrap_gof=TRUE);
+    # ks_pvalue_approx is only an asymptotic KS approximation, NOT a Clauset p-value.
+    alpha_gof_pvalue = alpha_result$gof_pvalue,
+    alpha_ks_pvalue_approx = alpha_result$ks_pvalue_approx,
     gini = round(gini, 4),
 
     # Prolonged sedentary
@@ -787,10 +827,18 @@ usual.bout.duration <- function(bout_durations) {
 
 #' Calculate Multiple Usual Bout Percentiles
 #'
+#' Time-weighted percentiles of the bout-duration distribution. WX is the bout
+#' duration at which X\% of total sedentary time has accumulated when bouts are
+#' considered from SHORTEST to LONGEST. Defined this way the percentiles are
+#' monotonically INCREASING (W25 <= W50 <= W75 <= W90), so larger W corresponds
+#' to a longer-bout cutoff, matching the "25th/75th/90th weighted percentile"
+#' labels surfaced in the dashboard and print method. W50 is the time-weighted
+#' median (companion to \code{usual.bout.duration()}).
+#'
 #' @param bout_durations Numeric vector of bout durations
 #' @param percentiles Percentiles to calculate (default: c(25, 50, 75, 90))
 #'
-#' @return Named numeric vector with W25, W50, W75, W90
+#' @return Named numeric vector with W25, W50, W75, W90 (monotonically increasing)
 #'
 #' @export
 usual.bout.percentiles <- function(bout_durations, percentiles = c(25, 50, 75, 90)) {
@@ -801,7 +849,9 @@ usual.bout.percentiles <- function(bout_durations, percentiles = c(25, 50, 75, 9
     return(result)
   }
 
-  bout_durations <- sort(bout_durations[!is.na(bout_durations)], decreasing = TRUE)
+  # Accumulate time from SHORTEST to LONGEST so that the duration at which X% of
+  # sedentary time has accrued increases with X (proper time-weighted percentile).
+  bout_durations <- sort(bout_durations[!is.na(bout_durations)], decreasing = FALSE)
   total_time <- sum(bout_durations)
   cumsum_time <- cumsum(bout_durations)
 
@@ -871,8 +921,19 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
 #' @param durations Numeric vector of bout durations
 #' @param xmin_candidates Candidate xmin values to test (default: unique durations)
 #' @param bootstrap_n Number of bootstrap iterations for CI (default: 100)
+#' @param bootstrap_gof Run Clauset et al. (2009, Sec 4.2) semiparametric Monte-Carlo
+#'   bootstrap goodness-of-fit test? (default FALSE). When FALSE (the default, kept
+#'   off so the interactive dashboard stays fast) no Clauset p-value is produced;
+#'   instead an asymptotic Kolmogorov-Smirnov approximation (\code{ks_pvalue_approx})
+#'   is reported and clearly labelled as an approximation, not a Clauset GoF p-value.
+#'   When TRUE, \code{gof_pvalue} is the fraction of synthetic KS statistics that
+#'   meet or exceed the empirical KS statistic.
+#' @param gof_bootstrap_n Number of synthetic datasets for the GoF bootstrap when
+#'   \code{bootstrap_gof = TRUE} (default 200).
 #'
-#' @return List with alpha, xmin, KS statistic, confidence intervals
+#' @return List with alpha, xmin, KS statistic, confidence intervals, and either a
+#'   Clauset GoF p-value (\code{gof_pvalue}) or an asymptotic KS approximation
+#'   (\code{ks_pvalue_approx}).
 #'
 #' @details
 #' The naive Hill estimator (alpha = 1 + n/sum(log(x/xmin))) with fixed xmin
@@ -881,14 +942,21 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
 #'   \item Tests multiple xmin values
 #'   \item Selects xmin that minimizes KS statistic
 #'   \item Provides bootstrap confidence intervals
+#'   \item Optionally runs the Clauset semiparametric GoF bootstrap
 #' }
+#'
+#' The asymptotic KS critical-value lookup (1.36/sqrt(n)) is NOT a valid power-law
+#' goodness-of-fit test (it is anti-conservative because alpha and xmin are estimated
+#' from the same data); it is surfaced only as \code{ks_pvalue_approx}. Set
+#' \code{bootstrap_gof = TRUE} for the Clauset (2009) semiparametric bootstrap p-value.
 #'
 #' @references
 #' Clauset A, Shalizi CR, Newman MEJ. (2009). Power-law distributions in
 #' empirical data. SIAM Review, 51(4):661-703.
 #'
 #' @keywords internal
-.calculate.alpha.robust <- function(durations, xmin_candidates = NULL, bootstrap_n = 100) {
+.calculate.alpha.robust <- function(durations, xmin_candidates = NULL, bootstrap_n = 100,
+                                    bootstrap_gof = FALSE, gof_bootstrap_n = 200) {
 
   durations <- durations[!is.na(durations) & durations > 0]
   n_total <- length(durations)
@@ -903,7 +971,8 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
       n_total = n_total,
       pct_in_tail = NA_real_,
       ks_stat = NA_real_,
-      p_value = NA_character_
+      gof_pvalue = NA_real_,
+      ks_pvalue_approx = NA_character_
     ))
   }
 
@@ -961,37 +1030,65 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
       n_total = n_total,
       pct_in_tail = NA_real_,
       ks_stat = NA_real_,
-      p_value = NA_character_
+      gof_pvalue = NA_real_,
+      ks_pvalue_approx = NA_character_
     ))
   }
 
   best <- results[[best_idx]]
 
-  # Standard error of alpha (analytical)
+  # Standard error of alpha (analytical Clauset/Hill SE at the fixed best xmin).
+  # Used as a fallback when the bootstrap is unavailable.
   se_alpha <- (best$alpha - 1) / sqrt(best$n)
 
-  # Bootstrap CI
+  # Bootstrap CI (Clauset et al. 2009): resample the FULL duration vector and
+  # re-run the whole xmin-selection + alpha-estimation procedure on each
+  # replicate, so the dominant source of variance (xmin selection) is
+  # propagated rather than holding xmin fixed at the point estimate.
   alpha_ci <- c(NA_real_, NA_real_)
-  if (bootstrap_n > 0 && best$n >= 10) {
-    x_tail <- durations[durations >= best$xmin]
-    xmin_boot <- max(0.5, best$xmin - 0.5)  # Continuous correction
+  if (bootstrap_n > 0 && n_total >= 10) {
     boot_alphas <- tryCatch({
       replicate(bootstrap_n, {
-        boot_sample <- sample(x_tail, replace = TRUE)
-        log_sum <- sum(log(boot_sample / xmin_boot))
-        if (log_sum > 0) 1 + length(boot_sample) / log_sum else NA_real_
+        boot_sample <- sample(durations, replace = TRUE)
+        # bootstrap_n = 0 prevents infinite recursion; xmin is re-selected here.
+        boot_fit <- .calculate.alpha.robust(boot_sample,
+                                             xmin_candidates = xmin_candidates,
+                                             bootstrap_n = 0)
+        if (is.null(boot_fit$alpha)) NA_real_ else boot_fit$alpha
       })
     }, error = function(e) rep(NA_real_, bootstrap_n))
 
     boot_alphas <- boot_alphas[!is.na(boot_alphas)]
     if (length(boot_alphas) >= 10) {
       alpha_ci <- quantile(boot_alphas, c(0.025, 0.975))
+      # Propagate xmin-selection variance into the reported SE.
+      se_alpha <- sd(boot_alphas)
     }
   }
 
-  # Approximate p-value
+  # Asymptotic KS approximation (NOT a Clauset GoF p-value).
+  # The 1.36/sqrt(n) critical value assumes a fully-specified null distribution;
+  # because alpha and xmin are estimated from the same data this is
+  # anti-conservative and must not be presented as a power-law GoF p-value.
   ks_critical_05 <- 1.36 / sqrt(best$n)
-  p_value <- if (best$ks < ks_critical_05) "> 0.05" else "< 0.05"
+  ks_pvalue_approx <- if (best$ks < ks_critical_05) {
+    "> 0.05 (KS approx)"
+  } else {
+    "< 0.05 (KS approx)"
+  }
+
+  # Optional Clauset (2009, Sec 4.2) semiparametric bootstrap GoF p-value.
+  # Gated behind bootstrap_gof (default FALSE) to keep the dashboard fast.
+  gof_pvalue <- NA_real_
+  if (isTRUE(bootstrap_gof)) {
+    gof_pvalue <- .powerlaw.gof.bootstrap(
+      durations    = durations,
+      xmin         = best$xmin,
+      empirical_ks = best$ks,
+      gof_bootstrap_n = gof_bootstrap_n,
+      xmin_candidates = xmin_candidates
+    )
+  }
 
   list(
     alpha = round(best$alpha, 3),
@@ -1002,8 +1099,97 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
     n_total = n_total,
     pct_in_tail = round(100 * best$n / n_total, 1),
     ks_stat = round(best$ks, 4),
-    p_value = p_value
+    gof_pvalue = if (is.na(gof_pvalue)) NA_real_ else round(gof_pvalue, 4),
+    ks_pvalue_approx = ks_pvalue_approx
   )
+}
+
+
+#' Semiparametric Bootstrap Goodness-of-Fit for Power-Law Tail
+#'
+#' Implements the Clauset et al. (2009, Section 4.2) semiparametric Monte-Carlo
+#' bootstrap goodness-of-fit test. For each of \code{gof_bootstrap_n} synthetic
+#' datasets, observations below the fitted \code{xmin} are drawn (with replacement)
+#' from the empirical body, while observations at/above \code{xmin} are drawn from
+#' the fitted power-law tail; xmin and alpha are then RE-ESTIMATED on the synthetic
+#' dataset and its KS statistic recorded. The returned p-value is the fraction of
+#' synthetic KS statistics greater than or equal to the empirical KS statistic.
+#' A large p-value (e.g. > 0.1) means the power-law is a plausible fit; a small
+#' p-value means it can be ruled out.
+#'
+#' @param durations Numeric vector of observed bout durations (>0)
+#' @param xmin Fitted lower bound of the power-law tail
+#' @param empirical_ks Empirical KS statistic at the fitted xmin/alpha
+#' @param gof_bootstrap_n Number of synthetic datasets (default 200)
+#' @param xmin_candidates xmin grid reused when re-fitting each synthetic dataset
+#'
+#' @return Numeric p-value in [0, 1], or NA if it cannot be computed
+#'
+#' @references
+#' Clauset A, Shalizi CR, Newman MEJ. (2009). Power-law distributions in
+#' empirical data. SIAM Review, 51(4):661-703.
+#'
+#' @keywords internal
+.powerlaw.gof.bootstrap <- function(durations, xmin, empirical_ks,
+                                    gof_bootstrap_n = 200, xmin_candidates = NULL) {
+
+  durations <- durations[!is.na(durations) & durations > 0]
+  n_total <- length(durations)
+  if (n_total < 10 || is.na(xmin) || is.na(empirical_ks)) {
+    return(NA_real_)
+  }
+
+  body_vals <- durations[durations < xmin]   # empirical body (below xmin)
+  tail_vals <- durations[durations >= xmin]   # power-law tail (at/above xmin)
+  n_tail <- length(tail_vals)
+  n_body <- length(body_vals)
+  if (n_tail < 5) return(NA_real_)
+
+  # Estimate the tail exponent at the fitted xmin (continuous correction, as in
+  # the main estimator) to use as the generative model for the synthetic tail.
+  xmin_corrected <- max(0.5, xmin - 0.5)
+  log_sum <- sum(log(tail_vals / xmin_corrected))
+  if (!is.finite(log_sum) || log_sum <= 0) return(NA_real_)
+  alpha_fit <- 1 + n_tail / log_sum
+
+  # Continuous power-law tail sampler via inverse-CDF transform:
+  # for S(x) = (xmin_corrected / x)^(alpha-1), x = xmin_corrected * U^(-1/(alpha-1)).
+  exponent <- alpha_fit - 1
+  if (!is.finite(exponent) || exponent <= 0) return(NA_real_)
+  p_tail <- n_tail / n_total  # probability an observation falls in the tail
+
+  synth_ks <- replicate(gof_bootstrap_n, {
+    # Choose, per observation, whether it comes from the tail or the body,
+    # preserving the empirical tail/body mix (semiparametric step).
+    in_tail <- stats::runif(n_total) < p_tail
+    n_syn_tail <- sum(in_tail)
+    n_syn_body <- n_total - n_syn_tail
+
+    syn <- numeric(n_total)
+    if (n_syn_tail > 0) {
+      u <- stats::runif(n_syn_tail)
+      syn[in_tail] <- xmin_corrected * u^(-1 / exponent)
+    }
+    if (n_syn_body > 0) {
+      if (n_body > 0) {
+        syn[!in_tail] <- sample(body_vals, n_syn_body, replace = TRUE)
+      } else {
+        # No empirical body: fall back to resampling the tail for these draws.
+        syn[!in_tail] <- sample(tail_vals, n_syn_body, replace = TRUE)
+      }
+    }
+
+    # Re-estimate xmin + alpha on the synthetic dataset and take its KS stat.
+    fit <- .calculate.alpha.robust(syn, xmin_candidates = xmin_candidates,
+                                   bootstrap_n = 0, bootstrap_gof = FALSE)
+    if (is.null(fit$ks_stat) || is.na(fit$ks_stat)) NA_real_ else fit$ks_stat
+  })
+
+  synth_ks <- synth_ks[!is.na(synth_ks)]
+  if (length(synth_ks) < 1) return(NA_real_)
+
+  # p = fraction of synthetic KS statistics >= empirical KS statistic.
+  mean(synth_ks >= empirical_ks)
 }
 
 
@@ -1080,10 +1266,19 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
 
 #' Compare Power-Law vs Exponential Distribution Fit
 #'
-#' Tests whether bout durations follow power-law or exponential distribution
-#' using likelihood ratio test (Vuong test).
+#' Tests whether bout durations follow a power-law or exponential distribution
+#' using a normalized likelihood-ratio (Vuong) test. The comparison is run over
+#' the SAME tail (durations >= xmin) used to estimate the power-law exponent
+#' alpha, per Clauset et al. (2009). Following Clauset, the "power_law" label is
+#' only assigned when (a) the Vuong test is significant AND favours the power
+#' law, AND (b) the power-law itself is a plausible fit to the tail; otherwise
+#' the result is reported as "inconclusive".
 #'
 #' @param bout_durations Numeric vector of bout durations
+#' @param bootstrap_gof Use the Clauset (2009) semiparametric bootstrap GoF test
+#'   to decide whether the power-law is a plausible fit? (default FALSE, kept off
+#'   for dashboard speed). When FALSE, plausibility is judged by the asymptotic KS
+#'   approximation (anti-conservative); when TRUE, by the bootstrap p-value.
 #'
 #' @return List with model comparison results
 #'
@@ -1095,12 +1290,12 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
 #' Clauset A, et al. (2009). SIAM Review, 51(4):661-703.
 #'
 #' @export
-compare.bout.distributions <- function(bout_durations) {
+compare.bout.distributions <- function(bout_durations, bootstrap_gof = FALSE) {
 
-  x <- bout_durations[!is.na(bout_durations) & bout_durations > 0]
-  n <- length(x)
+  x_all <- bout_durations[!is.na(bout_durations) & bout_durations > 0]
+  n_all <- length(x_all)
 
-  if (n < 10) {
+  if (n_all < 10) {
     return(list(
       best_model = NA_character_,
       power_law_alpha = NA_real_,
@@ -1108,13 +1303,27 @@ compare.bout.distributions <- function(bout_durations) {
       log_likelihood_ratio = NA_real_,
       vuong_statistic = NA_real_,
       p_value = NA_real_,
+      power_law_fits = NA,
       interpretation = "Insufficient data for comparison"
     ))
   }
 
-  xmin <- min(x)
+  # Use the SAME xmin/tail selected for the alpha estimate (Clauset et al. 2009),
+  # not min(x). Both candidate models are then compared on this common tail.
+  alpha_fit <- .calculate.alpha.robust(x_all, bootstrap_n = 0,
+                                       bootstrap_gof = bootstrap_gof)
+  xmin <- if (!is.na(alpha_fit$xmin)) alpha_fit$xmin else min(x_all)
 
-  # Power-law MLE (with division by zero guard)
+  x <- x_all[x_all >= xmin]
+  n <- length(x)
+  if (n < 10) {
+    # Tail too small to compare reliably
+    x <- x_all
+    n <- n_all
+    xmin <- min(x_all)
+  }
+
+  # Power-law MLE on the tail (with division-by-zero guard)
   log_sum <- sum(log(x / xmin))
   alpha <- if (abs(log_sum) > 1e-10) 1 + n / log_sum else NA_real_
   ll_power_law <- if (!is.na(alpha)) {
@@ -1123,7 +1332,7 @@ compare.bout.distributions <- function(bout_durations) {
     NA_real_
   }
 
-  # Exponential MLE (shifted, with division by zero guard)
+  # Exponential MLE on the same tail (shifted, with division-by-zero guard)
   mean_shifted <- mean(x - xmin)
   lambda <- if (abs(mean_shifted) > 1e-10) 1 / mean_shifted else NA_real_
   ll_exponential <- if (!is.na(lambda)) {
@@ -1142,30 +1351,59 @@ compare.bout.distributions <- function(bout_durations) {
       log_likelihood_ratio = NA_real_,
       vuong_statistic = NA_real_,
       p_value = NA_real_,
+      power_law_fits = NA,
       interpretation = "Unable to compute valid likelihoods"
     ))
   }
 
   ll_ratio <- ll_power_law - ll_exponential
 
-  # Per-observation log-likelihoods for Vuong test
+  # Per-observation log-likelihoods for the Vuong test (same tail for both)
   ll_pl_i <- log(alpha - 1) - log(xmin) - alpha * log(x / xmin)
   ll_exp_i <- log(lambda) - lambda * (x - xmin)
 
   diff_i <- ll_pl_i - ll_exp_i
+
+  # Small-sample correction: use the unbiased SD of the per-observation LR
+  # differences, and apply the Vuong parameter-count adjustment. Power-law and
+  # exponential each have one free parameter, so the BIC-style correction term
+  # (k_pl - k_exp) * log(n) / 2 is zero here; it is included explicitly so the
+  # formula remains correct if the models gain parameters.
+  k_pl <- 1L
+  k_exp <- 1L
+  correction <- (k_pl - k_exp) * log(n) / 2
+  ll_ratio_corrected <- ll_ratio - correction
+
   sigma <- sd(diff_i)
 
-  if (sigma == 0 || is.na(sigma)) {
+  if (is.na(sigma) || sigma == 0) {
     vuong_stat <- 0
     p_value <- 1
   } else {
-    vuong_stat <- (mean(diff_i) * sqrt(n)) / sigma
+    # Normalized (per Clauset 2009 eqn 27): R / (sqrt(n) * sigma).
+    vuong_stat <- ll_ratio_corrected / (sqrt(n) * sigma)
     p_value <- 2 * pnorm(-abs(vuong_stat))
   }
 
-  # Determine best model
+  # Does the power-law plausibly fit the tail? Require this before ever
+  # labelling the result "power_law" (Clauset et al. 2009).
+  if (bootstrap_gof && !is.na(alpha_fit$gof_pvalue)) {
+    power_law_fits <- alpha_fit$gof_pvalue >= 0.10
+  } else {
+    # Asymptotic KS approximation fallback (anti-conservative): treat as a
+    # "non-rejection" only when the approximate KS p-value is not significant.
+    power_law_fits <- !is.na(alpha_fit$ks_pvalue_approx) &&
+      grepl("^> 0.05", alpha_fit$ks_pvalue_approx)
+  }
+
+  # Determine best model: a significant Vuong result favouring the power law is
+  # only reported as "power_law" if the power-law also passes the GoF check.
   if (p_value < 0.05) {
-    best_model <- if (ll_ratio > 0) "power_law" else "exponential"
+    if (ll_ratio_corrected > 0) {
+      best_model <- if (isTRUE(power_law_fits)) "power_law" else "inconclusive"
+    } else {
+      best_model <- "exponential"
+    }
   } else {
     best_model <- "inconclusive"
   }
@@ -1173,7 +1411,11 @@ compare.bout.distributions <- function(bout_durations) {
   interpretation <- switch(best_model,
     "power_law" = "Bout durations follow power-law (fat tail: many short + few very long bouts)",
     "exponential" = "Bout durations follow exponential (memoryless: constant probability of ending)",
-    "inconclusive" = "Cannot statistically distinguish between power-law and exponential"
+    "inconclusive" = if (p_value < 0.05 && ll_ratio_corrected > 0 && !isTRUE(power_law_fits)) {
+      "Power-law favoured by LR but does not pass goodness-of-fit; treat as inconclusive"
+    } else {
+      "Cannot statistically distinguish between power-law and exponential"
+    }
   )
 
   list(
@@ -1182,9 +1424,12 @@ compare.bout.distributions <- function(bout_durations) {
     power_law_ll = round(ll_power_law, 2),
     exponential_lambda = round(lambda, 5),
     exponential_ll = round(ll_exponential, 2),
-    log_likelihood_ratio = round(ll_ratio, 2),
+    xmin = xmin,
+    n_tail = n,
+    log_likelihood_ratio = round(ll_ratio_corrected, 2),
     vuong_statistic = round(vuong_stat, 3),
     p_value = round(p_value, 4),
+    power_law_fits = power_law_fits,
     interpretation = interpretation
   )
 }
@@ -1650,14 +1895,23 @@ sample.entropy <- function(activity, m = 2, r = 0.2, normalize = TRUE) {
 #'
 #' @return List with Weibull parameters and interpretations:
 #'   \describe{
-#'     \item{shape}{Weibull shape parameter (k)}
-#'     \item{scale}{Weibull scale parameter (lambda)}
+#'     \item{shape}{Weibull shape parameter (k); NA if the MLE did not converge}
+#'     \item{scale}{Weibull scale parameter (lambda); NA if the MLE did not converge}
 #'     \item{median_survival}{Median survival time from Weibull}
 #'     \item{mean_survival}{Mean survival time from Weibull}
+#'     \item{converged}{Logical; did the shape MLE root-finder converge?}
 #'     \item{hazard_interpretation}{Interpretation of hazard function}
 #'   }
 #'
 #' @details
+#' The shape parameter k is the root of the Weibull profile score equation
+#' \deqn{g(k) = \frac{\sum x^k \log x}{\sum x^k} - \frac{1}{k} - \frac{1}{n}\sum \log x = 0,}
+#' which is monotonically increasing in k. It is solved with a bracketed
+#' root-finder (\code{\link[stats]{uniroot}}) rather than a fixed-point map. If a
+#' root cannot be bracketed/found, shape and scale are returned as NA (with
+#' \code{converged = FALSE}) instead of being silently forced to the exponential
+#' (k = 1) case.
+#'
 #' Weibull shape parameter interpretation:
 #' \itemize{
 #'   \item k < 1: Decreasing hazard (longer bouts more likely to continue)
@@ -1680,47 +1934,83 @@ survival.weibull <- function(bout_durations) {
       scale = NA_real_,
       median_survival = NA_real_,
       mean_survival = NA_real_,
+      converged = FALSE,
       hazard_interpretation = "Insufficient data"
     ))
   }
 
-  # MLE for Weibull parameters using Newton-Raphson iteration
-  # Initialize with method of moments estimates
-  mean_d <- mean(bout_durations)
-  var_d <- var(bout_durations)
-  cv <- sqrt(var_d) / mean_d
+  sum_logx <- sum(log(bout_durations))
+  mean_logx <- sum_logx / n
 
-  # Approximate initial shape from coefficient of variation
-  # CV of Weibull = sqrt(gamma(1+2/k)/gamma(1+1/k)^2 - 1)
-  k <- if (cv > 0) max(0.5, 1 / cv) else 1  # Initial guess
-
-  # Iterative MLE (simplified Newton-Raphson)
-  for (iter in 1:50) {
-    sum_xk <- sum(bout_durations^k)
-    sum_xk_logx <- sum((bout_durations^k) * log(bout_durations))
-    sum_logx <- sum(log(bout_durations))
-
-    # Update shape
-    k_new <- 1 / (sum_xk_logx / sum_xk - sum_logx / n)
-
-    if (is.na(k_new) || !is.finite(k_new) || k_new <= 0) break
-
-    if (abs(k_new - k) < 0.001) {
-      k <- k_new
-      break
-    }
-    k <- k_new
+  # Weibull shape MLE: root of the (monotone increasing) profile score
+  #   g(k) = sum(x^k log x) / sum(x^k) - 1/k - mean(log x)
+  # Solve with a bracketed root-finder (uniroot) on the profile score.
+  weibull_score <- function(k) {
+    xk <- bout_durations^k
+    sum_xk <- sum(xk)
+    if (!is.finite(sum_xk) || sum_xk <= 0) return(NA_real_)
+    sum(xk * log(bout_durations)) / sum_xk - 1 / k - mean_logx
   }
 
-  # Ensure valid shape
-  if (is.na(k) || k <= 0 || k > 10) k <- 1
+  # Method-of-moments initial guess to seed the bracket.
+  cv <- stats::sd(bout_durations) / mean(bout_durations)
+  k_init <- if (is.finite(cv) && cv > 0) max(0.2, min(10, 1 / cv)) else 1
 
-  # Scale parameter
-  lambda <- (sum(bout_durations^k) / n)^(1/k)
+  # Expand a bracket [lo, hi] around the initial guess until the score changes
+  # sign (g is increasing, so a sign change brackets the unique root).
+  lo <- max(1e-3, k_init / 4)
+  hi <- min(50, k_init * 4)
+  g_lo <- weibull_score(lo)
+  g_hi <- weibull_score(hi)
+  expand <- 0L
+  while (expand < 40 && (is.na(g_lo) || is.na(g_hi) || g_lo * g_hi > 0)) {
+    if (!is.na(g_lo) && g_lo > 0) {
+      lo <- max(1e-4, lo / 2)
+      g_lo <- weibull_score(lo)
+    } else if (!is.na(g_hi) && g_hi < 0) {
+      hi <- min(200, hi * 2)
+      g_hi <- weibull_score(hi)
+    } else {
+      # One endpoint is NA: nudge both inward/outward and retry.
+      lo <- max(1e-4, lo / 2)
+      hi <- min(200, hi * 2)
+      g_lo <- weibull_score(lo)
+      g_hi <- weibull_score(hi)
+    }
+    expand <- expand + 1L
+  }
+
+  k <- NA_real_
+  converged <- FALSE
+  if (!is.na(g_lo) && !is.na(g_hi) && g_lo * g_hi <= 0) {
+    root <- tryCatch(
+      stats::uniroot(weibull_score, lower = lo, upper = hi, tol = 1e-6),
+      error = function(e) NULL
+    )
+    if (!is.null(root) && is.finite(root$root) && root$root > 0) {
+      k <- root$root
+      converged <- TRUE
+    }
+  }
+
+  # Propagate NA on failure rather than silently substituting k = 1.
+  if (!converged || is.na(k)) {
+    return(list(
+      shape = NA_real_,
+      scale = NA_real_,
+      median_survival = NA_real_,
+      mean_survival = NA_real_,
+      converged = FALSE,
+      hazard_interpretation = "Weibull shape MLE did not converge"
+    ))
+  }
+
+  # Scale parameter (closed form given k)
+  lambda <- (sum(bout_durations^k) / n)^(1 / k)
 
   # Derived metrics
-  median_survival <- lambda * (log(2))^(1/k)
-  mean_survival <- lambda * gamma(1 + 1/k)
+  median_survival <- lambda * (log(2))^(1 / k)
+  mean_survival <- lambda * gamma(1 + 1 / k)
 
   # Hazard interpretation
   hazard_interp <- if (k < 0.9) {
@@ -1736,6 +2026,7 @@ survival.weibull <- function(bout_durations) {
     scale = round(lambda, 2),
     median_survival = round(median_survival, 1),
     mean_survival = round(mean_survival, 1),
+    converged = TRUE,
     hazard_interpretation = hazard_interp
   )
 }
@@ -1797,25 +2088,33 @@ compare.survival.curves <- function(..., labels = NULL) {
 #' Hourly Fragmentation Pattern
 #'
 #' Calculates sedentary fragmentation metrics for each hour of the day,
-#' revealing temporal patterns in sedentary accumulation.
+#' revealing temporal patterns in sedentary accumulation. Bouts are detected on
+#' the FULL series (with the same gap bridging as
+#' \code{detect.sedentary.bouts()}) and each bout is attributed to the hour of
+#' its START, so a bout that spans an hour boundary is counted in exactly one
+#' hour (matching plot_hourly_heatmap). This avoids the previous behaviour where
+#' boundary-spanning bouts were counted in both hours, inflating n_bouts and the
+#' fragmentation_index.
 #'
 #' @param intensity Factor or character vector of intensity classifications
 #' @param timestamps POSIXct vector of timestamps
 #' @param wear_time Optional logical vector
 #' @param epoch_length Epoch length in seconds (default 60)
+#' @param min_break_length Minimum break duration in minutes for gap bridging
+#'   (default 5), passed through to \code{detect.sedentary.bouts()}.
 #'
 #' @return Data frame with hourly fragmentation metrics:
 #'   \describe{
 #'     \item{hour}{Hour of day (0-23)}
 #'     \item{sedentary_min}{Total sedentary time}
-#'     \item{n_bouts}{Number of sedentary bouts}
-#'     \item{mean_bout_duration}{Mean bout length in that hour}
-#'     \item{fragmentation_index}{SATP for that hour}
+#'     \item{n_bouts}{Number of sedentary bouts STARTING in that hour}
+#'     \item{mean_bout_duration}{Mean duration of bouts starting in that hour}
+#'     \item{fragmentation_index}{SATP-like index: bouts-started / sedentary epochs}
 #'   }
 #'
 #' @export
 hourly.fragmentation.pattern <- function(intensity, timestamps, wear_time = NULL,
-                                          epoch_length = 60) {
+                                          epoch_length = 60, min_break_length = 5) {
 
   n <- length(intensity)
   if (n == 0) {
@@ -1831,15 +2130,10 @@ hourly.fragmentation.pattern <- function(intensity, timestamps, wear_time = NULL
   hours <- as.integer(format(timestamps, "%H"))
   epoch_min <- epoch_length / 60
 
-  # Create data frame
-  df <- data.frame(
-    hour = hours,
-    is_sedentary = as.character(intensity) == "sedentary",
-    stringsAsFactors = FALSE
-  )
-
+  # Per-epoch sedentary classification (wear-masked) for hourly sedentary TIME.
+  is_sedentary <- as.character(intensity) == "sedentary"
   if (!is.null(wear_time)) {
-    df$is_sedentary[!wear_time] <- NA
+    is_sedentary[!wear_time] <- NA
   }
 
   # Initialize results
@@ -1852,30 +2146,36 @@ hourly.fragmentation.pattern <- function(intensity, timestamps, wear_time = NULL
     stringsAsFactors = FALSE
   )
 
+  # Sedentary epochs per hour (per-epoch sum; never double-counts).
   for (h in 0:23) {
-    hour_idx <- df$hour == h & !is.na(df$is_sedentary)
-
-    if (sum(hour_idx) < 2) next
-
-    hour_sed <- df$is_sedentary[hour_idx]
-
-    # Sedentary time
-    sed_epochs <- sum(hour_sed, na.rm = TRUE)
+    sed_epochs <- sum(hours == h & is_sedentary, na.rm = TRUE)
     results$sedentary_min[h + 1] <- sed_epochs * epoch_min
+  }
 
-    # Count bouts (transitions from non-sed to sed)
-    transitions <- c(FALSE, diff(hour_sed) == 1)
-    n_bouts <- sum(hour_sed[1], na.rm = TRUE) + sum(transitions, na.rm = TRUE)  # Include first bout if starts sedentary
-    results$n_bouts[h + 1] <- n_bouts
+  # Detect bouts ONCE on the full series (with gap bridging) and attribute each
+  # to the hour of its start, so boundary-spanning bouts are counted once.
+  bouts <- tryCatch(
+    detect.sedentary.bouts(intensity, timestamps, wear_time = wear_time,
+                           min_bout_length = 1, epoch_length = epoch_length,
+                           min_break_length = min_break_length),
+    error = function(e) NULL
+  )
 
-    # Mean bout duration
-    if (n_bouts > 0 && sed_epochs > 0) {
-      results$mean_bout_duration[h + 1] <- (sed_epochs / n_bouts) * epoch_min
-    }
+  if (!is.null(bouts) && nrow(bouts) > 0) {
+    start_hours <- as.integer(format(bouts$start_time, "%H"))
+    for (h in 0:23) {
+      in_hour <- start_hours == h
+      n_bouts <- sum(in_hour)
+      results$n_bouts[h + 1] <- n_bouts
 
-    # Fragmentation index (SATP)
-    if (sed_epochs > 0) {
-      results$fragmentation_index[h + 1] <- n_bouts / sed_epochs
+      sed_epochs <- results$sedentary_min[h + 1] / epoch_min
+      if (n_bouts > 0) {
+        results$mean_bout_duration[h + 1] <- mean(bouts$duration_min[in_hour])
+      }
+      if (sed_epochs > 0) {
+        # SATP-like fragmentation index: bouts started per sedentary epoch.
+        results$fragmentation_index[h + 1] <- n_bouts / sed_epochs
+      }
     }
   }
 
@@ -1936,6 +2236,8 @@ hourly.fragmentation.pattern <- function(intensity, timestamps, wear_time = NULL
     alpha_n_tail = NA_integer_,
     alpha_pct_in_tail = NA_real_,
     alpha_ks_stat = NA_real_,
+    alpha_gof_pvalue = NA_real_,
+    alpha_ks_pvalue_approx = NA_character_,
     gini = NA_real_,
     pct_time_20min_bouts = 0,
     pct_time_30min_bouts = 0,

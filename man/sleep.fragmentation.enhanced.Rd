@@ -4,12 +4,15 @@
 \alias{sleep.fragmentation.enhanced}
 \title{Enhanced Sleep Fragmentation Analysis}
 \usage{
-sleep.fragmentation.enhanced(sleep_state, timestamps)
+sleep.fragmentation.enhanced(sleep_state, timestamps, epoch_length = 60)
 }
 \arguments{
 \item{sleep_state}{Character vector of sleep states ("S" or "W")}
 
 \item{timestamps}{POSIXt vector of timestamps corresponding to sleep_state}
+
+\item{epoch_length}{Epoch length in seconds (default: 60). Used to convert the
+epoch count to hours when computing the per-hour transition rate.}
 }
 \value{
 List containing:
@@ -32,6 +35,10 @@ Enhanced fragmentation analysis provides:
 \item Temporal pattern showing which hours have most fragmentation
 \item Sleep Fragmentation Index (SFI) combining multiple metrics
 }
+
+Note: the Sleep Fragmentation Index returned here is a custom composite metric
+(a weighted blend of transition rate, short-sleep-bout proportion, and wake
+proportion) and is not the Tudor-Locke/ActiLife Sleep Fragmentation Index.
 }
 \references{
 Lim J, Dinges DF (2008). Sleep deprivation and vigilant attention.

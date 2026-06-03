@@ -113,8 +113,8 @@
 #' \itemize{
 #'   \item \strong{Freedson (1998):} Validated cut points for adults worn at hip
 #'     \itemize{
-#'       \item Sedentary: 0-100 CPM
-#'       \item Light: 101-1951 CPM
+#'       \item Sedentary: 0-99 CPM
+#'       \item Light: 100-1951 CPM
 #'       \item Moderate: 1952-5724 CPM
 #'       \item Vigorous: 5725-9498 CPM
 #'       \item Very Vigorous: >=9499 CPM
@@ -320,14 +320,33 @@ canhrActi <- function(agd_file_path,
       epoch_length <- as.numeric(epoch_val[1])
     }
   }
-  # Fallback: calculate from timestamps if we have at least 2 rows
-  if (epoch_length <= 0 && nrow(counts.data) > 1) {
-    time_diff <- as.numeric(difftime(counts.data$timestamp[2], counts.data$timestamp[1], units = "secs"))
-    if (!is.na(time_diff) && time_diff > 0) {
-      epoch_length <- round(time_diff)
+  # Compute the modal timestamp spacing as an independent observation of the
+  # epoch length so we can validate (and if necessary override) the settings value.
+  observed_epoch_length <- NA_real_
+  if (nrow(counts.data) > 1) {
+    time_diffs <- as.numeric(diff(counts.data$timestamp), units = "secs")
+    time_diffs <- time_diffs[!is.na(time_diffs) & time_diffs > 0]
+    if (length(time_diffs) > 0) {
+      diff_counts <- table(round(time_diffs))
+      observed_epoch_length <- as.numeric(names(diff_counts)[which.max(diff_counts)])
     }
   }
+
+  # Fallback: calculate from timestamps if settings did not provide a usable value
+  if (epoch_length <= 0 && !is.na(observed_epoch_length)) {
+    epoch_length <- observed_epoch_length
+  }
   if (is.na(epoch_length) || epoch_length <= 0) epoch_length <- 60
+
+  # Cross-check the settings epoch length against the observed timestamp spacing.
+  # A mislabelled/unit-mismatched settings value silently rescales every
+  # minutes-per-epoch conversion, so warn when they disagree beyond ~1s tolerance.
+  if (!is.na(observed_epoch_length) && abs(observed_epoch_length - epoch_length) > 1) {
+    warning("Settings epoch length (", epoch_length, "s) disagrees with the observed ",
+            "modal timestamp spacing (", observed_epoch_length, "s). ",
+            "Using the observed timestamp spacing for time conversions.")
+    epoch_length <- observed_epoch_length
+  }
 
   if (axis_to_analyze == "axis1") {
     counts.for.analysis <- counts.data$axis1
@@ -439,13 +458,18 @@ canhrActi <- function(agd_file_path,
       if (output_summary) message("Using Cole-Kripke algorithm")
     }
 
+    # Cole-Kripke/Sadeh are validated on axis1 only, so all sleep scoring uses
+    # axis1 regardless of axis_to_analyze. This keeps the primary sleep path
+    # consistent with the fragmentation sleep-mask and circadian paths below.
+    sleep.counts <- counts.data$axis1
+
     tryCatch({
       if (sleep_algorithm == "tudor_locke") {
-        sleep_scores <- sleep.cole.kripke(counts.for.analysis, apply_rescoring = TRUE, epoch_length = epoch_length)
+        sleep_scores <- sleep.cole.kripke(sleep.counts, apply_rescoring = TRUE, epoch_length = epoch_length)
         sleep_periods <- sleep.tudor.locke(
           sleep.state = sleep_scores,
           timestamps = counts.data$timestamp,
-          counts = counts.for.analysis,
+          counts = sleep.counts,
           epoch_length = epoch_length
         )
         epoch.data$sleep <- sleep_scores
@@ -458,9 +482,9 @@ canhrActi <- function(agd_file_path,
         )
       } else {
         sleep_scores <- switch(sleep_algorithm,
-          "cole_kripke" = sleep.cole.kripke(counts.for.analysis, apply_rescoring = TRUE, epoch_length = epoch_length),
-          "sadeh" = sleep.sadeh(counts.for.analysis, epoch_length = epoch_length),
-          sleep.cole.kripke(counts.for.analysis, apply_rescoring = TRUE, epoch_length = epoch_length)
+          "cole_kripke" = sleep.cole.kripke(sleep.counts, apply_rescoring = TRUE, epoch_length = epoch_length),
+          "sadeh" = sleep.sadeh(sleep.counts, epoch_length = epoch_length),
+          sleep.cole.kripke(sleep.counts, apply_rescoring = TRUE, epoch_length = epoch_length)
         )
         epoch.data$sleep <- sleep_scores
 
@@ -553,23 +577,36 @@ canhrActi <- function(agd_file_path,
     }
   }
 
+  # Look up intensity categories defensively: 4-level algorithms (e.g. troiano,
+  # evenson, puyau, mattocks, pate_preschool, copeland_older) do not produce a
+  # "very_vigorous" level, so a direct lookup returns numeric(0) and aborts the
+  # data.frame() construction. Absent categories default to 0.
+  get_intensity_minutes <- function(cat) {
+    v <- intensity.summary$minutes[intensity.summary$intensity == cat]
+    if (length(v) == 0) 0 else v[1]
+  }
+  get_intensity_percent <- function(cat) {
+    v <- intensity.summary$percentage[intensity.summary$intensity == cat]
+    if (length(v) == 0) 0 else round(v[1], 2)
+  }
+
   overall.summary <- data.frame(
     total_days = nrow(daily.stats),
     valid_days = valid.days.results$n_valid_days,
     total_wear_minutes = wear.minutes,
     total_wear_hours = round(wear.hours, 2),
     average_wear_per_day = if (nrow(daily.stats) > 0) round(wear.hours / nrow(daily.stats), 2) else NA_real_,
-    sedentary_minutes = intensity.summary$minutes[intensity.summary$intensity == "sedentary"],
-    light_minutes = intensity.summary$minutes[intensity.summary$intensity == "light"],
-    moderate_minutes = intensity.summary$minutes[intensity.summary$intensity == "moderate"],
-    vigorous_minutes = intensity.summary$minutes[intensity.summary$intensity == "vigorous"],
-    very_vigorous_minutes = intensity.summary$minutes[intensity.summary$intensity == "very_vigorous"],
+    sedentary_minutes = get_intensity_minutes("sedentary"),
+    light_minutes = get_intensity_minutes("light"),
+    moderate_minutes = get_intensity_minutes("moderate"),
+    vigorous_minutes = get_intensity_minutes("vigorous"),
+    very_vigorous_minutes = get_intensity_minutes("very_vigorous"),
     mvpa_minutes = mvpa.minutes,
-    sedentary_percent = round(intensity.summary$percentage[intensity.summary$intensity == "sedentary"], 2),
-    light_percent = round(intensity.summary$percentage[intensity.summary$intensity == "light"], 2),
-    moderate_percent = round(intensity.summary$percentage[intensity.summary$intensity == "moderate"], 2),
-    vigorous_percent = round(intensity.summary$percentage[intensity.summary$intensity == "vigorous"], 2),
-    very_vigorous_percent = round(intensity.summary$percentage[intensity.summary$intensity == "very_vigorous"], 2),
+    sedentary_percent = get_intensity_percent("sedentary"),
+    light_percent = get_intensity_percent("light"),
+    moderate_percent = get_intensity_percent("moderate"),
+    vigorous_percent = get_intensity_percent("vigorous"),
+    very_vigorous_percent = get_intensity_percent("very_vigorous"),
     mvpa_percent = if (wear.minutes > 0) round(100 * mvpa.minutes / wear.minutes, 2) else 0,
     stringsAsFactors = FALSE
   )
@@ -823,7 +860,13 @@ analyze.agd.file <- function(...) {
 
 
 extract.body.mass <- function(subject_info) {
-  mass <- subject_info$mass
+  # Accept both the documented API field ($body_mass, used by calculate.mets docs
+  # and the test suite) and the production field populated by extract.subject.info
+  # ($mass). Coalesce so documented/external usage is not silently defaulted to 70.
+  mass <- subject_info$body_mass
+  if (is.null(mass) || is.na(mass) || mass <= 0) {
+    mass <- subject_info$mass
+  }
 
   if (is.null(mass) || is.na(mass) || mass <= 0) {
     return(70)

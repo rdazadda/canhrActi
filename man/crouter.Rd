@@ -25,23 +25,31 @@ When CV is provided, the Crouter 2-regression model uses:
 \item CV >= 10: METs = 2.330519 + (0.001646 * CPM) - (1.2017e-7 * CPM^2)
 }
 
-Without CV, uses standard thresholds:
+Without CV (the default in this package's pipeline), a NON-VALIDATED count
+threshold approximation is used instead of the published 2-regression model:
 \itemize{
 \item Sedentary: 0-50 CPM
 \item Light: 51-1040 CPM (walking threshold)
 \item Moderate: 1041-5724 CPM
 \item Vigorous: >= 5725 CPM
 }
+\strong{Warning:} These single-cut count thresholds are ad-hoc and are NOT part
+of the Crouter, Clowers & Bassett (2006) two-regression method, which is a
+CV-driven MET-prediction model and does not define single count cut-points.
+The 1040 value is the Crouter walk/run separation count and 5724/5725 are
+borrowed from Freedson (1998). To run the published 2-regression model you
+must supply the per-epoch \code{cv} argument.
 }
 \references{
-Crouter SE, et al. (2006). Validity of 10 electronic pedometers for measuring
-steps, distance, and energy cost. Med Sci Sports Exerc, 38(7), 1255-1261.
+Crouter SE, Clowers KG, Bassett DR Jr. (2006). A novel method for using
+accelerometer data to predict energy expenditure. J Appl Physiol,
+100(4), 1324-1331.
 }
 \seealso{
-Other adult cut-points: 
-\code{\link{freedson}()},
-\code{\link{matthews}()},
-\code{\link{santos_lozano}()},
-\code{\link{troiano}()}
+Other adult cut-points:
+\code{\link[=freedson]{freedson()}},
+\code{\link[=matthews]{matthews()}},
+\code{\link[=santos_lozano]{santos_lozano()}},
+\code{\link[=troiano]{troiano()}}
 }
 \concept{adult cut-points}

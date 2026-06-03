@@ -9,6 +9,37 @@
 NULL
 
 
+#' Resolve cut-point threshold lines from a canonical algorithm name
+#'
+#' Internal helper that returns the named numeric vector of intensity-boundary
+#' counts (sedentary/light/moderate/vigorous) used to draw threshold lines and
+#' bins in the visualization functions. It routes through the canonical
+#' \code{get_cutpoint_thresholds()} accessor in cut_points.R so every plot uses
+#' the same published constants instead of divergent inline literals. Already
+#' named numeric vectors are returned unchanged so callers can pass custom
+#' thresholds.
+#'
+#' @param cutpoints Either a cut-point algorithm name (character) or a named
+#'   numeric vector of threshold counts.
+#'
+#' @return Named numeric vector with sedentary/light/moderate/vigorous starts.
+#' @keywords internal
+.resolve_cutpoint_lines <- function(cutpoints) {
+  if (is.numeric(cutpoints)) {
+    return(cutpoints)
+  }
+  # Map a few dashboard-only aliases onto canonical algorithm names.
+  algo <- switch(as.character(cutpoints),
+    "freedson_adult" = "freedson",
+    "freedson_child" = "evenson",
+    as.character(cutpoints)
+  )
+  cp <- get_cutpoint_thresholds(algo)
+  c(sedentary = cp$sedentary, light = cp$light,
+    moderate = cp$moderate, vigorous = cp$vigorous)
+}
+
+
 #' Multi-Day Activity Timeline Plot (ActiLife Style)
 #'
 #' Creates a stacked multi-day activity visualization similar to ActiLife's
@@ -19,7 +50,9 @@ NULL
 #' @param show_axes Character vector of axes to display. Options: "axis1", "axis2",
 #'   "axis3", "vm", "steps", "hr" (default: c("axis1"))
 #' @param show_cutpoints Logical. Show activity intensity cut-point lines? (default: TRUE)
-#' @param cutpoints Named numeric vector of cut-points (default: Freedson adult)
+#' @param cutpoints Cut-points for threshold lines: either an algorithm name
+#'   (e.g. "freedson", "evenson") resolved via \code{get_cutpoint_thresholds()},
+#'   or a named numeric vector. Default NULL uses canonical Freedson adult.
 #' @param show_inclinometer Logical. Show inclinometer posture as background? (default: FALSE)
 #' @param inclinometer_col Name of inclinometer/posture column
 #' @param equal_scales Logical. Use same y-axis scale for all days? (default: TRUE)
@@ -66,8 +99,7 @@ plot_daily_timeline <- function(data,
                                  timestamp_col = "timestamp",
                                  show_axes = c("axis1"),
                                  show_cutpoints = TRUE,
-                                 cutpoints = c(sedentary = 100, light = 1952,
-                                             moderate = 5725, vigorous = 9498),
+                                 cutpoints = NULL,
                                  show_inclinometer = FALSE,
                                  inclinometer_col = "inclinometer",
                                  equal_scales = TRUE,
@@ -78,6 +110,15 @@ plot_daily_timeline <- function(data,
 
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("Package 'ggplot2' is required")
+  }
+
+  # Resolve cut-point threshold lines from the canonical accessor
+  # (cut_points.R) instead of an inline literal default. Callers may still
+  # pass a named numeric vector or an algorithm name to opt back in.
+  if (is.null(cutpoints)) {
+    cutpoints <- .resolve_cutpoint_lines("freedson")
+  } else {
+    cutpoints <- .resolve_cutpoint_lines(cutpoints)
   }
 
   # Default ActiLife-style color scheme
@@ -633,6 +674,13 @@ plot_activity_heatmap <- function(data,
   )
   names(heatmap_data)[4] <- "activity"
 
+  # Determine the unit string that actually describes the aggregated cells.
+  # Cells are aggregate_func() of raw counts-per-epoch over each hour with no
+  # per-minute conversion, so 'counts/min' is wrong for non-60s epochs or for
+  # aggregate_func = sum (hourly totals). Derive the label from the function.
+  agg_is_sum <- isTRUE(all.equal(aggregate_func, sum, check.environment = FALSE))
+  unit_label <- if (agg_is_sum) "counts/hour" else "counts/epoch"
+
   # Identify weekend dates
   unique_dates <- sort(unique(heatmap_data$date))
   weekend_dates <- unique_dates[weekdays(unique_dates) %in% c("Saturday", "Sunday")]
@@ -740,7 +788,7 @@ plot_activity_heatmap <- function(data,
     ) +
     ggplot2::scale_fill_gradientn(
       colors = palette_colors,
-      name = if (normalize) "Activity\n(normalized)" else "Activity\n(counts/min)",
+      name = if (normalize) "Activity\n(normalized)" else sprintf("Activity\n(%s)", unit_label),
       na.value = "gray90"
     )
 
@@ -758,8 +806,8 @@ plot_activity_heatmap <- function(data,
   n_weekend <- length(weekend_dates)
   mean_activity <- round(mean(heatmap_data$activity, na.rm = TRUE), 0)
 
-  subtitle_text <- sprintf("%d days (%d weekends) | Mean activity: %s counts/min",
-                           n_days, n_weekend, format(mean_activity, big.mark = ","))
+  subtitle_text <- sprintf("%d days (%d weekends) | Mean activity: %s %s",
+                           n_days, n_weekend, format(mean_activity, big.mark = ","), unit_label)
   if (show_sleep_window) {
     subtitle_text <- paste0(subtitle_text, " | Sleep window: 22:00-06:00 (blue)")
   }
@@ -807,7 +855,9 @@ plot_activity_heatmap <- function(data,
 #' @param metrics Named list mapping metric names to column names
 #' @param date_filter Specific date to plot
 #' @param show_cutpoints Logical. Show cut-point lines?
-#' @param cutpoints Named vector of cut-point values
+#' @param cutpoints Cut-points for threshold lines: an algorithm name resolved
+#'   via \code{get_cutpoint_thresholds()} or a named numeric vector. Default
+#'   NULL uses canonical Freedson adult.
 #' @param epoch_length Epoch length in seconds (optional)
 #' @param normalize Logical. Normalize metrics to same scale? (default: FALSE)
 #' @param facet Logical. Use faceted display instead of overlay? (default: FALSE)
@@ -824,8 +874,7 @@ plot_multi_metric <- function(data,
                                ),
                                date_filter = NULL,
                                show_cutpoints = TRUE,
-                               cutpoints = c(sedentary = 100, light = 1952,
-                                           moderate = 5725, vigorous = 9498),
+                               cutpoints = NULL,
                                epoch_length = NULL,
                                normalize = FALSE,
                                facet = FALSE,
@@ -838,6 +887,15 @@ plot_multi_metric <- function(data,
 
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("Package 'ggplot2' is required")
+  }
+
+  # Resolve cut-point threshold lines from the canonical accessor
+  # (cut_points.R) instead of an inline literal default. Callers may still
+  # pass a named numeric vector or an algorithm name to opt back in.
+  if (is.null(cutpoints)) {
+    cutpoints <- .resolve_cutpoint_lines("freedson")
+  } else {
+    cutpoints <- .resolve_cutpoint_lines(cutpoints)
   }
 
   # Ensure timestamp is POSIXct
@@ -1179,22 +1237,24 @@ plot_intensity_area <- function(data,
   } else if (!intensity_col %in% names(data)) {
     # If intensity column doesn't exist, compute it from axis1
     if ("axis1" %in% names(data)) {
-      # Use selected cutpoints
-      cp <- switch(cutpoints,
-        "freedson" = c(0, 100, 1952, 5725, 9498),
-        "evenson" = c(0, 101, 574, 1003, Inf),
-        "canhr" = c(0, 100, 1500, 5000, 9000),
-        c(0, 100, 1952, 5725, 9498)  # default to freedson
-      )
+      # Use canonical cut-point thresholds (cut_points.R) so published
+      # constants are applied uniformly instead of inline literals.
+      cp <- get_cutpoint_thresholds(cutpoints)
+      breaks <- c(0, cp$sedentary, cp$light, cp$moderate, cp$vigorous, Inf)
       axis1_vals <- data$axis1
       if (!is.null(epoch_length) && !is.na(epoch_length) && epoch_length > 0 && epoch_length != 60) {
         axis1_vals <- to_cpm(axis1_vals, epoch_length)
       }
+      # Drop collapsed bins (e.g. vigorous == Inf) so breaks stay strictly
+      # increasing; trim the matching intensity labels.
+      cut_labels <- c("sedentary", "light", "moderate", "vigorous", "very_vigorous")
+      keep <- !duplicated(breaks)
       data$intensity <- cut(axis1_vals,
-        breaks = c(cp, Inf),
-        labels = c("sedentary", "light", "moderate", "vigorous", "very_vigorous"),
+        breaks = breaks[keep],
+        labels = cut_labels[keep[-1]],
         include.lowest = TRUE, right = FALSE
       )
+      data$intensity <- factor(as.character(data$intensity), levels = cut_labels)
       intensity_col <- "intensity"
     } else {
       stop("No intensity column found and no axis1 column to compute intensity")
@@ -1233,15 +1293,16 @@ plot_intensity_area <- function(data,
 
   position_type <- if (stacked) "stack" else "identity"
 
-  # Get cutpoint info for subtitle (use provided subtitle if given)
+  # Get cutpoint info for subtitle (use provided subtitle if given).
+  # Build from canonical thresholds so the displayed boundaries always match
+  # the published cut-points in cut_points.R.
   if (!is.null(subtitle)) {
     cutpoint_info <- subtitle
   } else {
-    cutpoint_info <- switch(cutpoints,
-      "freedson" = "Freedson (1998): Sed<100, Light<1952, Mod<5725, Vig<9498 CPM",
-      "evenson" = "Evenson (2008): Sed<101, Light<574, Mod<1003 CPM",
-      "canhr" = "CANHR (2025): Sed<100, Light<1500, Mod<5000, Vig<9000 CPM",
-      "Freedson cut-points"
+    cp_sub <- get_cutpoint_thresholds(cutpoints)
+    cutpoint_info <- sprintf(
+      "%s: Sed<%g, Light<%g, Mod<%g, Vig<%g CPM",
+      cutpoints, cp_sub$sedentary, cp_sub$light, cp_sub$moderate, cp_sub$vigorous
     )
   }
 
@@ -2520,13 +2581,15 @@ launch_visualization_dashboard <- function(data = NULL, launch = TRUE) {
       d
     })
 
-    # Get cut-points based on selection
+    # Get cut-points based on selection. Route named algorithms through the
+    # canonical accessor (cut_points.R) so threshold lines use published
+    # constants; only 'custom' remains an explicit literal vector.
     get_cutpoints <- shiny::reactive({
       switch(input$cutpoint_set,
-        freedson_adult = c(sedentary = 100, light = 1952, moderate = 5725, vigorous = 9498),
-        freedson_child = c(sedentary = 100, light = 500, moderate = 4000, vigorous = 7600),
-        troiano = c(sedentary = 100, light = 2020, moderate = 5999, vigorous = 9498),
-        matthews = c(sedentary = 100, light = 760, moderate = 5999, vigorous = 9498),
+        freedson_adult = .resolve_cutpoint_lines("freedson"),
+        freedson_child = .resolve_cutpoint_lines("evenson"),
+        troiano = .resolve_cutpoint_lines("troiano"),
+        matthews = .resolve_cutpoint_lines("matthews"),
         custom = c(sedentary = 100, light = 2000, moderate = 5000, vigorous = 9000)
       )
     })
@@ -3107,16 +3170,12 @@ plot_intensity_pie <- function(data,
   }
   epoch_minutes <- epoch_length / 60
 
-  # Get cut-point values for thresholds display
+  # Get cut-point values for thresholds display.
+  # Route through the canonical accessor (cut_points.R) so published
+  # constants are used uniformly instead of divergent inline literals.
   if (is.character(cutpoints)) {
-    cp <- switch(cutpoints,
-      "freedson" = c(0, 100, 1952, 5725, 9498, Inf),
-      "evenson" = c(0, 101, 574, 1003, Inf, Inf),
-      "troiano" = c(0, 100, 2020, 5999, 9498, Inf),
-      "matthews" = c(0, 100, 760, 5999, 9498, Inf),
-      "canhr" = c(0, 100, 1500, 5000, 9000, Inf),
-      c(0, 100, 1952, 5725, 9498, Inf)  # default to freedson
-    )
+    cp_thr <- get_cutpoint_thresholds(cutpoints)
+    cp <- c(0, cp_thr$sedentary, cp_thr$light, cp_thr$moderate, cp_thr$vigorous, Inf)
     cp_name <- switch(cutpoints,
       "freedson" = "Freedson Adult (1998)",
       "evenson" = "Evenson Children (2008)",
@@ -3153,15 +3212,31 @@ plot_intensity_pie <- function(data,
     if (!is.null(epoch_length) && !is.na(epoch_length) && epoch_length > 0 && epoch_length != 60) {
       counts_vals <- to_cpm(counts_vals, epoch_length)
     }
+    # Drop collapsed bins (e.g. vigorous == Inf) so breaks stay strictly
+    # increasing; trim the corresponding intensity labels to match. A bin is
+    # removed when its upper boundary is a duplicate break.
+    cut_labels <- c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous")
+    keep <- !duplicated(cp)
+    cut_breaks <- cp[keep]
+    cut_labels <- cut_labels[keep[-1]]
     data$intensity <- cut(counts_vals,
-      breaks = cp,
-      labels = c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous"),
+      breaks = cut_breaks,
+      labels = cut_labels,
       include.lowest = TRUE, right = FALSE
     )
+    data$intensity <- factor(as.character(data$intensity),
+      levels = c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous"))
   }
 
-  # Handle NA values
-  data$intensity[is.na(data$intensity)] <- "Sedentary"
+  # Handle NA values: surface NA-intensity epochs (NA counts, or values
+  # outside the cut() breaks) as an explicit 'Unclassified' category rather
+  # than silently reassigning them to Sedentary, which would inflate the
+  # sedentary slice and bias the MVPA percentage denominator.
+  data$intensity <- factor(
+    as.character(data$intensity),
+    levels = c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous", "Unclassified")
+  )
+  data$intensity[is.na(data$intensity)] <- "Unclassified"
 
   # Calculate summary
   intensity_summary <- as.data.frame(table(data$intensity))
@@ -3197,7 +3272,7 @@ plot_intensity_pie <- function(data,
                                       intensity_summary$time_str)
 
   # Order factors
-  intensity_order <- c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous")
+  intensity_order <- c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous", "Unclassified")
   intensity_summary$intensity <- factor(intensity_summary$intensity, levels = intensity_order)
   intensity_summary <- intensity_summary[order(intensity_summary$intensity), ]
 
@@ -3208,7 +3283,8 @@ plot_intensity_pie <- function(data,
       "Light" = "#F0E442",          # Yellow
       "Moderate" = "#E69F00",       # Orange
       "Vigorous" = "#D55E00",       # Vermillion
-      "Very Vigorous" = "#CC79A7"   # Pink
+      "Very Vigorous" = "#CC79A7",  # Pink
+      "Unclassified" = "#999999"    # Gray - NA / non-wear
     )
   } else {
     intensity_colors <- c(
@@ -3216,7 +3292,8 @@ plot_intensity_pie <- function(data,
       "Light" = "#F1C40F",
       "Moderate" = "#E67E22",
       "Vigorous" = "#E74C3C",
-      "Very Vigorous" = "#9B59B6"
+      "Very Vigorous" = "#9B59B6",
+      "Unclassified" = "#999999"   # Gray - NA / non-wear
     )
   }
 

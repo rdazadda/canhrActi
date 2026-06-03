@@ -8,7 +8,8 @@ hourly.fragmentation.pattern(
   intensity,
   timestamps,
   wear_time = NULL,
-  epoch_length = 60
+  epoch_length = 60,
+  min_break_length = 5
 )
 }
 \arguments{
@@ -19,18 +20,27 @@ hourly.fragmentation.pattern(
 \item{wear_time}{Optional logical vector}
 
 \item{epoch_length}{Epoch length in seconds (default 60)}
+
+\item{min_break_length}{Minimum break duration in minutes for gap bridging
+(default 5), passed through to \code{detect.sedentary.bouts()}.}
 }
 \value{
 Data frame with hourly fragmentation metrics:
 \describe{
 \item{hour}{Hour of day (0-23)}
 \item{sedentary_min}{Total sedentary time}
-\item{n_bouts}{Number of sedentary bouts}
-\item{mean_bout_duration}{Mean bout length in that hour}
-\item{fragmentation_index}{SATP for that hour}
+\item{n_bouts}{Number of sedentary bouts STARTING in that hour}
+\item{mean_bout_duration}{Mean duration of bouts starting in that hour}
+\item{fragmentation_index}{SATP-like index: bouts-started / sedentary epochs}
 }
 }
 \description{
 Calculates sedentary fragmentation metrics for each hour of the day,
-revealing temporal patterns in sedentary accumulation.
+revealing temporal patterns in sedentary accumulation. Bouts are detected on
+the FULL series (with the same gap bridging as
+\code{detect.sedentary.bouts()}) and each bout is attributed to the hour of
+its START, so a bout that spans an hour boundary is counted in exactly one
+hour (matching plot_hourly_heatmap). This avoids the previous behaviour where
+boundary-spanning bouts were counted in both hours, inflating n_bouts and the
+fragmentation_index.
 }

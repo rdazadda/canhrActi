@@ -80,17 +80,6 @@ if (length(skipped) > 0) {
 
 pak::pkg_install(specs, ask = FALSE, upgrade = FALSE)
 
-# Ensure canhrActi Imports that are not yet captured in the pinned manifest are
-# present, since canhrActi is installed below with dependencies = FALSE. (lomb
-# was added for the circadian Lomb-Scargle endogenous-period metric.)
-extra_imports <- c("lomb")
-missing_imports <- extra_imports[!vapply(extra_imports, requireNamespace, logical(1), quietly = TRUE)]
-if (length(missing_imports) > 0) {
-  cat("Installing additional canhrActi Imports not in the manifest:",
-      paste(missing_imports, collapse = ", "), "\n")
-  pak::pkg_install(missing_imports, ask = FALSE, upgrade = FALSE)
-}
-
 if ("canhrActi" %in% rownames(installed.packages(lib.loc = lib))) {
   cat("Removing cached canhrActi so the next install always reflects current source.\n")
   remove.packages("canhrActi", lib = lib)

@@ -56,7 +56,8 @@ test_that("agd.counts handles missing axis columns with NA", {
   expect_true(is.na(result$axis3))
 })
 
-test_that("agd.counts handles missing timestamps", {
+test_that("agd.counts errors on missing timestamps", {
+  # Must fail fast, not fabricate 1:n integer timestamps that corrupt analyses.
   agd.data <- list(
     data = data.frame(
       axis1 = c(100, 200, 300),
@@ -66,10 +67,7 @@ test_that("agd.counts handles missing timestamps", {
     settings = NULL
   )
 
-  result <- agd.counts(agd.data)
-
-  expect_equal(length(result$timestamp), 3)
-  expect_equal(result$timestamp, 1:3)
+  expect_error(agd.counts(agd.data), "No valid timestamp column found")
 })
 
 test_that("agd.counts can skip timestamp conversion", {

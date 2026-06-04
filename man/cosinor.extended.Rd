@@ -4,7 +4,13 @@
 \alias{cosinor.extended}
 \title{Multi-Component Cosinor Analysis with Harmonics}
 \usage{
-cosinor.extended(counts, timestamps, harmonics = c(24, 12), wear_time = NULL)
+cosinor.extended(
+  counts,
+  timestamps,
+  harmonics = c(24, 12),
+  wear_time = NULL,
+  min_valid_hours = 10
+)
 }
 \arguments{
 \item{counts}{Numeric vector of activity counts}
@@ -14,6 +20,9 @@ cosinor.extended(counts, timestamps, harmonics = c(24, 12), wear_time = NULL)
 \item{harmonics}{Vector of periods to include (default: c(24, 12) for 24h + 12h)}
 
 \item{wear_time}{Optional logical vector indicating valid wear time}
+
+\item{min_valid_hours}{Numeric. Valid-day criterion (GGIR includedaycrit):
+minimum wear hours for a day to count; default 10, 0/NULL to disable.}
 }
 \value{
 A list with class "canhrActi_cosinor_extended" containing:

@@ -247,7 +247,9 @@ mod_circadian_server <- function(id, shared) {
               counts = activity,
               timestamps = data$timestamp,
               harmonics = c(24, 12),
-              wear_time = wear_time
+              wear_time = wear_time,
+              # wear_time is already day-gated above; opt out of the package default.
+              min_valid_hours = 0
             )
           }, error = function(e) {
             showNotification(
@@ -272,13 +274,14 @@ mod_circadian_server <- function(id, shared) {
           # Pre-compute workbook export metrics so the XLSX download is instant.
           act_valid <- activity
           if (!is.null(wear_time)) act_valid[!as.logical(wear_time)] <- NA
-          cosinor_an   <- tryCatch(canhrActi::cosinor.analysis(activity, data$timestamp, wear_time = wear_time), error = function(e) NULL)
+          cosinor_an   <- tryCatch(canhrActi::cosinor.analysis(activity, data$timestamp, wear_time = wear_time, min_valid_hours = 0), error = function(e) NULL)
           cosinor_anti <- tryCatch(canhrActi::cosinor.antilogistic(act_valid, data$timestamp), error = function(e) NULL)
           quotient     <- if (!is.null(cosinor_an)) tryCatch(canhrActi::circadian.quotient(cosinor_an), error = function(e) NULL) else NULL
           ellipse      <- if (!is.null(cosinor_an)) tryCatch(canhrActi::cosinor.confidence.ellipse(cosinor_an), error = function(e) NULL) else NULL
           is_multi     <- tryCatch(canhrActi::circadian.is.multiscale(act_valid, data$timestamp), error = function(e) NULL)
-          dfa          <- tryCatch(canhrActi::fractal.dfa(activity), error = function(e) NULL)
-          mse          <- tryCatch(canhrActi::multiscale.entropy(activity), error = function(e) NULL)
+          # DFA/MSE on the valid-masked series (exclude non-wear).
+          dfa          <- tryCatch(canhrActi::fractal.dfa(act_valid), error = function(e) NULL)
+          mse          <- tryCatch(canhrActi::multiscale.entropy(act_valid), error = function(e) NULL)
           period_full  <- tryCatch(canhrActi::circadian.period(act_valid, data$timestamp), error = function(e) NULL)
           chisq_full   <- tryCatch(canhrActi::chi.sq.periodogram(act_valid, data$timestamp, epoch_length = f$epoch_length), error = function(e) NULL)
           # Social jet lag from the scored sleep periods (weekday vs weekend mid-sleep).
@@ -712,72 +715,48 @@ mod_circadian_server <- function(id, shared) {
         }
 
       } else if (tab == "actogram") {
-        # Actogram - double-plotted style
-        if (cd$mode == "single") {
-          hourly <- cd$result$hourly_profile
-          req(hourly)
-
-          # Create a simple double-plot actogram
-          hourly_ext <- rbind(
-            transform(hourly, hour = hour),
-            transform(hourly, hour = hour + 24)
-          )
-
-          ggplot(hourly_ext, aes(x = hour, y = mean_counts)) +
-            geom_area(fill = "#236192", alpha = 0.6) +
-            geom_line(color = "#1a4a6f", linewidth = 0.8) +
-            scale_x_continuous(breaks = seq(0, 48, 6),
-                              labels = rep(sprintf("%02d:00", seq(0, 23, 6)), 2)[1:9],
-                              expand = c(0, 0)) +
-            scale_y_continuous(labels = scales::comma, expand = c(0.02, 0)) +
-            labs(x = NULL, y = "Activity",
-                 subtitle = "Double-plotted 48-hour view") +
-            canhrActi::theme_canhrActi() +
-            theme(
-              plot.background = element_rect(fill = "white", color = NA),
-              panel.background = element_rect(fill = "white", color = NA),
-              panel.grid.major.x = element_line(color = "#e2e8f0", linewidth = 0.4),
-              panel.grid.major.y = element_blank(),
-              panel.grid.minor = element_blank(),
-              axis.text = element_text(color = "#64748b"),
-              plot.subtitle = element_text(color = "#64748b", size = 11)
-            )
+        # Per-minute double-plotted actogram from the raw epoch series.
+        sel_fid <- if (cd$mode == "single") cd$result$file_id else {
+          fr <- cd$results[[1]]; if (!is.null(fr)) fr$file_id else NULL
+        }
+        validate(
+          need(!is.null(sel_fid) && !is.null(shared$files[[sel_fid]]),
+               "Actogram is a per-recording view. Select a single subject above.")
+        )
+        fdata <- shared$files[[sel_fid]]$data
+        acts <- if (input$metric == "vm" &&
+                    all(c("axis1", "axis2", "axis3") %in% names(fdata))) {
+          sqrt(fdata$axis1^2 + fdata$axis2^2 + fdata$axis3^2)
         } else {
-          # Multi-file: show individual profiles stacked
-          all_hourly <- data.frame()
-          for (i in seq_along(cd$results)) {
-            r <- cd$results[[i]]
-            if (!is.null(r$hourly_profile)) {
-              h <- r$hourly_profile
-              h$subject <- r$subject_id
-              h$row <- i
-              all_hourly <- rbind(all_hourly, h)
-            }
-          }
-          req(nrow(all_hourly) > 0)
+          fdata$axis1
+        }
+        wt <- if (isTRUE(input$use_wear_time) &&
+                  !is.null(shared$results$wear_time[[sel_fid]])) {
+          shared$results$wear_time[[sel_fid]]$wear
+        } else NULL
+        sub <- if (cd$mode != "single") {
+          paste0("per-recording view; showing ", shared$files[[sel_fid]]$name)
+        } else NULL
 
-          ggplot(all_hourly, aes(x = hour, y = row, fill = mean_counts)) +
-            geom_tile() +
-            scale_fill_gradient(low = "white", high = "#236192", name = "Activity") +
-            scale_x_continuous(breaks = seq(0, 23, 3),
-                              labels = sprintf("%02d:00", seq(0, 23, 3)),
-                              expand = c(0, 0)) +
-            scale_y_continuous(breaks = unique(all_hourly$row),
-                              labels = unique(all_hourly$subject),
-                              expand = c(0, 0)) +
-            labs(x = NULL, y = NULL,
-                 subtitle = "Subjects stacked vertically") +
-            canhrActi::theme_canhrActi() +
+        tryCatch({
+          p <- canhrActi::plot_actogram(
+            acts, fdata$timestamp,
+            epoch_length = shared$files[[sel_fid]]$epoch_length,
+            wear_time = wt
+          )
+          if (!is.null(sub)) p <- p + labs(subtitle = sub)
+          p +
             theme(
               plot.background = element_rect(fill = "white", color = NA),
               panel.background = element_rect(fill = "white", color = NA),
               panel.grid = element_blank(),
               axis.text = element_text(color = "#64748b"),
-              axis.text.y = element_text(size = 10),
-              legend.position = "right",
               plot.subtitle = element_text(color = "#64748b", size = 11)
             )
-        }
+        }, error = function(e) {
+          validate(need(FALSE, paste0("\n\nActogram unavailable\n\nReason: ",
+                                      conditionMessage(e))))
+        })
 
       } else if (tab == "cosinor") {
         # Cosinor fit visualization

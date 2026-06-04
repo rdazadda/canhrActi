@@ -38,6 +38,28 @@
 NULL
 
 
+# GGIR includedaycrit gate: NA out days with under min_valid_hours of wear.
+.gate_invalid_days <- function(counts, timestamps, wear_time,
+                               min_valid_hours, epoch_length = NULL) {
+  if (is.null(wear_time) || is.null(min_valid_hours) ||
+      !isTRUE(min_valid_hours > 0)) {
+    return(counts)
+  }
+  if (is.null(epoch_length)) {
+    d <- diff(sort(as.numeric(timestamps)))
+    d <- d[d > 0]
+    epoch_length <- if (length(d)) stats::median(d) else 60
+  }
+  day <- as.Date(timestamps)
+  worn <- as.logical(wear_time)
+  worn[is.na(worn)] <- FALSE
+  wear_hours <- tapply(worn, day, sum) * epoch_length / 3600
+  invalid <- names(wear_hours)[wear_hours < min_valid_hours]
+  if (length(invalid)) counts[as.character(day) %in% invalid] <- NA
+  counts
+}
+
+
 #' Circadian Rhythm Analysis
 #'
 #' Circadian analysis using non-parametric methods from GGIR, ActCR, nparACT,
@@ -148,18 +170,8 @@ circadian.rhythm <- function(counts,
       stop("wear_time must have same length as counts")
     }
     counts[!wear_time] <- NA
-
-    # Valid-day filter (includedaycrit): drop days below min_valid_hours of wear.
-    if (!is.null(min_valid_hours) && isTRUE(min_valid_hours > 0)) {
-      day <- as.Date(timestamps)
-      worn <- as.logical(wear_time)
-      worn[is.na(worn)] <- FALSE
-      wear_hours <- tapply(worn, day, sum) * epoch_length / 3600
-      invalid_days <- names(wear_hours)[wear_hours < min_valid_hours]
-      if (length(invalid_days)) {
-        counts[as.character(day) %in% invalid_days] <- NA
-      }
-    }
+    counts <- .gate_invalid_days(counts, timestamps, wear_time,
+                                 min_valid_hours, epoch_length)
   }
 
   # Check if C++ is available
@@ -1045,6 +1057,8 @@ social.jet.lag <- function(sleep_periods, work_days = NULL) {
 #' @param timestamps POSIXct vector of timestamps
 #' @param period Period in hours (default: 24 for circadian rhythm)
 #' @param wear_time Optional logical vector indicating wear time
+#' @param min_valid_hours Numeric. Valid-day criterion (GGIR includedaycrit):
+#'   minimum wear hours for a day to count; default 10, 0/NULL to disable.
 #'
 #' @return List with class 'canhrActi_cosinor' containing:
 #'   \describe{
@@ -1090,7 +1104,8 @@ social.jet.lag <- function(sleep_periods, work_days = NULL) {
 #' }
 #'
 #' @export
-cosinor.analysis <- function(counts, timestamps, period = 24, wear_time = NULL) {
+cosinor.analysis <- function(counts, timestamps, period = 24, wear_time = NULL,
+                             min_valid_hours = 10) {
   # Cosinor analysis using GGIR/ActCR method
 
 # This function fits a cosinor model to the AVERAGED 24-hour activity profile,
@@ -1110,7 +1125,8 @@ cosinor.analysis <- function(counts, timestamps, period = 24, wear_time = NULL) 
     stop("counts and timestamps must have same length")
   }
 
-  # Apply wear time filter
+  # Wear filter + valid-day gate.
+  counts <- .gate_invalid_days(counts, timestamps, wear_time, min_valid_hours)
   if (!is.null(wear_time)) {
     valid <- wear_time & !is.na(counts)
   } else {
@@ -1357,6 +1373,8 @@ cosinor.analysis <- function(counts, timestamps, period = 24, wear_time = NULL) 
 #' @param timestamps POSIXct vector of timestamps
 #' @param harmonics Vector of periods to include (default: c(24, 12) for 24h + 12h)
 #' @param wear_time Optional logical vector indicating valid wear time
+#' @param min_valid_hours Numeric. Valid-day criterion (GGIR includedaycrit):
+#'   minimum wear hours for a day to count; default 10, 0/NULL to disable.
 #'
 #' @return A list with class "canhrActi_cosinor_extended" containing:
 #'   \describe{
@@ -1399,7 +1417,7 @@ cosinor.analysis <- function(counts, timestamps, period = 24, wear_time = NULL) 
 #'
 #' @export
 cosinor.extended <- function(counts, timestamps, harmonics = c(24, 12),
-                              wear_time = NULL) {
+                              wear_time = NULL, min_valid_hours = 10) {
 
   if (length(counts) != length(timestamps)) {
     stop("counts and timestamps must have same length")
@@ -1411,7 +1429,8 @@ cosinor.extended <- function(counts, timestamps, harmonics = c(24, 12),
     stop("harmonics must be positive periods (e.g., c(24, 12, 8))")
   }
 
-  # Apply wear time filter
+  # Wear filter + valid-day gate.
+  counts <- .gate_invalid_days(counts, timestamps, wear_time, min_valid_hours)
   if (!is.null(wear_time)) {
     valid <- wear_time & !is.na(counts)
   } else {

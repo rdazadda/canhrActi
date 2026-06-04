@@ -293,6 +293,140 @@ plot_periodogram <- function(counts, timestamps, from = 18, to = 30,
 }
 
 
+#' Double-Plotted Actogram
+#'
+#' Draws a classic double-plotted actogram: one row per calendar day, each row
+#' showing 48 hours (the day itself on the left, the following day on the right)
+#' so circadian phase can be traced down the diagonal. Activity is rendered as a
+#' per-minute raster (darker = more active). Non-wear (via \code{wear_time}) and
+#' missing time are left blank, and any skipped calendar days appear as empty
+#' rows.
+#'
+#' @param counts Numeric vector of activity counts on a regular epoch grid.
+#' @param timestamps A \code{POSIXct} vector the same length as \code{counts}.
+#' @param epoch_length Epoch length in seconds. If \code{NULL} (default) it is
+#'   inferred from the median spacing of \code{timestamps}.
+#' @param wear_time Optional logical vector (\code{TRUE} = worn) the same length
+#'   as \code{counts}; non-wear epochs are blanked.
+#' @param double_plot Logical; draw the 48-hour double plot (default
+#'   \code{TRUE}) or a single 24-hour plot.
+#'
+#' @return A \code{ggplot} object. Never errors; returns an annotated empty plot
+#'   on insufficient data.
+#' @export
+plot_actogram <- function(counts, timestamps, epoch_length = NULL,
+                          wear_time = NULL, double_plot = TRUE) {
+
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("Package 'ggplot2' is required for plot_actogram().")
+  }
+
+  insufficient <- function() {
+    .circ_empty_plot("Insufficient data for actogram", title = "Actogram")
+  }
+
+  if (missing(counts) || missing(timestamps) ||
+      length(counts) == 0L || length(counts) != length(timestamps) ||
+      !inherits(timestamps, "POSIXct")) {
+    return(insufficient())
+  }
+
+  x <- suppressWarnings(as.numeric(counts))
+  if (!is.null(wear_time)) {
+    wt <- as.logical(wear_time)
+    if (length(wt) == length(x)) x[!(wt %in% TRUE)] <- NA
+  }
+  if (sum(is.finite(x)) < 10L) return(insufficient())
+
+  t_sec <- as.numeric(timestamps)
+  if (is.null(epoch_length)) {
+    d <- diff(sort(t_sec[is.finite(t_sec)]))
+    d <- d[d > 0]
+    epoch_length <- if (length(d)) stats::median(d) else 60
+  }
+  if (!is.finite(epoch_length) || epoch_length <= 0) epoch_length <- 60
+  res_min <- max(1L, as.integer(round(epoch_length / 60)))
+  bins_per_day <- 1440L %/% res_min
+  if (bins_per_day < 2L) return(insufficient())
+
+  # Calendar-day offset (full range keeps skipped days blank).
+  day_date <- as.Date(format(timestamps, "%Y-%m-%d"))
+  day0 <- min(day_date, na.rm = TRUE)
+  day_idx <- as.integer(day_date - day0) + 1L
+  n_days <- as.integer(max(day_idx, na.rm = TRUE))
+
+  minute_of_day <- as.integer(format(timestamps, "%H")) * 60L +
+    as.integer(format(timestamps, "%M"))
+  bin_idx <- pmin((minute_of_day %/% res_min) + 1L, bins_per_day)
+
+  ok <- is.finite(day_idx) & is.finite(bin_idx) & is.finite(x)
+  if (!any(ok)) return(insufficient())
+  act <- tapply(
+    x[ok],
+    list(factor(day_idx[ok], levels = seq_len(n_days)),
+         factor(bin_idx[ok], levels = seq_len(bins_per_day))),
+    mean, na.rm = TRUE
+  )
+  act <- matrix(as.numeric(act), nrow = n_days, ncol = bins_per_day)
+  act[is.nan(act)] <- NA_real_
+
+  # Right half of each row = the next day (double plot).
+  total_bins <- if (isTRUE(double_plot)) 2L * bins_per_day else bins_per_day
+  grid <- expand.grid(b = seq_len(total_bins), day = seq_len(n_days))
+  grid$value <- NA_real_
+  left <- grid$b <= bins_per_day
+  grid$value[left] <- act[cbind(grid$day[left], grid$b[left])]
+  if (isTRUE(double_plot)) {
+    right <- !left
+    nd <- grid$day[right] + 1L
+    bb <- grid$b[right] - bins_per_day
+    good <- nd <= n_days
+    v <- rep(NA_real_, length(nd))
+    v[good] <- act[cbind(nd[good], bb[good])]
+    grid$value[right] <- v
+  }
+  grid$x_h <- (grid$b - 1L) * res_min / 60
+
+  # Fill ceiling so one spike doesn't dominate.
+  fin <- grid$value[is.finite(grid$value)]
+  cap <- if (length(fin)) as.numeric(stats::quantile(fin, 0.98, na.rm = TRUE)) else 1
+  if (!is.finite(cap) || cap <= 0) cap <- max(c(fin, 1), na.rm = TRUE)
+
+  x_max <- if (isTRUE(double_plot)) 48 else 24
+  brks <- seq(0, x_max, 6)
+  day_labels <- format(day0 + seq_len(n_days) - 1L, "%a %m-%d")
+
+  p <- ggplot2::ggplot(
+    grid, ggplot2::aes(x = .data$x_h, y = .data$day, fill = .data$value)
+  ) +
+    ggplot2::geom_raster() +
+    ggplot2::scale_y_reverse(
+      breaks = seq_len(n_days), labels = day_labels, expand = c(0, 0)
+    ) +
+    ggplot2::scale_x_continuous(
+      breaks = brks, labels = sprintf("%02d:00", brks %% 24)
+    ) +
+    ggplot2::scale_fill_gradient(
+      low = "white", high = "grey10", na.value = "white",
+      limits = c(0, cap), oob = scales::squish, name = "Activity"
+    ) +
+    ggplot2::coord_cartesian(xlim = c(0, x_max), expand = FALSE) +
+    ggplot2::labs(
+      title = "Actogram",
+      subtitle = if (isTRUE(double_plot)) "Double-plotted (48 h)" else "Single (24 h)",
+      x = NULL, y = NULL
+    ) +
+    .circ_theme()
+
+  if (isTRUE(double_plot)) {
+    p <- p + ggplot2::geom_vline(
+      xintercept = 24, color = "grey50", linewidth = 0.4
+    )
+  }
+  p
+}
+
+
 #' Plot the Extended (Marler) Cosinor Fit on the 24-Hour Activity Profile
 #'
 #' Builds the averaged 24-hour activity profile and overlays two model fits for

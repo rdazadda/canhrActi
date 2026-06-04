@@ -4,7 +4,13 @@
 \alias{cosinor.analysis}
 \title{Cosinor Analysis for Circadian Rhythm}
 \usage{
-cosinor.analysis(counts, timestamps, period = 24, wear_time = NULL)
+cosinor.analysis(
+  counts,
+  timestamps,
+  period = 24,
+  wear_time = NULL,
+  min_valid_hours = 10
+)
 }
 \arguments{
 \item{counts}{Numeric vector of activity counts}
@@ -14,6 +20,9 @@ cosinor.analysis(counts, timestamps, period = 24, wear_time = NULL)
 \item{period}{Period in hours (default: 24 for circadian rhythm)}
 
 \item{wear_time}{Optional logical vector indicating wear time}
+
+\item{min_valid_hours}{Numeric. Valid-day criterion (GGIR includedaycrit):
+minimum wear hours for a day to count; default 10, 0/NULL to disable.}
 }
 \value{
 List with class 'canhrActi_cosinor' containing:

@@ -158,7 +158,7 @@ circadian_data_dictionary <- function() {
     d("DFA Alpha / Alpha 1 / Alpha 2", "Detrended fluctuation scaling exponents", "unitless"),
     d("Multiscale Entropy Area / Slope", "Multiscale sample entropy complexity", "unitless"),
     d("Rhythm Detected", "Cosinor joint confidence-ellipse rhythm test", "TRUE / FALSE"),
-    d("Valid Day", "Day met the Wear Time tab's minimum-wear-per-day threshold (GGIR-style includedaycrit). Recording-level metrics and the averaged profiles use valid days only; the DFA and Multiscale Entropy temporal metrics use the full continuous series", "1 = valid / 0"),
+    d("Valid Day", "Day met the Wear Time tab's minimum-wear-per-day threshold (GGIR-style includedaycrit). Recording-level metrics, averaged profiles, and the DFA / Multiscale Entropy metrics all use valid (worn) days only; DFA/MSE analyse the longest continuous worn run", "1 = valid / 0"),
     d("Counts", "ActiGraph activity counts (not GGIR mg / ENMO; shape metrics are comparable, absolute levels are not)", "counts"),
     stringsAsFactors = FALSE
   )

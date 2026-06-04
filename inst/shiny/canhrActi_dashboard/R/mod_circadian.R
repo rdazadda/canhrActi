@@ -93,7 +93,7 @@ mod_circadian_ui <- function(id) {
             conditionalPanel(
               condition = "output.has_circadian_results == true",
               ns = ns,
-              plotOutput(ns("main_chart"), height = "420px")
+              plotOutput(ns("main_chart"), height = "600px")
             )
           )
         )
@@ -124,54 +124,6 @@ mod_circadian_ui <- function(id) {
                         class = "btn-default btn-block circadian-export-btn"),
           downloadButton(ns("dl_workbook"), "Export Workbook (XLSX)",
                         class = "btn-default btn-block circadian-export-btn")
-        )
-      )
-    ),
-
-    # Summary Table (collapsed by default)
-    div(class = "circadian-table-section",
-      tags$details(class = "circadian-details",
-        tags$summary("View Full Data Table"),
-        div(class = "circadian-table-wrapper",
-          DT::dataTableOutput(ns("summary_table"))
-        )
-      )
-    ),
-
-    # Reference Panel (collapsed)
-    div(class = "circadian-reference-section",
-      tags$details(class = "circadian-details",
-        tags$summary("Metric Definitions"),
-        div(class = "circadian-reference-content",
-          div(class = "circadian-ref-grid",
-            div(class = "circadian-ref-group",
-              h4("Non-Parametric Metrics"),
-              tags$dl(
-                tags$dt("L5"), tags$dd("Average activity during least active 5-hour window"),
-                tags$dt("M10"), tags$dd("Average activity during most active 10-hour window"),
-                tags$dt("RA"), tags$dd("Relative Amplitude: (M10-L5)/(M10+L5). Range 0-1, higher = stronger rhythm"),
-                tags$dt("IS"), tags$dd("Interdaily Stability: consistency of rhythm across days (0-1)"),
-                tags$dt("IV"), tags$dd("Intradaily Variability: fragmentation within days (lower = smoother)")
-              )
-            ),
-            div(class = "circadian-ref-group",
-              h4("Cosinor Parameters"),
-              tags$dl(
-                tags$dt("MESOR"), tags$dd("Midline Estimating Statistic of Rhythm (24h mean)"),
-                tags$dt("Amplitude"), tags$dd("Half the peak-to-trough difference"),
-                tags$dt("Acrophase"), tags$dd("Time of peak activity"),
-                tags$dt("R-squared"), tags$dd("Proportion of variance explained by the model")
-              )
-            ),
-            div(class = "circadian-ref-group",
-              h4("Pattern Classification"),
-              tags$dl(
-                tags$dt("Unimodal"), tags$dd("Single daily peak, typical healthy pattern"),
-                tags$dt("Bimodal"), tags$dd("Two distinct peaks (morning/evening)"),
-                tags$dt("Mixed"), tags$dd("Complex pattern with multiple components")
-              )
-            )
-          )
         )
       )
     )
@@ -1035,43 +987,6 @@ mod_circadian_server <- function(id, shared) {
           })
         }
       }
-    })
-
-    # Summary table
-    output$summary_table <- DT::renderDataTable({
-      res <- results()
-      if (length(res) == 0) {
-        return(DT::datatable(data.frame(Message = "Run Analysis to see results"),
-                            rownames = FALSE, options = list(dom = 't')))
-      }
-
-      safe_round <- function(x, digits = 0) {
-        if (is.null(x) || length(x) == 0 || is.na(x)) NA_real_ else round(x, digits)
-      }
-      safe_str <- function(x) {
-        if (is.null(x) || length(x) == 0 || is.na(x)) NA_character_ else as.character(x)
-      }
-
-      df <- data.frame(
-        Subject = sapply(res, function(r) safe_str(r$subject_id)),
-        L5 = sapply(res, function(r) safe_round(r$L5)),
-        M10 = sapply(res, function(r) safe_round(r$M10)),
-        RA = sapply(res, function(r) safe_round(r$RA, 3)),
-        IS = sapply(res, function(r) safe_round(r$IS, 3)),
-        IV = sapply(res, function(r) safe_round(r$IV, 3)),
-        MESOR = sapply(res, function(r) safe_round(r$mesor)),
-        Amplitude = sapply(res, function(r) safe_round(r$amplitude)),
-        Acrophase = sapply(res, function(r) safe_str(r$acrophase_time)),
-        R2 = sapply(res, function(r) safe_round(r$r_squared, 3)),
-        Pattern = sapply(res, function(r) safe_str(r$pattern_type)),
-        stringsAsFactors = FALSE
-      )
-
-      DT::datatable(
-        df,
-        options = list(pageLength = 10, scrollX = TRUE, dom = 'tip'),
-        rownames = FALSE
-      )
     })
 
     # Export CSV

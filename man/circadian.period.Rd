@@ -41,6 +41,10 @@ Gaussian noise (Baluev 2008 analytic false-alarm probability).
 passed to the periodogram (\code{NA_integer_} when not run).}
 \item{span_days}{Numeric. Total recording span in days (max minus min
 timestamp), used for the >= 2-day guard.}
+\item{scanned}{Numeric vector of trial periods (hours) of the full
+Lomb-Scargle spectrum (\code{numeric(0)} when not run).}
+\item{power}{Numeric vector of standard-normalized Lomb-Scargle power,
+aligned to \code{scanned} (\code{numeric(0)} when not run).}
 }
 On any edge case (too few points, too short a span, degenerate input, or an
 internal numerical failure) the function returns this same structure

@@ -197,8 +197,7 @@ mod_circadian_server <- function(id, shared) {
             data$axis1
           }
 
-          # Wear filter + per-day validity gate (drop epochs on days below the
-          # Wear Time tab's min-wear-per-day threshold).
+          # Wear filter + per-day validity gate.
           wear_time <- NULL
           if (input$use_wear_time && !is.null(shared$results$wear_time[[fid]])) {
             wear_time <- shared$results$wear_time[[fid]]$wear
@@ -229,6 +228,8 @@ mod_circadian_server <- function(id, shared) {
               counts = activity,
               timestamps = data$timestamp,
               wear_time = wear_time,
+              # wear_time is already day-gated above; opt out of the package default.
+              min_valid_hours = 0,
               sleep_state = sleep_state,
               epoch_length = f$epoch_length,
               use_cpp = TRUE
@@ -268,8 +269,7 @@ mod_circadian_server <- function(id, shared) {
             }
           }
 
-          # Pre-compute the workbook export metrics so the XLSX download is instant.
-          # act_valid = worn + valid-day mask; DFA/MSE use the raw continuous series.
+          # Pre-compute workbook export metrics so the XLSX download is instant.
           act_valid <- activity
           if (!is.null(wear_time)) act_valid[!as.logical(wear_time)] <- NA
           cosinor_an   <- tryCatch(canhrActi::cosinor.analysis(activity, data$timestamp, wear_time = wear_time), error = function(e) NULL)
@@ -280,6 +280,14 @@ mod_circadian_server <- function(id, shared) {
           dfa          <- tryCatch(canhrActi::fractal.dfa(activity), error = function(e) NULL)
           mse          <- tryCatch(canhrActi::multiscale.entropy(activity), error = function(e) NULL)
           period_full  <- tryCatch(canhrActi::circadian.period(act_valid, data$timestamp), error = function(e) NULL)
+          chisq_full   <- tryCatch(canhrActi::chi.sq.periodogram(act_valid, data$timestamp, epoch_length = f$epoch_length), error = function(e) NULL)
+          # Social jet lag from the scored sleep periods (weekday vs weekend mid-sleep).
+          sjl <- tryCatch({
+            if (is.null(sleep_state)) NULL else {
+              sp <- canhrActi::sleep.tudor.locke(sleep.state = sleep_state, timestamps = data$timestamp, epoch_length = f$epoch_length)
+              if (!is.null(sp) && nrow(sp) > 0) canhrActi::social.jet.lag(sp) else NULL
+            }
+          }, error = function(e) NULL)
 
           all_results[[fid]] <- list(
             file_id = fid,
@@ -327,7 +335,9 @@ mod_circadian_server <- function(id, shared) {
             dfa = dfa,
             mse = mse,
             periodogram = if (!is.null(period_full) && length(period_full$scanned) > 0)
-              data.frame(period_h = period_full$scanned, power = period_full$power) else NULL
+              data.frame(period_h = period_full$scanned, power = period_full$power) else NULL,
+            chisq = chisq_full,
+            social_jet_lag = sjl
           )
         }
       })

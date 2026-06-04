@@ -56,6 +56,8 @@
   IS_60min = "Interdaily Stability (60 min bins)", IS_30min = "Interdaily Stability (30 min bins)",
   IS_15min = "Interdaily Stability (15 min bins)",
   tau = "Endogenous Period (hours)", period_power = "Periodogram Peak Power",
+  chisq_period = "Chi-square Period (hours)", chisq_significant = "Chi-square Rhythm Significant",
+  Qp = "Chi-square Qp", critical = "Chi-square Significance Threshold",
   period_p_value = "Periodogram P Value",
   SRI = "Sleep Regularity Index", SRI_n_valid_pairs = "Sleep Regularity Index Epoch Pairs",
   onset_timing_variability = "Onset Timing Variability (hours)",
@@ -67,6 +69,9 @@
   L5_onset_mean = "L5 Onset Mean (hours)",
   L5_onset_ci_lower = "L5 Onset 95% CI Lower (hours)",
   L5_onset_ci_upper = "L5 Onset 95% CI Upper (hours)",
+  social_jet_lag_hours = "Social Jet Lag (hours)", social_jet_lag_min = "Social Jet Lag (min)",
+  MSW = "Mid-Sleep Workdays (hours)", MSF = "Mid-Sleep Free Days (hours)",
+  n_work_nights = "Workday Nights (n)", n_free_nights = "Free-Day Nights (n)",
   cosinor_mesor = "Cosinor MESOR (counts)", cosinor_amplitude = "Cosinor Amplitude (counts)",
   cosinor_acrophase = "Cosinor Acrophase (hours)", cosinor_acrophase_time = "Cosinor Acrophase (clock)",
   cosinor_se_mesor = "Cosinor MESOR Standard Error", cosinor_se_amplitude = "Cosinor Amplitude Standard Error",
@@ -139,10 +144,12 @@ circadian_data_dictionary <- function() {
     d("Interdaily Stability (60 / 30 / 15 min)", "Interdaily stability at finer bin widths", "0 to 1"),
     d("Endogenous Period", "Period of the Lomb-Scargle spectral peak", "hours"),
     d("Periodogram Peak Power / P Value", "Spectral peak power and Baluev false-alarm probability", "unitless / 0 to 1"),
+    d("Chi-square Period", "Period of the Sokolove-Bushell chi-square periodogram peak (family-wise corrected significance)", "hours"),
     d("Sleep Regularity Index", "Day-to-day sleep-wake concordance (Phillips 2017)", "-100 to 100"),
     d("Composite Phase Deviation", "Phase instability with precision and accuracy (Fischer & Roenneberg 2016)", "hours"),
     d("Onset Timing Variability", "Circular standard deviation of daily L5 / M10 onsets", "hours"),
     d("L5 Onset Mean + 95% CI", "Mean L5 onset with bootstrap confidence interval", "hours"),
+    d("Social Jet Lag", "Weekday vs weekend mid-sleep difference (MSF - MSW; Wittmann/Roenneberg). MSW = mid-sleep on workdays, MSF = mid-sleep on free days", "hours"),
     d("Cosinor MESOR / Amplitude / Acrophase", "Single 24 hour cosinor fit", "counts / counts / hours"),
     d("Cosinor R Squared / Percent Rhythm", "Cosinor goodness of fit", "0 to 1 / %"),
     d("Extended Cosinor", "Multi-harmonic (24 hour + 12 hour) cosinor fit", "mixed"),
@@ -190,6 +197,8 @@ circadian_data_dictionary <- function() {
     IS_60min = is_at(60), IS_30min = is_at(30), IS_15min = is_at(15),
     tau = .cw_get(fr$tau), period_power = .cw_get(fr$period_power),
     period_p_value = .cw_get(fr$period_p_value),
+    chisq_period = .cw_get(r$chisq$period),
+    chisq_significant = .cw_get(r$chisq$significant, NA),
     SRI = .cw_get(fr$SRI), SRI_n_valid_pairs = .cw_get(fr$SRI_n_valid_pairs),
     onset_timing_variability = .cw_get(fr$onset_timing_variability),
     L5_variability_hours = .cw_get(fr$L5_variability_hours),
@@ -199,6 +208,12 @@ circadian_data_dictionary <- function() {
     L5_onset_mean = .cw_get(fr$L5_onset_mean),
     L5_onset_ci_lower = .cw_get(fr$L5_onset_ci_lower),
     L5_onset_ci_upper = .cw_get(fr$L5_onset_ci_upper),
+    # Social jet lag (weekday vs weekend mid-sleep)
+    social_jet_lag_hours = .cw_get(r$social_jet_lag$social_jet_lag_hours),
+    social_jet_lag_min = .cw_get(r$social_jet_lag$social_jet_lag_min),
+    MSW = .cw_get(r$social_jet_lag$MSW), MSF = .cw_get(r$social_jet_lag$MSF),
+    n_work_nights = .cw_get(r$social_jet_lag$n_work_nights),
+    n_free_nights = .cw_get(r$social_jet_lag$n_free_nights),
     # Single-component cosinor
     cosinor_mesor = .cw_get(ca$mesor), cosinor_amplitude = .cw_get(ca$amplitude),
     cosinor_acrophase = .cw_get(ca$acrophase),
@@ -391,6 +406,16 @@ circadian_data_dictionary <- function() {
   do.call(rbind, parts)
 }
 
+# Chi-square (Sokolove-Bushell) periodogram spectrum across recordings.
+.cw_chisq <- function(results) {
+  .cw_bind(results, function(r) {
+    cs <- r$chisq
+    if (is.null(cs) || is.null(cs$scanned) || length(cs$scanned) == 0) return(NULL)
+    data.frame(period_h = cs$scanned, Qp = round(cs$Qp, 2),
+               critical = round(cs$critical, 2), stringsAsFactors = FALSE)
+  })
+}
+
 #' Write the reproducible circadian workbook to `file`.
 #'
 #' @param file Output .xlsx path.
@@ -417,6 +442,7 @@ circadian_write_workbook <- function(file, results, shared, metric = "vm") {
   add("Hourly Profile",      .cw_hourly(results))
   add("Minute Profile",      .cw_minute_profile(results, shared, metric))
   add("Periodogram",         .cw_bind(results, function(r) r$periodogram))
+  add("Chi-square Periodogram", .cw_chisq(results))
   add("Fractal DFA",         .cw_dfa(results))
   add("Multiscale Entropy",  .cw_mse(results))
   add("Raw Epochs",          .cw_raw_epochs(results, shared, metric))

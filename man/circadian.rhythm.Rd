@@ -9,6 +9,7 @@ circadian.rhythm(
   timestamps,
   sleep_state = NULL,
   wear_time = NULL,
+  min_valid_hours = 10,
   epoch_length = 60,
   calculate_sri = TRUE,
   use_cpp = TRUE
@@ -22,6 +23,10 @@ circadian.rhythm(
 \item{sleep_state}{Optional character vector of sleep states ("S" or "W") for SRI calculation}
 
 \item{wear_time}{Optional logical vector indicating wear time (TRUE = worn)}
+
+\item{min_valid_hours}{Numeric. Valid-day criterion (GGIR includedaycrit):
+minimum wear hours for a day to count. Applied only when \code{wear_time} is
+given; default \code{10}. Set \code{0}/\code{NULL} to disable.}
 
 \item{epoch_length}{Numeric. Epoch length in seconds (default: 60)}
 

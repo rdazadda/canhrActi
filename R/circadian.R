@@ -48,6 +48,9 @@ NULL
 #' @param timestamps POSIXct vector of epoch timestamps
 #' @param sleep_state Optional character vector of sleep states ("S" or "W") for SRI calculation
 #' @param wear_time Optional logical vector indicating wear time (TRUE = worn)
+#' @param min_valid_hours Numeric. Valid-day criterion (GGIR includedaycrit):
+#'   minimum wear hours for a day to count. Applied only when \code{wear_time} is
+#'   given; default \code{10}. Set \code{0}/\code{NULL} to disable.
 #' @param epoch_length Numeric. Epoch length in seconds (default: 60)
 #' @param calculate_sri Logical. Calculate Sleep Regularity Index? (default: TRUE if sleep_state provided)
 #' @param use_cpp Logical. Use C++ backend for faster computation? (default: TRUE)
@@ -122,6 +125,7 @@ circadian.rhythm <- function(counts,
                              timestamps,
                              sleep_state = NULL,
                              wear_time = NULL,
+                             min_valid_hours = 10,
                              epoch_length = 60,
                              calculate_sri = TRUE,
                              use_cpp = TRUE) {
@@ -144,6 +148,18 @@ circadian.rhythm <- function(counts,
       stop("wear_time must have same length as counts")
     }
     counts[!wear_time] <- NA
+
+    # Valid-day filter (includedaycrit): drop days below min_valid_hours of wear.
+    if (!is.null(min_valid_hours) && isTRUE(min_valid_hours > 0)) {
+      day <- as.Date(timestamps)
+      worn <- as.logical(wear_time)
+      worn[is.na(worn)] <- FALSE
+      wear_hours <- tapply(worn, day, sum) * epoch_length / 3600
+      invalid_days <- names(wear_hours)[wear_hours < min_valid_hours]
+      if (length(invalid_days)) {
+        counts[as.character(day) %in% invalid_days] <- NA
+      }
+    }
   }
 
   # Check if C++ is available
@@ -404,6 +420,7 @@ circadian.rhythm <- function(counts,
     # Metadata
     n_days_analyzed = n_days,
     n_valid_circadian_days = n_valid_days,
+    valid_day_min_hours = if (is.null(wear_time) || is.null(min_valid_hours)) 0 else min_valid_hours,
     epoch_length = epoch_length,
     analysis_method = "canhrActi_v2_circadian"
   )
@@ -960,8 +977,8 @@ social.jet.lag <- function(sleep_periods, work_days = NULL) {
   midpoint_hour <- (as.numeric(format(midpoint_posix, "%H")) +
                    as.numeric(format(midpoint_posix, "%M")) / 60) %% 24
 
-  # Determine work vs free days
-  sleep_date <- as.Date(in_bed)
+  # Work vs free days, using the local in-bed date (as.Date() alone coerces to UTC).
+  sleep_date <- as.Date(format(in_bed, "%Y-%m-%d"))
 
   if (is.null(work_days)) {
     # Default: Mon-Fri are work days, weekend is free
@@ -1816,6 +1833,7 @@ print.canhrActi_cosinor <- function(x, ...) {
     M10 = rep(NA_real_, n_dates),
     M10_start = rep(NA_character_, n_dates),
     RA = rep(NA_real_, n_dates),
+    IV = rep(NA_real_, n_dates),
     stringsAsFactors = FALSE
   )
 
@@ -1843,6 +1861,19 @@ print.canhrActi_cosinor <- function(x, ...) {
     daily_stats$M10[i] <- round(m10$value, 2)
     daily_stats$M10_start[i] <- m10$start_time
     daily_stats$RA[i] <- round(ra, 4)
+
+    # Per-day intradaily variability (Witting 1990) on the day's hourly means.
+    hr <- as.integer(format(day_timestamps, "%H"))
+    hm <- as.numeric(tapply(day_counts, factor(hr, levels = 0:23), mean, na.rm = TRUE))
+    n_hr <- sum(is.finite(hm))
+    if (n_hr >= 3) {
+      d2 <- diff(hm)
+      gm <- mean(hm, na.rm = TRUE)
+      den <- (n_hr - 1) * sum((hm - gm)^2, na.rm = TRUE)
+      if (is.finite(den) && den > 0) {
+        daily_stats$IV[i] <- round(n_hr * sum(d2[is.finite(d2)]^2) / den, 4)
+      }
+    }
   }
 
   return(daily_stats)

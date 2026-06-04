@@ -73,6 +73,9 @@ mod_circadian_ui <- function(id) {
             tags$button(id = ns("tab_periodogram"), class = "circadian-tab",
                        onclick = paste0("Shiny.setInputValue('", ns("active_tab"), "', 'periodogram', {priority: 'event'})"),
                        "Periodogram"),
+            tags$button(id = ns("tab_chisq"), class = "circadian-tab",
+                       onclick = paste0("Shiny.setInputValue('", ns("active_tab"), "', 'chisq', {priority: 'event'})"),
+                       "Chi-square"),
             tags$button(id = ns("tab_extcosinor"), class = "circadian-tab",
                        onclick = paste0("Shiny.setInputValue('", ns("active_tab"), "', 'extcosinor', {priority: 'event'})"),
                        "Extended Cosinor"),
@@ -865,10 +868,10 @@ mod_circadian_server <- function(id, shared) {
             )
         }
 
-      } else if (tab == "periodogram" || tab == "extcosinor" || tab == "dfa") {
-        # Per-recording epoch-level views (Lomb-Scargle periodogram,
-        # Marler extended cosinor, and DFA). These operate on raw epoch
-        # counts + timestamps for a single recording.
+      } else if (tab == "periodogram" || tab == "extcosinor" || tab == "dfa" || tab == "chisq") {
+        # Per-recording epoch-level views (Lomb-Scargle periodogram, chi-square
+        # periodogram, Marler extended cosinor, and DFA). These operate on raw
+        # epoch counts + timestamps for a single recording.
 
         # White-background override to match the styling of other branches.
         white_bg <- theme(
@@ -960,6 +963,19 @@ mod_circadian_server <- function(id, shared) {
           }, error = function(e) {
             plot_fail("Extended cosinor unavailable",
                       "Could not compute the extended-cosinor fit for this recording.", e)
+          })
+
+        } else if (tab == "chisq") {
+          tryCatch({
+            p <- canhrActi::plot_chisq(counts, timestamps,
+                                       epoch_length = shared$files[[sel_fid]]$epoch_length)
+            if (!is.null(fallback_sub)) {
+              p <- p + labs(subtitle = fallback_sub)
+            }
+            p + white_bg
+          }, error = function(e) {
+            plot_fail("Chi-square periodogram unavailable",
+                      "Could not compute the chi-square periodogram for this recording.", e)
           })
 
         } else {

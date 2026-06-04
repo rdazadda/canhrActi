@@ -89,3 +89,27 @@ test_that("gate is a no-op without a wear mask (backward compatible)", {
   expect_equal(as.numeric(a$mesor), as.numeric(b$mesor))
   expect_equal(as.numeric(a$amplitude), as.numeric(b$amplitude))
 })
+
+# ---- Chi-square periodogram plot ---------------------------------------------
+
+test_that("plot_chisq returns a ggplot with Qp + significance lines", {
+  skip_if_not_installed("ggplot2")
+  d <- .ag_signal()
+  p <- plot_chisq(d$act, d$ts, epoch_length = d$epl)
+  expect_s3_class(p, "ggplot")
+  expect_gt(length(p$layers), 1)   # Qp curve + critical threshold at minimum
+})
+
+test_that("plot_chisq flags a strong rhythm significant", {
+  skip_if_not_installed("ggplot2")
+  d <- .ag_signal()
+  p <- plot_chisq(d$act, d$ts, epoch_length = d$epl)
+  expect_match(p$labels$title, "\\(significant,")
+})
+
+test_that("plot_chisq never errors on degenerate input", {
+  skip_if_not_installed("ggplot2")
+  expect_s3_class(plot_chisq(numeric(0), as.POSIXct(character(0))), "ggplot")
+  d <- .ag_signal()
+  expect_s3_class(plot_chisq(d$act[1:5], d$ts[1:5], epoch_length = d$epl), "ggplot")
+})

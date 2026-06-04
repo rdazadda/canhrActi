@@ -427,6 +427,103 @@ plot_actogram <- function(counts, timestamps, epoch_length = NULL,
 }
 
 
+#' Plot the Chi-Square (Sokolove-Bushell) Periodogram
+#'
+#' Draws the chi-square periodogram from \code{\link{chi.sq.periodogram}}: the
+#' \eqn{Q_P} statistic against trial period, with the per-period chi-square
+#' significance threshold overlaid as a dashed line. The estimated period (the
+#' \eqn{Q_P} peak) is marked and a 24-hour reference line drawn. Unlike the
+#' Lomb-Scargle plot, the explicit threshold shows directly whether a rhythm is
+#' significant at a given period.
+#'
+#' @param counts Numeric vector of activity counts on a regular epoch grid.
+#' @param timestamps A \code{POSIXct} vector the same length as \code{counts}.
+#' @param from,to Period search window in hours (default 18 to 30).
+#' @param alpha Significance level for the chi-square threshold (default 0.05).
+#' @param epoch_length Epoch length in seconds; inferred from \code{timestamps}
+#'   when \code{NULL}.
+#'
+#' @return A \code{ggplot} object. Never errors; returns an annotated empty plot
+#'   on insufficient data.
+#' @seealso \code{\link{plot_periodogram}} for the Lomb-Scargle spectrum.
+#' @export
+plot_chisq <- function(counts, timestamps, from = 18, to = 30,
+                       alpha = 0.05, epoch_length = NULL) {
+
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("Package 'ggplot2' is required for plot_chisq().")
+  }
+
+  insufficient <- function() {
+    .circ_empty_plot("Insufficient data for chi-square periodogram",
+                     title = "Chi-square Periodogram")
+  }
+
+  if (missing(counts) || missing(timestamps) ||
+      length(counts) == 0L || length(timestamps) == 0L ||
+      length(counts) != length(timestamps)) {
+    return(insufficient())
+  }
+
+  cs <- tryCatch(
+    chi.sq.periodogram(counts, timestamps, from = from, to = to,
+                       alpha = alpha, epoch_length = epoch_length),
+    error = function(e) NULL
+  )
+  if (is.null(cs) || is.null(cs$scanned) || length(cs$scanned) < 2L) {
+    return(insufficient())
+  }
+
+  spectrum <- data.frame(
+    period = as.numeric(cs$scanned),
+    Qp = as.numeric(cs$Qp),
+    critical = as.numeric(cs$critical)
+  )
+
+  accent <- .circ_color("blue")
+  peak_col <- .circ_color("orange")
+  sig_txt <- if (isTRUE(cs$significant)) "significant" else "not significant"
+  ttl <- if (is.finite(cs$period)) {
+    sprintf("Chi-square peak: %.2f h (%s, p = %.3g)", cs$period, sig_txt, cs$p_value)
+  } else {
+    "Chi-square Periodogram"
+  }
+
+  p <- ggplot2::ggplot(spectrum, ggplot2::aes(x = .data$period)) +
+    ggplot2::geom_line(ggplot2::aes(y = .data$Qp), color = accent, linewidth = 0.7) +
+    ggplot2::geom_line(
+      ggplot2::aes(y = .data$critical),
+      color = "#c0392b", linetype = "dashed", linewidth = 0.5
+    )
+
+  if (from <= 24 && to >= 24) {
+    p <- p + ggplot2::geom_vline(
+      xintercept = 24, linetype = "dotted", color = "grey60", linewidth = 0.4
+    )
+  }
+
+  if (is.finite(cs$period)) {
+    y_top <- max(c(spectrum$Qp, spectrum$critical), na.rm = TRUE)
+    p <- p +
+      ggplot2::geom_vline(xintercept = cs$period, color = peak_col, linewidth = 0.8) +
+      ggplot2::annotate(
+        "text", x = cs$period, y = y_top,
+        label = sprintf("%.2f h", cs$period),
+        hjust = -0.05, vjust = 1, color = peak_col, fontface = "bold"
+      )
+  }
+
+  p +
+    ggplot2::labs(
+      title = ttl,
+      subtitle = sprintf("dashed line = significance threshold (alpha = %.2g)", alpha),
+      x = "Period (hours)",
+      y = "Qp (chi-square statistic)"
+    ) +
+    .circ_theme()
+}
+
+
 #' Plot the Extended (Marler) Cosinor Fit on the 24-Hour Activity Profile
 #'
 #' Builds the averaged 24-hour activity profile and overlays two model fits for

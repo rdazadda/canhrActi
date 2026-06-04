@@ -115,6 +115,10 @@ NULL
 #'       passed to the periodogram (\code{NA_integer_} when not run).}
 #'     \item{span_days}{Numeric. Total recording span in days (max minus min
 #'       timestamp), used for the >= 2-day guard.}
+#'     \item{scanned}{Numeric vector of trial periods (hours) of the full
+#'       Lomb-Scargle spectrum (\code{numeric(0)} when not run).}
+#'     \item{power}{Numeric vector of standard-normalized Lomb-Scargle power,
+#'       aligned to \code{scanned} (\code{numeric(0)} when not run).}
 #'   }
 #'   On any edge case (too few points, too short a span, degenerate input, or an
 #'   internal numerical failure) the function returns this same structure
@@ -183,7 +187,9 @@ circadian.period <- function(counts, timestamps, from = 18, to = 30, ofac = 4) {
       p_value      = NA_real_,
       oversampling = ofac,
       n_used       = n_used,
-      span_days    = span_days
+      span_days    = span_days,
+      scanned      = numeric(0),
+      power        = numeric(0)
     )
   }
 
@@ -258,6 +264,8 @@ circadian.period <- function(counts, timestamps, from = 18, to = 30, ofac = 4) {
     p_value      = if (length(p_value) == 0L) NA_real_ else p_value,
     oversampling = ofac,
     n_used       = n_used,
-    span_days    = span_days
+    span_days    = span_days,
+    scanned      = as.numeric(lsp$scanned),
+    power        = as.numeric(lsp$power)
   )
 }

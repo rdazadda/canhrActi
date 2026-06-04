@@ -26,7 +26,8 @@ test_that("circadian.period returns the documented list structure", {
   expect_type(res, "list")
   expect_setequal(
     names(res),
-    c("tau", "peak_power", "p_value", "oversampling", "n_used", "span_days")
+    c("tau", "peak_power", "p_value", "oversampling", "n_used", "span_days",
+      "scanned", "power")
   )
   expect_equal(res$oversampling, 4)
   expect_true(is.numeric(res$tau))
@@ -177,4 +178,23 @@ test_that("Lomb-Scargle peak agrees with an independent spectral check", {
   fft_tau <- period_h[in_band][which.max(spec[k][in_band])]
 
   expect_equal(res$tau, fft_tau, tolerance = 1.0)
+})
+
+test_that("circadian.period exposes the full Lomb-Scargle spectrum", {
+  th <- seq(0, 7 * 24 - 1 / 60, by = 1 / 60)
+  ts <- as.POSIXct("2024-01-01") + th * 3600
+  set.seed(1)
+  counts <- 100 + 80 * cos(2 * pi * (th - 8) / 24) + rnorm(length(th), 0, 5)
+  r <- circadian.period(counts, ts)
+
+  expect_true(is.numeric(r$scanned) && is.numeric(r$power))
+  expect_equal(length(r$scanned), length(r$power))
+  expect_gt(length(r$scanned), 1)
+  # tau is the period at the spectral peak (spectrum is consistent with scalar)
+  expect_equal(r$tau, r$scanned[which.max(r$power)])
+
+  # NA-branch (too short) returns an empty spectrum but a stable shape
+  r2 <- circadian.period(counts[1:1440], ts[1:1440])
+  expect_equal(length(r2$scanned), 0)
+  expect_equal(length(r2$power), 0)
 })

@@ -121,6 +121,8 @@ mod_circadian_ui <- function(id) {
         # Export
         div(class = "circadian-export-section",
           downloadButton(ns("dl_csv"), "Export Results (CSV)",
+                        class = "btn-default btn-block circadian-export-btn"),
+          downloadButton(ns("dl_workbook"), "Export Workbook (XLSX)",
                         class = "btn-default btn-block circadian-export-btn")
         )
       )
@@ -243,10 +245,18 @@ mod_circadian_server <- function(id, shared) {
             data$axis1
           }
 
-          # Get wear time if using filter
+          # Wear filter + per-day validity gate (drop epochs on days below the
+          # Wear Time tab's min-wear-per-day threshold).
           wear_time <- NULL
           if (input$use_wear_time && !is.null(shared$results$wear_time[[fid]])) {
             wear_time <- shared$results$wear_time[[fid]]$wear
+            wt_daily <- shared$results$wear_time[[fid]]$daily
+            if (!is.null(wt_daily) && "valid" %in% names(wt_daily) &&
+                "timestamp" %in% names(data)) {
+              valid_dates <- as.Date(wt_daily$date[wt_daily$valid])
+              valid_epoch <- as.Date(data$timestamp) %in% valid_dates
+              wear_time <- as.logical(wear_time) & valid_epoch
+            }
           }
 
           # Sleep/wake state for SRI: reuse the Sleep tab's if present, else score it.
@@ -306,6 +316,19 @@ mod_circadian_server <- function(id, shared) {
             }
           }
 
+          # Pre-compute the workbook export metrics so the XLSX download is instant.
+          # act_valid = worn + valid-day mask; DFA/MSE use the raw continuous series.
+          act_valid <- activity
+          if (!is.null(wear_time)) act_valid[!as.logical(wear_time)] <- NA
+          cosinor_an   <- tryCatch(canhrActi::cosinor.analysis(activity, data$timestamp, wear_time = wear_time), error = function(e) NULL)
+          cosinor_anti <- tryCatch(canhrActi::cosinor.antilogistic(act_valid, data$timestamp), error = function(e) NULL)
+          quotient     <- if (!is.null(cosinor_an)) tryCatch(canhrActi::circadian.quotient(cosinor_an), error = function(e) NULL) else NULL
+          ellipse      <- if (!is.null(cosinor_an)) tryCatch(canhrActi::cosinor.confidence.ellipse(cosinor_an), error = function(e) NULL) else NULL
+          is_multi     <- tryCatch(canhrActi::circadian.is.multiscale(act_valid, data$timestamp), error = function(e) NULL)
+          dfa          <- tryCatch(canhrActi::fractal.dfa(activity), error = function(e) NULL)
+          mse          <- tryCatch(canhrActi::multiscale.entropy(activity), error = function(e) NULL)
+          period_full  <- tryCatch(canhrActi::circadian.period(act_valid, data$timestamp), error = function(e) NULL)
+
           all_results[[fid]] <- list(
             file_id = fid,
             name = f$name,
@@ -341,7 +364,18 @@ mod_circadian_server <- function(id, shared) {
             CPD_accuracy = if (!is.null(res$CPD_accuracy)) res$CPD_accuracy else NA_real_,
             L5_onset_mean = if (!is.null(res$L5_onset_mean)) res$L5_onset_mean else NA_real_,
             L5_onset_ci_lower = if (!is.null(res$L5_onset_ci_lower)) res$L5_onset_ci_lower else NA_real_,
-            L5_onset_ci_upper = if (!is.null(res$L5_onset_ci_upper)) res$L5_onset_ci_upper else NA_real_
+            L5_onset_ci_upper = if (!is.null(res$L5_onset_ci_upper)) res$L5_onset_ci_upper else NA_real_,
+            # Pre-computed values for the workbook export.
+            full_result = res,
+            cosinor_analysis = cosinor_an,
+            cosinor_antilog = cosinor_anti,
+            circadian_quotient_res = quotient,
+            cosinor_ellipse = ellipse,
+            is_multiscale = is_multi,
+            dfa = dfa,
+            mse = mse,
+            periodogram = if (!is.null(period_full) && length(period_full$scanned) > 0)
+              data.frame(period_h = period_full$scanned, power = period_full$power) else NULL
           )
         }
       })
@@ -1076,6 +1110,32 @@ mod_circadian_server <- function(id, shared) {
         )
 
         write.csv(df, file, row.names = FALSE)
+      }
+    )
+
+    # Export reproducible workbook (see mod_circadian_workbook.R).
+    output$dl_workbook <- downloadHandler(
+      filename = function() {
+        paste0("circadian_workbook_", format(Sys.Date(), "%Y%m%d"), ".xlsx")
+      },
+      content = function(file) {
+        res <- results()
+        req(length(res) > 0)
+        if (!requireNamespace("openxlsx", quietly = TRUE)) {
+          showNotification("Install the 'openxlsx' package to export the workbook.", type = "error")
+          return(NULL)
+        }
+        tryCatch(
+          circadian_write_workbook(
+            file, res, shared,
+            metric = if (is.null(input$metric)) "vm" else input$metric
+          ),
+          error = function(e) {
+            showNotification(paste("Workbook export failed:", conditionMessage(e)),
+                             type = "error", duration = 8)
+            openxlsx::saveWorkbook(openxlsx::createWorkbook(), file, overwrite = TRUE)
+          }
+        )
       }
     )
   })

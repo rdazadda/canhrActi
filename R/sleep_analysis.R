@@ -346,7 +346,7 @@ sleep.tudor.locke <- function(sleep.state,
 
   if (length(sleep.state) == 0) {
     warning("Empty sleep.state vector. Returning empty results.")
-    return(data.frame())
+    return(.empty.sleep.periods.df())
   }
 
   if (!is.null(counts) && length(counts) != length(sleep.state)) {
@@ -644,140 +644,6 @@ sleep.tudor.locke <- function(sleep.state,
     activity_sd = round(activity.sd, 2),
     activity_cv = round(activity.cv, 3),
     stringsAsFactors = FALSE
-  )
-}
-
-
-#' Integrate Sleep Diary with Accelerometer Data
-#'
-#' Integrates self-reported sleep diary data with accelerometer-detected sleep
-#' for validation and correction purposes.
-#'
-#' @param accel_sleep Character vector of sleep states from accelerometer ("S"/"W")
-#' @param diary Data frame with sleep diary entries containing bed/wake times
-#' @param timestamps POSIXt vector of timestamps corresponding to accel_sleep
-#' @param method Character. Integration method:
-#'   - "validation_only": Compare accelerometer to diary (default)
-#'   - "diary_guided": Use diary times to constrain accelerometer detection
-#'   - "hybrid": Combine both methods
-#'
-#' @return List containing:
-#'   - agreement: Percent agreement between accelerometer and diary
-#'   - sensitivity: Sensitivity of accelerometer detection
-#'   - specificity: Specificity of accelerometer detection
-#'   - diary_periods: Sleep periods from diary
-#'   - comparison: Detailed comparison data frame
-#'
-#' @details
-#' Sleep diaries provide ground truth for sleep/wake periods but are subject
-#' to recall bias. Accelerometry provides objective measurement but may
-#' misclassify sedentary wake as sleep. This function combines both sources.
-#'
-#' @export
-integrate.sleep.diary <- function(accel_sleep, diary, timestamps,
-                                   method = c("validation_only", "diary_guided", "hybrid")) {
-  method <- match.arg(method)
-
-  if (is.null(diary) || nrow(diary) == 0) {
-    return(list(
-      agreement = NA_real_,
-      sensitivity = NA_real_,
-      specificity = NA_real_,
-      diary_periods = NULL,
-      comparison = NULL,
-      method = method,
-      message = "No diary data provided"
-    ))
-  }
-
-  n <- length(accel_sleep)
-  if (n != length(timestamps)) {
-    stop("accel_sleep and timestamps must have the same length")
-  }
-
-  # Standardize diary column names
-  diary_cols <- tolower(names(diary))
-  names(diary) <- diary_cols
-
-  # Look for bed time and wake time columns
-  bed_col <- grep("bed|start|onset|sleep.*time", diary_cols, value = TRUE)[1]
-  wake_col <- grep("wake|end|final|rise", diary_cols, value = TRUE)[1]
-
-  if (is.na(bed_col) || is.na(wake_col)) {
-    return(list(
-      agreement = NA_real_,
-      sensitivity = NA_real_,
-      specificity = NA_real_,
-      diary_periods = NULL,
-      comparison = NULL,
-      method = method,
-      message = "Could not identify bed/wake time columns in diary"
-    ))
-  }
-
-  # Create diary-based sleep labels
-  diary_sleep <- rep("W", n)
-
-  tryCatch({
-    for (i in seq_len(nrow(diary))) {
-      bed_time <- as.POSIXct(diary[[bed_col]][i])
-      wake_time <- as.POSIXct(diary[[wake_col]][i])
-
-      if (!is.na(bed_time) && !is.na(wake_time)) {
-        in_period <- timestamps >= bed_time & timestamps <= wake_time
-        diary_sleep[in_period] <- "S"
-      }
-    }
-  }, error = function(e) {
-    warning("Error parsing diary times: ", e$message)
-  })
-
-  # Calculate agreement metrics
-  accel_binary <- accel_sleep == "S"
-  diary_binary <- diary_sleep == "S"
-
-  # Overall agreement
-  agreement <- mean(accel_binary == diary_binary, na.rm = TRUE) * 100
-
-  # Sensitivity (true positive rate for sleep detection)
-  true_sleep <- sum(diary_binary)
-  if (true_sleep > 0) {
-    sensitivity <- sum(accel_binary & diary_binary) / true_sleep * 100
-  } else {
-    sensitivity <- NA_real_
-  }
-
-  # Specificity (true negative rate for wake detection)
-  true_wake <- sum(!diary_binary)
-  if (true_wake > 0) {
-    specificity <- sum(!accel_binary & !diary_binary) / true_wake * 100
-  } else {
-    specificity <- NA_real_
-  }
-
-  # Build comparison data frame (summarized by hour to reduce size)
-  comparison <- tryCatch({
-    hours <- as.POSIXct(trunc(timestamps, "hours"))
-    hourly_data <- data.frame(
-      hour = unique(hours),
-      accel_sleep_pct = tapply(accel_binary, hours, mean, na.rm = TRUE) * 100,
-      diary_sleep_pct = tapply(diary_binary, hours, mean, na.rm = TRUE) * 100
-    )
-    hourly_data$difference <- hourly_data$accel_sleep_pct - hourly_data$diary_sleep_pct
-    hourly_data
-  }, error = function(e) NULL)
-
-  list(
-    agreement = round(agreement, 2),
-    sensitivity = round(sensitivity, 2),
-    specificity = round(specificity, 2),
-    diary_periods = diary,
-    comparison = comparison,
-    method = method,
-    n_diary_entries = nrow(diary),
-    total_epochs = n,
-    accel_sleep_epochs = sum(accel_binary),
-    diary_sleep_epochs = sum(diary_binary)
   )
 }
 

@@ -868,7 +868,9 @@ sleep.regularity.index <- function(sleep_state, timestamps, epoch_length = 60) {
     warning("Less than 2 days of data. SRI may be unreliable.")
   }
 
-  .calculate.sri.fast(sleep_state, timestamps, epoch_length)
+  # Robust gap-aware Phillips (2017) concordance-matrix SRI, not the positional
+  # single-24h-lag approximation (which mis-handles gaps/non-wear).
+  sri.matrix(sleep_state, timestamps, epoch_length)$SRI
 }
 
 

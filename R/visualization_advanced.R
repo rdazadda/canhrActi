@@ -4022,13 +4022,11 @@ plot_hypnogram <- function(data,
   data$wake_band <- ifelse(data$sleep_numeric == 1, 1, 0)
   data$sleep_band <- ifelse(data$sleep_numeric == 0, 1, 0)
 
-  # Calculate comprehensive sleep metrics for each night from raw epoch data
-  # This provides consistent metrics display regardless of Tudor-Locke matching issues
+  # Per-night metrics: prefer Tudor-Locke periods when supplied, else derive from epochs.
   metrics_data <- data.frame()
 
   {
-    # Fallback: Calculate metrics from raw epoch data
-    # Use index-based loop to preserve Date class (for loops coerce Date to numeric)
+    # Index-based loop preserves Date class (for-loops coerce Date to numeric).
     for (i in seq_along(unique_nights)) {
       night <- unique_nights[i]  # This preserves Date class
       night_data <- data[data$night_date == night, ]
@@ -4077,7 +4075,25 @@ plot_hypnogram <- function(data,
       sleep_onset_time <- night_data$time_of_day[sleep_onset_idx]
       sleep_offset_time <- night_data$time_of_day[sleep_offset_idx]
 
-      # Build metrics label
+      # Prefer the Tudor-Locke period metrics (match the tables) when supplied.
+      if (!is.null(sleep_periods) && nrow(sleep_periods) > 0 &&
+          all(c("in_bed_time", "sleep_time", "wake_time", "sleep_efficiency",
+                "number_of_awakenings") %in% names(sleep_periods))) {
+        pib <- suppressWarnings(as.POSIXct(sleep_periods$in_bed_time))
+        pidx <- which(as.Date(pib - 6 * 3600) == night)
+        if (length(pidx) >= 1) {
+          p <- sleep_periods[pidx[1], ]
+          tst_min <- as.numeric(p$sleep_time)
+          waso_min <- as.numeric(p$wake_time)
+          efficiency <- as.numeric(p$sleep_efficiency)
+          awakening_count <- as.numeric(p$number_of_awakenings)
+          tst_hours <- floor(tst_min / 60); tst_remainder <- round(tst_min %% 60)
+          if ("onset" %in% names(p)) {
+            sol_min <- as.numeric(difftime(as.POSIXct(p$onset), pib[pidx[1]], units = "mins"))
+          }
+        }
+      }
+
       metrics_label <- sprintf(
         "TST: %dh %dmin | WASO: %.0fmin | SOL: %.0fmin | Eff: %.0f%% | Awakenings: %d",
         tst_hours, tst_remainder, waso_min, sol_min, efficiency, awakening_count

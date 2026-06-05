@@ -95,8 +95,10 @@
 #' \strong{Algorithms Implemented:}
 #'
 #' \strong{Activity Counts:}
-#' Uses ActiGraph's official algorithm (Neishabouri et al., 2022) with exact
-#' IIR filter coefficients to produce identical counts to ActiLife software.
+#' Activity counts are read directly from the \code{.agd} file as already
+#' computed by ActiGraph/ActiLife (the count algorithm is described by
+#' Neishabouri et al., 2022). canhrActi does not recompute counts from raw
+#' acceleration; it consumes the device/software-computed counts.
 #'
 #' \strong{Wear Time Detection:}
 #' \itemize{
@@ -462,30 +464,34 @@ canhrActi <- function(agd_file_path,
     # axis1 regardless of axis_to_analyze. This keeps the primary sleep path
     # consistent with the fragmentation sleep-mask and circadian paths below.
     sleep.counts <- counts.data$axis1
+    # Cole-Kripke/Sadeh are 1-minute methods: score at 60s, then upsample states
+    # back to the native grid so epoch.data$sleep stays aligned.
+    ss <- .reintegrate.for.sleep(sleep.counts, counts.data$timestamp, epoch_length)
 
     tryCatch({
       if (sleep_algorithm == "tudor_locke") {
-        sleep_scores <- sleep.cole.kripke(sleep.counts, apply_rescoring = TRUE, epoch_length = epoch_length)
+        sleep_scores <- sleep.cole.kripke(ss$counts, apply_rescoring = TRUE, epoch_length = ss$epoch_length)
         sleep_periods <- sleep.tudor.locke(
           sleep.state = sleep_scores,
-          timestamps = counts.data$timestamp,
-          counts = sleep.counts,
-          epoch_length = epoch_length
+          timestamps = ss$timestamps,
+          counts = ss$counts,
+          epoch_length = ss$epoch_length
         )
-        epoch.data$sleep <- sleep_scores
+        epoch.data$sleep <- sleep_scores[ss$upsample]
 
         sleep_results <- list(
-          sleep = sleep_scores,
+          sleep = sleep_scores[ss$upsample],
           periods = sleep_periods,
           algorithm = "Tudor-Locke",
           base_algorithm = "Cole-Kripke (1992)"
         )
       } else {
         sleep_scores <- switch(sleep_algorithm,
-          "cole_kripke" = sleep.cole.kripke(sleep.counts, apply_rescoring = TRUE, epoch_length = epoch_length),
-          "sadeh" = sleep.sadeh(sleep.counts, epoch_length = epoch_length),
-          sleep.cole.kripke(sleep.counts, apply_rescoring = TRUE, epoch_length = epoch_length)
+          "cole_kripke" = sleep.cole.kripke(ss$counts, apply_rescoring = TRUE, epoch_length = ss$epoch_length),
+          "sadeh" = sleep.sadeh(ss$counts, epoch_length = ss$epoch_length),
+          sleep.cole.kripke(ss$counts, apply_rescoring = TRUE, epoch_length = ss$epoch_length)
         )
+        sleep_scores <- sleep_scores[ss$upsample]
         epoch.data$sleep <- sleep_scores
 
         sleep_results <- list(
@@ -590,6 +596,27 @@ canhrActi <- function(agd_file_path,
     if (length(v) == 0) 0 else round(v[1], 2)
   }
 
+  # 150 min/week MVPA guideline (mean daily MVPA scaled to a 7-day week).
+  n_days_measured <- nrow(daily.stats)
+  mvpa_per_week <- if (n_days_measured > 0) round(mvpa.minutes / n_days_measured * 7, 1) else NA_real_
+  meets_guideline <- if (!is.na(mvpa_per_week)) mvpa_per_week >= 150 else NA
+
+  # Bouted (>=10 min) vs sporadic MVPA. detect.mvpa.bouts counts epochs, so pass
+  # lengths in epochs and scale the total back to minutes; wear-masked for consistency.
+  em <- 60 / epoch_length
+  intensity_bout <- as.character(intensity)
+  if (!is.null(wear.time) && length(wear.time) == length(intensity_bout)) {
+    intensity_bout[!(wear.time %in% TRUE)] <- "sedentary"
+  }
+  bout_summary <- tryCatch(
+    summarize.mvpa.bouts(detect.mvpa.bouts(
+      intensity_bout, min_bout_length = max(1, round(10 * em)),
+      drop_time_allowance = max(0, round(2 * em)))),
+    error = function(e) NULL)
+  mvpa_bouted_min <- if (!is.null(bout_summary)) round(bout_summary$total_bouted_mvpa * epoch_length / 60, 1) else NA_real_
+  mvpa_bout_n <- if (!is.null(bout_summary)) bout_summary$total_bouts else NA_integer_
+  mvpa_sporadic_min <- if (!is.na(mvpa_bouted_min)) round(max(0, mvpa.minutes - mvpa_bouted_min), 1) else NA_real_
+
   overall.summary <- data.frame(
     total_days = nrow(daily.stats),
     valid_days = valid.days.results$n_valid_days,
@@ -602,6 +629,11 @@ canhrActi <- function(agd_file_path,
     vigorous_minutes = get_intensity_minutes("vigorous"),
     very_vigorous_minutes = get_intensity_minutes("very_vigorous"),
     mvpa_minutes = mvpa.minutes,
+    mvpa_bouted_minutes = mvpa_bouted_min,
+    mvpa_sporadic_minutes = mvpa_sporadic_min,
+    mvpa_bout_count = mvpa_bout_n,
+    mvpa_min_per_week = mvpa_per_week,
+    meets_mvpa_guideline = meets_guideline,
     sedentary_percent = get_intensity_percent("sedentary"),
     light_percent = get_intensity_percent("light"),
     moderate_percent = get_intensity_percent("moderate"),
@@ -644,13 +676,14 @@ canhrActi <- function(agd_file_path,
         if (output_summary) cat("  Detecting sleep periods for exclusion (SBRN: sedentary = waking only)...\n")
 
         sleep_mask <- tryCatch({
-          sleep_state <- sleep.cole.kripke(valid_day_data$axis1, apply_rescoring = TRUE, epoch_length = epoch_length)
+          ss2 <- .reintegrate.for.sleep(valid_day_data$axis1, valid_day_data$timestamp, epoch_length)
+          sleep_state <- sleep.cole.kripke(ss2$counts, apply_rescoring = TRUE, epoch_length = ss2$epoch_length)
 
           sleep_periods <- sleep.tudor.locke(
             sleep.state = sleep_state,
-            timestamps = valid_day_data$timestamp,
-            counts = valid_day_data$axis1,
-            epoch_length = epoch_length
+            timestamps = ss2$timestamps,
+            counts = ss2$counts,
+            epoch_length = ss2$epoch_length
           )
 
           # Create mask from detected sleep PERIOD WINDOWS

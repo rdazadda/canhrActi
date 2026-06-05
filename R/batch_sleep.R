@@ -327,16 +327,17 @@ canhrActi.sleep <- function(agd_file_path,
   }
   if (is.na(epoch_length) || epoch_length <= 0) epoch_length <- 60
 
+  # Cole-Kripke/Sadeh are 1-minute methods: score at 60s, then upsample states
+  # back to the native grid for the per-epoch sleep_wake column.
+  ss <- .reintegrate.for.sleep(counts_data$axis1, counts_data$timestamp, epoch_length)
   if (sleep_algorithm == "cole_kripke") {
-    sleep_wake <- sleep.cole.kripke(counts_data$axis1, apply_rescoring = apply_rescoring, epoch_length = epoch_length)
+    sleep_wake_60 <- sleep.cole.kripke(ss$counts, apply_rescoring = apply_rescoring, epoch_length = ss$epoch_length)
   } else if (sleep_algorithm == "sadeh") {
-    if (!is.na(epoch_length) && epoch_length != 60) {
-      warning("Sadeh was validated for 60-second epochs. epoch_length = ", epoch_length, "s.")
-    }
-    sleep_wake <- sleep.sadeh(counts_data$axis1)
+    sleep_wake_60 <- sleep.sadeh(ss$counts, epoch_length = ss$epoch_length)
   } else {
     stop("Unknown sleep algorithm: ", sleep_algorithm)
   }
+  sleep_wake <- sleep_wake_60[ss$upsample]
 
   epoch_data <- data.frame(
     epoch = 1:nrow(counts_data),
@@ -349,14 +350,15 @@ canhrActi.sleep <- function(agd_file_path,
 
   if (detect_sleep_period) {
     sleep_periods <- sleep.tudor.locke(
-      sleep.state = sleep_wake,
-      timestamps = counts_data$timestamp,
-      counts = counts_data$axis1,
+      sleep.state = sleep_wake_60,
+      timestamps = ss$timestamps,
+      counts = ss$counts,
       bedtime_start = bedtime_start,
       wake_time_end = wake_time_end,
       min_sleep_period = min_sleep_period,
       max_sleep_period = max_sleep_period,
-      min_nonzero_epochs = min_nonzero_epochs
+      min_nonzero_epochs = min_nonzero_epochs,
+      epoch_length = ss$epoch_length
     )
   } else {
     sleep_periods <- data.frame()

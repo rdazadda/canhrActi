@@ -157,7 +157,8 @@
       out.bed <- .format.actilife.datetime(period$out_bed_time)
       onset <- .format.actilife.datetime(period$onset)
 
-      # Calculate latency (minutes from in bed to onset)
+      # Period-start to first scored sleep (ActiLife-style); ~0 for accelerometer-
+      # only scoring - a true SOL needs a lights-out/diary marker, not used here.
       latency <- as.numeric(difftime(period$onset, period$in_bed_time, units = "mins"))
 
       # Calculate Sleep Fragmentation Index
@@ -259,18 +260,18 @@
     latencies <- sapply(1:nrow(periods), function(i) {
       as.numeric(difftime(periods$onset[i], periods$in_bed_time[i], units = "mins"))
     })
-    avg.latency <- round(mean(latencies), 0)
+    avg.latency <- round(mean(latencies, na.rm = TRUE), 0)
 
-    # Other averages
-    avg.efficiency <- round(mean(periods$sleep_efficiency), 3)
-    avg.sleep.time <- round(mean(periods$sleep_time), 0)
-    avg.waso <- round(mean(periods$wake_time), 2)
-    avg.awakenings <- round(mean(periods$number_of_awakenings), 2)
-    avg.awakening.length <- round(mean(periods$average_awakening), 2)
-    avg.counts <- round(mean(periods$total_counts), 2)
-    avg.movement <- round(mean(periods$movement_index), 3)
-    avg.fragmentation <- round(mean(periods$fragmentation_index), 3)
-    avg.sleep.frag <- round(mean(periods$movement_index + periods$fragmentation_index), 3)
+    # Other averages (na.rm so one NA period does not blank the whole average)
+    avg.efficiency <- round(mean(periods$sleep_efficiency, na.rm = TRUE), 3)
+    avg.sleep.time <- round(mean(periods$sleep_time, na.rm = TRUE), 0)
+    avg.waso <- round(mean(periods$wake_time, na.rm = TRUE), 2)
+    avg.awakenings <- round(mean(periods$number_of_awakenings, na.rm = TRUE), 2)
+    avg.awakening.length <- round(mean(periods$average_awakening, na.rm = TRUE), 2)
+    avg.counts <- round(mean(periods$total_counts, na.rm = TRUE), 2)
+    avg.movement <- round(mean(periods$movement_index, na.rm = TRUE), 3)
+    avg.fragmentation <- round(mean(periods$fragmentation_index, na.rm = TRUE), 3)
+    avg.sleep.frag <- round(mean(periods$movement_index + periods$fragmentation_index, na.rm = TRUE), 3)
 
     # Create row
     row.data <- data.frame(

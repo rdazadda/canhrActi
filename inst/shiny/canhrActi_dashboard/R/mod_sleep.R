@@ -126,7 +126,7 @@ mod_sleep_ui <- function(id) {
                     numericInput(ns("bedtime_start"), label = NULL, value = 5,
                                  min = 1, max = 30, step = 1, width = "100%")
                   ),
-                  tags$span(style = "color: #666; font-size: 13px;", "epochs")
+                  tags$span(style = "color: #666; font-size: 13px;", "min")
                 ),
 
                 # Row 3: Wake time definition
@@ -136,36 +136,7 @@ mod_sleep_ui <- function(id) {
                     numericInput(ns("wake_time_end"), label = NULL, value = 10,
                                  min = 1, max = 60, step = 1, width = "100%")
                   ),
-                  tags$span(style = "color: #666; font-size: 13px;", "epochs")
-                )
-              ),
-
-              # Sleep Diary Integration (collapsible sub-section)
-              div(class = "algo-group",
-                div(class = "algo-group-header",
-                  icon("book-open"), "Sleep Diary"
-                ),
-                checkboxInput(ns("use_diary"), "Enable Diary Integration", value = FALSE),
-                conditionalPanel(
-                  condition = sprintf("input['%s'] == true", ns("use_diary")),
-                  fileInput(
-                    ns("diary_file"),
-                    NULL,
-                    accept = c(".csv", ".xlsx"),
-                    buttonLabel = icon("upload"),
-                    placeholder = "Upload diary"
-                  ),
-                  selectInput(ns("diary_method"), "Method:",
-                    choices = c(
-                      "Validation Only" = "validation_only",
-                      "Hybrid" = "hybrid",
-                      "Diary Guided" = "diary_guided"
-                    ),
-                    selected = "validation_only"
-                  ),
-                  tags$small(class = "text-muted",
-                    icon("info-circle"), " Requires: date, bedtime, waketime columns"
-                  )
+                  tags$span(style = "color: #666; font-size: 13px;", "min")
                 )
               )
             )
@@ -266,15 +237,6 @@ mod_sleep_ui <- function(id) {
               div(class = "pt-4",
                 DT::dataTableOutput(ns("details_table"))
               )
-            ),
-
-            # Diary Validation Tab
-            tabPanel(
-              title = "Diary Validation",
-              value = "diary",
-              div(class = "pt-4",
-                DT::dataTableOutput(ns("diary_table"))
-              )
             )
           )
         )
@@ -316,8 +278,16 @@ mod_sleep_server <- function(id, shared) {
     })
 
     results <- reactiveVal(list())
-    diary_data <- reactiveVal(NULL)
     selected_file <- reactiveVal(NULL)
+
+    # Keep only wear-valid files, matching the tables/exports, so the metric
+    # strip's "All Participants" aggregates agree with them.
+    valid_sleep <- function(res) {
+      Filter(function(r) {
+        wt <- shared$results$wear_time[[r$file_id]]
+        is.null(wt) || !isFALSE(wt$meets_criteria)
+      }, res)
+    }
 
     # Algorithm info based on selection
     output$algorithm_info <- renderUI({
@@ -425,7 +395,7 @@ mod_sleep_server <- function(id, shared) {
       if (length(res) == 0 || is.null(sel)) return("--")
 
       if (sel == "all") {
-        # Sum across all participants
+        res <- valid_sleep(res)
         total <- sum(sapply(res, function(r) {
           np <- r$n_periods
           if (is.null(np) || length(np) == 0) return(0)
@@ -455,8 +425,7 @@ mod_sleep_server <- function(id, shared) {
       if (length(res) == 0 || is.null(sel)) return("--")
 
       if (sel == "all") {
-        # Simple average of each participant's average
-        # avg_duration is in epoch counts; convert each to minutes before averaging
+        res <- valid_sleep(res)
         durs <- sapply(res, function(r) {
           val <- r$avg_duration
           if (is.null(val) || length(val) == 0 || !is.numeric(val)) return(NA)
@@ -489,7 +458,7 @@ mod_sleep_server <- function(id, shared) {
       if (length(res) == 0 || is.null(sel)) return("--")
 
       if (sel == "all") {
-        # Simple average of each participant's average
+        res <- valid_sleep(res)
         effs <- sapply(res, function(r) {
           val <- r$avg_efficiency
           if (is.null(val) || length(val) == 0 || !is.numeric(val)) return(NA)
@@ -522,8 +491,7 @@ mod_sleep_server <- function(id, shared) {
       if (length(res) == 0 || is.null(sel)) return("--")
 
       if (sel == "all") {
-        # Simple average of each participant's average
-        # avg_waso is in epoch counts; convert each to minutes before averaging
+        res <- valid_sleep(res)
         wasos <- sapply(res, function(r) {
           val <- r$avg_waso
           if (is.null(val) || length(val) == 0 || !is.numeric(val)) return(NA)
@@ -561,27 +529,6 @@ mod_sleep_server <- function(id, shared) {
       results(list())
       selected_file(NULL)
       showNotification("Sleep results cleared", type = "message", duration = 2)
-    })
-
-    output$metric_avg_onset <- renderText({
-      res <- results()
-      if (length(res) == 0) return("--")
-
-      # Collect all onset times
-      all_onsets <- list()
-      for (r in res) {
-        if (!is.null(r$periods) && nrow(r$periods) > 0) {
-          onset_times <- tryCatch(as.POSIXct(r$periods$onset), error = function(e) NULL)
-          if (!is.null(onset_times)) {
-            all_onsets <- c(all_onsets, list(onset_times))
-          }
-        }
-      }
-
-      if (length(all_onsets) == 0) return("--")
-
-      all_times <- do.call(c, all_onsets)
-      format_average_time(all_times)
     })
 
     # Hypnogram/Hypnodensity Chart
@@ -624,16 +571,23 @@ mod_sleep_server <- function(id, shared) {
 
       # Get file data for counts
       f <- shared$files[[r$file_id]]
-      counts_col <- if (!is.null(f) && "axis1" %in% names(f$data)) "axis1" else NULL
-      data_for_plot <- f$data
-
-      if (is.null(data_for_plot)) {
+      if (is.null(r$sleep_state) || is.null(r$timestamps)) {
         create_simple_hypnogram(r)
         return()
       }
 
-      data_for_plot$sleep_state <- r$sleep_state
-      data_for_plot$timestamp <- r$timestamps
+      # Build the plot frame from the stored sleep series (which may have been
+      # reintegrated to 60s), NOT from f$data - their lengths can differ.
+      data_for_plot <- data.frame(
+        timestamp = r$timestamps,
+        sleep_state = r$sleep_state,
+        stringsAsFactors = FALSE
+      )
+      counts_col <- NULL
+      if (!is.null(r$counts) && length(r$counts) == nrow(data_for_plot)) {
+        data_for_plot$axis1 <- r$counts
+        counts_col <- "axis1"
+      }
 
       # Render hypnogram
       tryCatch({
@@ -796,47 +750,6 @@ mod_sleep_server <- function(id, shared) {
       do.call(tagList, all_cards)
     })
 
-    # Handle diary file upload
-    observeEvent(input$diary_file, {
-      req(input$diary_file)
-      tryCatch({
-        file_ext <- tolower(tools::file_ext(input$diary_file$name))
-
-        if (file_ext == "xlsx") {
-          if (!requireNamespace("openxlsx", quietly = TRUE)) {
-            showNotification("Install 'openxlsx' package to read Excel files", type = "error")
-            return()
-          }
-          diary <- openxlsx::read.xlsx(input$diary_file$datapath)
-        } else {
-          diary <- read.csv(input$diary_file$datapath, stringsAsFactors = FALSE)
-        }
-
-        required_cols <- c("date", "bedtime", "waketime")
-        if (!all(required_cols %in% tolower(names(diary)))) {
-          showNotification("Diary must have columns: date, bedtime, waketime", type = "error")
-          return()
-        }
-        names(diary) <- tolower(names(diary))
-        # Parse dates with error handling for various formats
-        diary$date <- tryCatch({
-          as.Date(diary$date)
-        }, error = function(e) {
-          tryCatch(as.Date(diary$date, format = "%m/%d/%Y"), error = function(e2) {
-            tryCatch(as.Date(diary$date, format = "%d/%m/%Y"), error = function(e3) NULL)
-          })
-        })
-        if (is.null(diary$date) || all(is.na(diary$date))) {
-          showNotification("Invalid date format in diary. Use YYYY-MM-DD or MM/DD/YYYY.", type = "error")
-          return()
-        }
-        diary_data(diary)
-        showNotification(paste("Loaded diary with", nrow(diary), "entries"), type = "message")
-      }, error = function(e) {
-        showNotification(paste("Error reading diary:", e$message), type = "error")
-      })
-    })
-
     # Helper: Format ETA
     # Using format_eta from shared_components.R instead
     # if (is.na(seconds) || seconds < 0) return("calculating...")
@@ -945,7 +858,7 @@ mod_sleep_server <- function(id, shared) {
           counts <- if ("axis1" %in% names(data)) data$axis1 else data[, 1]
 
           if (!warned_epoch && !is.null(f$epoch_length) && !is.na(f$epoch_length) && f$epoch_length != 60) {
-            showNotification("Sleep algorithms are validated for 60-second epochs. Results may be inaccurate.", type = "warning", duration = 6)
+            showNotification(paste0("Sub-minute epochs (", f$epoch_length, "s) are reintegrated to 60s for sleep scoring (Cole-Kripke/Sadeh are 1-minute methods)."), type = "message", duration = 6)
             warned_epoch <- TRUE
           }
 
@@ -963,6 +876,18 @@ mod_sleep_server <- function(id, shared) {
             wear_mask <- wt_results[[fid]]$wear
           }
 
+          # Cole-Kripke/Sadeh are 1-minute methods: reintegrate sub-minute epochs
+          # to 60s so every window/threshold/metric is correct. 60s files unchanged.
+          scoring_epoch <- f$epoch_length
+          if (!is.null(f$epoch_length) && !is.na(f$epoch_length) && f$epoch_length != 60) {
+            ri <- canhrActi::reintegrate.epochs(counts, timestamps, wear_mask,
+                                                from_epoch = f$epoch_length, to_epoch = 60)
+            counts <- ri$counts
+            timestamps <- ri$timestamps
+            wear_mask <- ri$wear
+            scoring_epoch <- ri$epoch_length
+          }
+
           sleep_state <- NULL
           periods <- NULL
           actual_algorithm <- input$algorithm
@@ -972,11 +897,11 @@ mod_sleep_server <- function(id, shared) {
             sleep_state <- tryCatch({
               if (actual_algorithm == "cole.kripke") {
                 capture_warnings({
-                  canhrActi::sleep.cole.kripke(counts, apply_rescoring = TRUE, epoch_length = f$epoch_length)
+                  canhrActi::sleep.cole.kripke(counts, apply_rescoring = TRUE, epoch_length = scoring_epoch)
                 }, prefix = paste0(f$name, ":"))
               } else {
                 capture_warnings({
-                  canhrActi::sleep.sadeh(counts, epoch_length = f$epoch_length)
+                  canhrActi::sleep.sadeh(counts, epoch_length = scoring_epoch)
                 }, prefix = paste0(f$name, ":"))
               }
             }, error = function(e) {
@@ -993,14 +918,14 @@ mod_sleep_server <- function(id, shared) {
                 capture_warnings({
                   canhrActi::sleep.tudor.locke(
                     sleep.state = sleep_state,
-                    timestamps = data$timestamp,
+                    timestamps = timestamps,
                     counts = counts,
                     bedtime_start = bedtime_epochs,
                     wake_time_end = wake_epochs,
                     min_sleep_period = input$min_sleep_period,
                     max_sleep_period = input$max_sleep_period,
                     min_nonzero_epochs = if (input$use_min_nonzero) input$min_nonzero_epochs else 0,
-                    epoch_length = f$epoch_length
+                    epoch_length = scoring_epoch
                   )
                 }, prefix = paste0(f$name, ":"))
               }, error = function(e) {
@@ -1031,26 +956,13 @@ mod_sleep_server <- function(id, shared) {
             avg_latency <- mean(latencies, na.rm = TRUE)
           }
 
-          diary_result <- NULL
-          if (isTRUE(input$use_diary) && !is.null(diary_data())) {
-            diary_result <- tryCatch({
-              canhrActi::integrate.sleep.diary(
-                accel_sleep = sleep_state,
-                diary = diary_data(),
-                timestamps = timestamps,
-                method = input$diary_method %||% "validation_only"
-              )
-            }, error = function(e) {
-              NULL
-            })
-          }
-
           enhanced_frag <- NULL
           if ("timestamp" %in% names(data)) {
             enhanced_frag <- tryCatch({
               canhrActi::sleep.fragmentation.enhanced(
                 sleep_state = sleep_state,
-                timestamps = timestamps
+                timestamps = timestamps,
+                epoch_length = scoring_epoch
               )
             }, error = function(e) {
               NULL
@@ -1062,12 +974,14 @@ mod_sleep_server <- function(id, shared) {
             name = f$name,
             subject_id = f$subject_info$id,
             serial_number = f$device_info$serial_number,
-            epoch_length = f$epoch_length,
+            epoch_length = scoring_epoch,           # epoch sleep was scored at (60s)
+            source_epoch_length = f$epoch_length,   # the file's native epoch
             algorithm = actual_algorithm,
             detection_method = detection_method_used,
             periods = periods,
             sleep_state = sleep_state,
             timestamps = timestamps,
+            counts = counts,                        # (reintegrated) counts for the hypnogram
             wear_mask = wear_mask,  # Store wear mask for exports
             wear_time_applied = !is.null(wear_mask),  # Track if wear time was applied
             n_periods = n_periods,
@@ -1076,7 +990,6 @@ mod_sleep_server <- function(id, shared) {
             avg_awakenings = avg_awakenings,
             avg_waso = avg_waso,
             avg_latency = avg_latency,
-            diary_result = diary_result,
             enhanced_fragmentation = enhanced_frag,
             parameters = list(
               sleep_algorithm = actual_algorithm,
@@ -1086,7 +999,6 @@ mod_sleep_server <- function(id, shared) {
               wake_time_end = input$wake_time_end,
               max_sleep_period = input$max_sleep_period,
               min_nonzero_epochs = input$min_nonzero_epochs,
-              use_diary = input$use_diary,
               enhanced_fragmentation = TRUE,
               wear_time_filtered = !is.null(wear_mask)
             )
@@ -1100,10 +1012,12 @@ mod_sleep_server <- function(id, shared) {
       results(all_results)
       shared$results$sleep <- all_results
 
-      # Initialize selected_file to the first result for immediate hypnogram display
+      # Select the first result and keep the dropdown in sync so the metric strip
+      # and the plots reference the same file.
       if (length(all_results) > 0) {
         first_id <- all_results[[1]]$subject_id %||% all_results[[1]]$name
         selected_file(first_id)
+        updateSelectInput(session, "selected_file", selected = first_id)
       }
 
       n_scored <- sum(sapply(all_results, function(r) {
@@ -1278,57 +1192,6 @@ mod_sleep_server <- function(id, shared) {
         class = 'display compact stripe'
       )
     })
-
-    # Diary concordance table
-    output$diary_table <- DT::renderDataTable({
-      res <- results()
-      if (length(res) == 0) {
-        return(DT::datatable(
-          data.frame(Message = "Run 'Sleep Analysis' with diary integration enabled"),
-          rownames = FALSE,
-          options = list(dom = 't')
-        ))
-      }
-
-      all_rows <- list()
-      for (r in res) {
-        if (is.null(r$diary_result)) next
-
-        concordance <- r$diary_result$concordance
-        for (i in seq_len(nrow(concordance))) {
-          row <- concordance[i, ]
-          row_data <- data.frame(
-            Subject = r$subject_id,
-            Date = as.character(row$date),
-            `Diary Bedtime` = row$diary_bedtime %||% "",
-            `Diary Waketime` = row$diary_waketime %||% "",
-            `Accel Onset` = if (!is.null(row$accel_onset)) format(row$accel_onset, "%I:%M %p") else "",
-            `Accel Wake` = if (!is.null(row$accel_wake)) format(row$accel_wake, "%I:%M %p") else "",
-            `Agreement (%)` = round(row$agreement_pct %||% NA, 1),
-            check.names = FALSE,
-            stringsAsFactors = FALSE
-          )
-          all_rows[[length(all_rows) + 1]] <- row_data
-        }
-      }
-
-      if (length(all_rows) == 0) {
-        return(DT::datatable(
-          data.frame(Message = "No diary data available. Enable diary integration and upload a CSV file."),
-          rownames = FALSE,
-          options = list(dom = 't')
-        ))
-      }
-
-      df <- do.call(rbind, all_rows)
-      DT::datatable(
-        df,
-        options = list(pageLength = 15, scrollX = TRUE, dom = 'frtip'),
-        rownames = FALSE,
-        class = 'display compact stripe'
-      )
-    })
-
 
     # Helper to format datetime for export
     format_actilife_datetime <- function(dt) {

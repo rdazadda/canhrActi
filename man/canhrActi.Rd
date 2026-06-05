@@ -133,8 +133,10 @@ files, or entire folders.
 \strong{Algorithms Implemented:}
 
 \strong{Activity Counts:}
-Uses ActiGraph's official algorithm (Neishabouri et al., 2022) with exact
-IIR filter coefficients to produce identical counts to ActiLife software.
+Activity counts are read directly from the \code{.agd} file as already
+computed by ActiGraph/ActiLife (the count algorithm is described by
+Neishabouri et al., 2022). canhrActi does not recompute counts from raw
+acceleration; it consumes the device/software-computed counts.
 
 \strong{Wear Time Detection:}
 \itemize{

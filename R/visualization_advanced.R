@@ -241,9 +241,10 @@ plot_daily_timeline <- function(data,
       )
   }
 
-  # Add activity lines
-  metric_colors <- sapply(show_axes, function(x) color_scheme[[x]])
-  names(metric_colors) <- show_axes
+  # Add activity lines (legend reflects only the metrics actually plotted)
+  present_axes <- intersect(show_axes, unique(as.character(plot_data$metric)))
+  metric_colors <- sapply(present_axes, function(x) color_scheme[[x]])
+  names(metric_colors) <- present_axes
 
   p <- p +
     ggplot2::geom_line(
@@ -256,7 +257,7 @@ plot_daily_timeline <- function(data,
       labels = c(
         axis1 = "Axis 1", axis2 = "Axis 2", axis3 = "Axis 3",
         vm = "VM", steps = "Steps", hr = "Heart Rate"
-      )[show_axes],
+      )[present_axes],
       name = "Metric"
     )
 
@@ -814,8 +815,8 @@ plot_activity_heatmap <- function(data,
 
   p <- p +
     ggplot2::scale_x_continuous(
-      breaks = seq(0, 23, 3),
-      labels = sprintf("%02d:00", seq(0, 23, 3)),
+      breaks = c(seq(0, 21, 3), 23),
+      labels = sprintf("%02d:00", c(seq(0, 21, 3), 23)),
       expand = c(0, 0)
     ) +
     ggplot2::scale_y_date(
@@ -1066,14 +1067,25 @@ plot_daily_summary_bars <- function(data,
     data <- daily_summary
     date_col <- "date"
 
-    # Handle Activity Analysis format: use epoch counts directly
-    # Activity Analysis stores: sedentary, light, moderate, vigorous (epoch counts)
-    # For 1-minute epochs, epoch count = minutes, so use directly
+    # Activity Analysis stores per-intensity EPOCH COUNTS (sedentary/light/
+    # moderate/vigorous/very_vigorous). Convert to minutes via epoch_length so the
+    # bars are true minutes for any epoch length (not only 60 s), and keep
+    # very_vigorous so its time is not dropped.
     if ("sedentary" %in% names(data) && !"sedentary_min" %in% names(data)) {
-      # Add MVPA column
-      data$mvpa <- data$moderate + data$vigorous
-      # Use epoch counts directly as metrics
-      metrics <- c("sedentary", "light", "moderate", "vigorous")
+      em <- epoch_length / 60
+      data$sedentary_min <- data$sedentary * em
+      data$light_min <- data$light * em
+      data$moderate_min <- data$moderate * em
+      data$vigorous_min <- data$vigorous * em
+      vv <- if ("very_vigorous" %in% names(data)) data$very_vigorous else 0
+      data$mvpa_min <- (data$moderate + data$vigorous + vv) * em
+      metrics <- c("sedentary_min", "light_min", "moderate_min", "vigorous_min")
+      if ("very_vigorous" %in% names(data)) {
+        data$very_vigorous_min <- data$very_vigorous * em
+        if (any(data$very_vigorous_min > 0, na.rm = TRUE)) {
+          metrics <- c(metrics, "very_vigorous_min")
+        }
+      }
     }
   } else if (!date_col %in% names(data) && timestamp_col %in% names(data)) {
     # Auto-detect and summarize raw data if needed
@@ -1146,16 +1158,19 @@ plot_daily_summary_bars <- function(data,
     mvpa_min = "MVPA (min)", sedentary_min = "Sedentary (min)",
     wear_min = "Wear Time (min)", light_min = "Light Activity (min)",
     moderate_min = "Moderate (min)", vigorous_min = "Vigorous (min)",
+    very_vigorous_min = "Very Vigorous (min)",
     mvpa = "MVPA", sedentary = "Sedentary", light = "Light",
-    moderate = "Moderate", vigorous = "Vigorous"
+    moderate = "Moderate", vigorous = "Vigorous", very_vigorous = "Very Vigorous"
   )
 
   # Colors (support both formats)
   metric_colors <- c(
     steps = "#32CD32", mvpa_min = "#FF4500", sedentary_min = "#1E90FF",
     wear_min = "#9370DB", light_min = "#FFD700", moderate_min = "#FFA500",
-    vigorous_min = "#DC143C", mvpa = "#FF4500", sedentary = "#1E90FF",
-    light = "#FFD700", moderate = "#FFA500", vigorous = "#DC143C"
+    vigorous_min = "#DC143C", very_vigorous_min = "#9B59B6",
+    mvpa = "#FF4500", sedentary = "#1E90FF",
+    light = "#FFD700", moderate = "#FFA500", vigorous = "#DC143C",
+    very_vigorous = "#9B59B6"
   )
 
   p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = date, y = value, fill = metric)) +
@@ -1280,6 +1295,18 @@ plot_intensity_area <- function(data,
 
   # Order intensity levels
   intensity_order <- c("sedentary", "light", "moderate", "vigorous", "very_vigorous")
+
+  # Zero-fill the (date, hour, intensity) grid so geom_area(stack) does not
+  # interpolate an intensity series across hours where it is absent (which would
+  # drop / smear minutes in non-contiguous hours).
+  present_int <- intensity_order[intensity_order %in% as.character(hourly$intensity)]
+  if (length(present_int)) {
+    full_grid <- expand.grid(date = unique(hourly$date), hour = 0:23,
+                             intensity = present_int, stringsAsFactors = FALSE)
+    hourly <- merge(full_grid, hourly[, c("date", "hour", "intensity", "minutes")],
+                    by = c("date", "hour", "intensity"), all.x = TRUE)
+    hourly$minutes[is.na(hourly$minutes)] <- 0
+  }
   hourly$intensity <- factor(hourly$intensity, levels = intensity_order)
 
   # Intensity colors - matching Intensity Pie chart
@@ -1306,9 +1333,10 @@ plot_intensity_area <- function(data,
     )
   }
 
-  # Intensity labels with descriptions
+  # Intensity labels with descriptions (sedentary boundary follows the cut-points)
+  cp_lab <- get_cutpoint_thresholds(cutpoints)
   intensity_labels <- c(
-    "sedentary" = "Sedentary (<100 CPM)",
+    "sedentary" = sprintf("Sedentary (<%g CPM)", cp_lab$sedentary),
     "light" = "Light Activity",
     "moderate" = "Moderate (MVPA)",
     "vigorous" = "Vigorous (MVPA)",
@@ -2767,8 +2795,11 @@ plot_day_comparison <- function(data,
       ggplot2::aes(x = time_of_day, y = activity, color = date_label)
     ) +
       ggplot2::geom_line(linewidth = 0.5, alpha = 0.7) +
-      ggplot2::scale_color_manual(values = day_colors[1:length(unique(data$date_label))],
-                                   name = "Day") +
+      ggplot2::scale_color_manual(values = {
+        nd <- length(unique(data$date_label))
+        if (nd <= length(day_colors)) day_colors[seq_len(nd)]
+        else grDevices::hcl.colors(nd, palette = "Dark 3")
+      }, name = "Day") +
       ggplot2::scale_x_continuous(
         breaks = seq(0, 24, 4),
         labels = c("12 AM", "4 AM", "8 AM", "12 PM", "4 PM", "8 PM", "12 AM"),
@@ -2847,7 +2878,9 @@ plot_weekend_weekday <- function(data,
   data$date <- as.Date(data[[timestamp_col]])
   data$hour <- as.integer(format(data[[timestamp_col]], "%H"))
   data$weekday <- weekdays(data$date)
-  data$day_type <- ifelse(data$weekday %in% c("Saturday", "Sunday"), "Weekend", "Weekday")
+  # Locale-independent weekend test (wday: 0 = Sunday, 6 = Saturday) so weekend
+  # detection works regardless of the system LC_TIME locale.
+  data$day_type <- ifelse(as.POSIXlt(data$date)$wday %in% c(0L, 6L), "Weekend", "Weekday")
   data$activity <- data[[counts_col]]
 
   # Aggregate by hour and day type
@@ -2864,7 +2897,7 @@ plot_weekend_weekday <- function(data,
     data = data,
     FUN = function(x) {
       c(mean = mean(x, na.rm = TRUE),
-        se = sd(x, na.rm = TRUE) / sqrt(length(x)))
+        se = sd(x, na.rm = TRUE) / sqrt(sum(!is.na(x))))
     }
   )
   hourly_ci <- cbind(hourly_ci[, 1:2], as.data.frame(hourly_ci$activity))
@@ -3437,8 +3470,8 @@ plot_intensity_pie <- function(data,
   if (is.null(subtitle)) {
     if (show_thresholds) {
       # Show cut-point thresholds in subtitle
-      subtitle <- sprintf("Cut-points: %s | Sed: <%d | Light: %d-%d | Mod: %d-%d | Vig: >%d CPM",
-                          cp_name, cp[2], cp[2], cp[3]-1, cp[3], cp[4]-1, cp[4])
+      subtitle <- sprintf("Cut-points: %s | Sed <%d | Light %d-%d | Mod %d-%d | Vig %d-%d | VVig >=%d CPM",
+                          cp_name, cp[2], cp[2], cp[3]-1, cp[3], cp[4]-1, cp[4], cp[5]-1, cp[5])
     } else {
       subtitle <- sprintf("Total: %.1f hours | Cut-points: %s",
                           sum(intensity_summary$hours), cp_name)
@@ -4089,8 +4122,10 @@ plot_hypnogram <- function(data,
 
   # Add awakening markers
   if (show_awakenings) {
-    # Detect awakening starts (transitions from 0 to 1)
-    data$awakening_start <- c(FALSE, diff(data$sleep_numeric) == 1)
+    # Detect awakening starts (transitions from 0 to 1) PER NIGHT, so a night's
+    # first epoch is not diffed against the previous night's last epoch.
+    data$awakening_start <- ave(data$sleep_numeric, data$night_label,
+                                FUN = function(x) c(FALSE, diff(x) == 1)) == 1
     awakenings <- data[data$awakening_start, ]
 
     if (nrow(awakenings) > 0) {
@@ -4307,17 +4342,18 @@ plot_circadian_polar <- function(data,
 
   # Validate and coerce L5_onset and M10_onset to numeric hours (0-23)
   if (!is.null(L5_onset)) {
+    # The polar arcs and labels are hourly-resolution, so the onset is an integer
+    # hour (the hour the L5 window starts in).
     if (inherits(L5_onset, "POSIXct") || inherits(L5_onset, "POSIXlt")) {
       L5_onset <- as.integer(format(L5_onset, "%H"))
     } else if (is.character(L5_onset)) {
-      # Try to parse as time string (e.g., "02:30" or "2")
       if (grepl(":", L5_onset)) {
         L5_onset <- as.integer(sub(":.*", "", L5_onset))
       } else {
-        L5_onset <- as.integer(L5_onset)
+        L5_onset <- as.integer(round(as.numeric(L5_onset)))
       }
     } else {
-      L5_onset <- as.integer(L5_onset)
+      L5_onset <- as.integer(round(as.numeric(L5_onset)))
     }
     # Ensure it's in valid range
     if (is.na(L5_onset) || L5_onset < 0 || L5_onset > 23) {
@@ -4332,10 +4368,10 @@ plot_circadian_polar <- function(data,
       if (grepl(":", M10_onset)) {
         M10_onset <- as.integer(sub(":.*", "", M10_onset))
       } else {
-        M10_onset <- as.integer(M10_onset)
+        M10_onset <- as.integer(round(as.numeric(M10_onset)))
       }
     } else {
-      M10_onset <- as.integer(M10_onset)
+      M10_onset <- as.integer(round(as.numeric(M10_onset)))
     }
     if (is.na(M10_onset) || M10_onset < 0 || M10_onset > 23) {
       M10_onset <- NULL
@@ -4424,7 +4460,7 @@ plot_circadian_polar <- function(data,
     hourly_stats <- aggregate(
       activity ~ hour + day_type,
       data = data,
-      FUN = function(x) c(mean = mean(x, na.rm = TRUE), se = sd(x, na.rm = TRUE) / sqrt(length(x)))
+      FUN = function(x) c(mean = mean(x, na.rm = TRUE), se = sd(x, na.rm = TRUE) / sqrt(sum(!is.na(x))))
     )
     hourly_stats <- cbind(hourly_stats[, 1:2], as.data.frame(hourly_stats$activity))
     hourly_stats$lower <- hourly_stats$mean - 1.96 * hourly_stats$se
@@ -4444,7 +4480,7 @@ plot_circadian_polar <- function(data,
     hourly_stats <- aggregate(
       activity ~ hour,
       data = data,
-      FUN = function(x) c(mean = mean(x, na.rm = TRUE), se = sd(x, na.rm = TRUE) / sqrt(length(x)))
+      FUN = function(x) c(mean = mean(x, na.rm = TRUE), se = sd(x, na.rm = TRUE) / sqrt(sum(!is.na(x))))
     )
     hourly_stats <- cbind(hour = hourly_stats[, 1], as.data.frame(hourly_stats$activity))
     hourly_stats$lower <- hourly_stats$mean - 1.96 * hourly_stats$se
@@ -4722,22 +4758,17 @@ plot_is_iv <- function(data,
     IS <- is_value
     IV <- iv_value
   } else {
-    # Calculate IS and IV
-    n <- nrow(data)
-
-    # Hourly means across all data
-    hourly_means <- aggregate(activity ~ hour, data = data, FUN = mean, na.rm = TRUE)
-    n_h <- 24
-    p_val <- n / n_h  # epochs per hour on average
-
-    # IS = variance of hourly means / variance of all data
-    var_hourly <- var(hourly_means$activity)
-    var_total <- var(data$activity, na.rm = TRUE)
-    IS <- if (var_total > 0) n_h * p_val * var_hourly / (n * var_total) else NA
-
-    # IV = mean squared difference of consecutive epochs / variance
-    diff_sq <- diff(data$activity)^2
-    IV <- if (var_total > 0) n * mean(diff_sq, na.rm = TRUE) / ((n - 1) * var_total) else NA
+    # Use the package's canonical gap-aware IS/IV (Witting 1990) - the same engine
+    # as circadian.rhythm() - rather than an ad-hoc approximation, so the labelled
+    # IS/IV match the Circadian tab.
+    epl <- tryCatch({
+      d <- diff(as.numeric(data[[timestamp_col]])); d <- d[d > 0]
+      if (length(d)) stats::median(d) else 60
+    }, error = function(e) 60)
+    isiv <- tryCatch(.calculate.IS.IV(data[[counts_col]], data[[timestamp_col]], epl),
+                     error = function(e) list(IS = NA_real_, IV = NA_real_))
+    IS <- isiv$IS
+    IV <- isiv$IV
   }
 
   # Create hourly profile plot with individual days

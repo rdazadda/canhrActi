@@ -310,16 +310,26 @@ plot_periodogram <- function(counts, timestamps, from = 18, to = 30,
 #'   as \code{counts}; non-wear epochs are blanked.
 #' @param double_plot Logical; draw the 48-hour double plot (default
 #'   \code{TRUE}) or a single 24-hour plot.
+#' @param L5_onset,M10_onset Optional L5 / M10 onset to overlay as a dashed
+#'   vertical phase line. Accepts a decimal hour, an \code{"HH:MM"} string, or a
+#'   \code{POSIXct}.
+#' @param sleep_mask Optional logical/character vector (\code{TRUE}/"S" = asleep)
+#'   the same length as \code{counts}; sleep is shaded over the raster.
+#' @param scale Fill scaling: \code{"linear"} (default) or \code{"sqrt"} to
+#'   compress a heavy-tailed activity range.
 #'
 #' @return A \code{ggplot} object. Never errors; returns an annotated empty plot
 #'   on insufficient data.
 #' @export
 plot_actogram <- function(counts, timestamps, epoch_length = NULL,
-                          wear_time = NULL, double_plot = TRUE) {
+                          wear_time = NULL, double_plot = TRUE,
+                          L5_onset = NULL, M10_onset = NULL, sleep_mask = NULL,
+                          scale = c("linear", "sqrt")) {
 
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("Package 'ggplot2' is required for plot_actogram().")
   }
+  scale <- match.arg(scale)
 
   insufficient <- function() {
     .circ_empty_plot("Insufficient data for actogram", title = "Actogram")
@@ -387,6 +397,35 @@ plot_actogram <- function(counts, timestamps, epoch_length = NULL,
   }
   grid$x_h <- (grid$b - 1L) * res_min / 60
 
+  # Optional sleep overlay: per-(day, bin) asleep fraction, double-plotted like
+  # the activity raster; keep cells that are mostly asleep.
+  sleep_grid <- NULL
+  if (!is.null(sleep_mask)) {
+    is_sleep <- if (is.character(sleep_mask)) {
+      sleep_mask %in% c("S", "sleep") | tolower(sleep_mask) %in% "sleep"
+    } else as.logical(sleep_mask)
+    is_sleep[is.na(is_sleep)] <- FALSE
+    if (length(is_sleep) == length(x)) {
+      sok <- is.finite(day_idx) & is.finite(bin_idx)
+      slp <- tapply(as.numeric(is_sleep[sok]),
+                    list(factor(day_idx[sok], levels = seq_len(n_days)),
+                         factor(bin_idx[sok], levels = seq_len(bins_per_day))),
+                    mean, na.rm = TRUE)
+      slp <- matrix(as.numeric(slp), nrow = n_days, ncol = bins_per_day)
+      sgrid <- grid[, c("b", "day", "x_h")]
+      sgrid$asleep <- NA_real_
+      sgrid$asleep[left] <- slp[cbind(grid$day[left], grid$b[left])]
+      if (isTRUE(double_plot)) {
+        nd2 <- grid$day[right] + 1L
+        g2 <- nd2 <= n_days
+        v <- rep(NA_real_, length(nd2))
+        v[g2] <- slp[cbind(nd2[g2], (grid$b[right] - bins_per_day)[g2])]
+        sgrid$asleep[right] <- v
+      }
+      sleep_grid <- sgrid[is.finite(sgrid$asleep) & sgrid$asleep >= 0.5, ]
+    }
+  }
+
   # Fill ceiling so one spike doesn't dominate.
   fin <- grid$value[is.finite(grid$value)]
   cap <- if (length(fin)) as.numeric(stats::quantile(fin, 0.98, na.rm = TRUE)) else 1
@@ -408,7 +447,8 @@ plot_actogram <- function(counts, timestamps, epoch_length = NULL,
     ) +
     ggplot2::scale_fill_gradient(
       low = "white", high = "grey10", na.value = "white",
-      limits = c(0, cap), oob = scales::squish, name = "Activity"
+      limits = c(0, cap), oob = scales::squish, name = "Activity",
+      trans = if (scale == "sqrt") "sqrt" else "identity"
     ) +
     ggplot2::coord_cartesian(xlim = c(0, x_max), expand = FALSE) +
     ggplot2::labs(
@@ -423,6 +463,38 @@ plot_actogram <- function(counts, timestamps, epoch_length = NULL,
       xintercept = 24, color = "grey50", linewidth = 0.4
     )
   }
+
+  # Sleep shading (drawn over the raster with a fixed fill, no scale conflict).
+  if (!is.null(sleep_grid) && nrow(sleep_grid) > 0) {
+    p <- p + ggplot2::geom_tile(
+      data = sleep_grid, ggplot2::aes(x = .data$x_h, y = .data$day),
+      fill = "#3b82f6", alpha = 0.16, width = res_min / 60, height = 1,
+      inherit.aes = FALSE
+    )
+  }
+
+  # L5 / M10 onset phase lines (accept decimal hour, "HH:MM", or POSIXct).
+  parse_onset <- function(o) {
+    if (is.null(o)) return(NA_real_)
+    if (inherits(o, "POSIXct") || inherits(o, "POSIXlt")) {
+      return(as.numeric(format(o, "%H")) + as.numeric(format(o, "%M")) / 60)
+    }
+    if (is.character(o) && grepl(":", o[1])) {
+      hm <- suppressWarnings(as.numeric(strsplit(o[1], ":")[[1]]))
+      return(hm[1] + hm[2] / 60)
+    }
+    suppressWarnings(as.numeric(o[1]))
+  }
+  add_onset <- function(p, onset, col) {
+    o <- parse_onset(onset)
+    if (!is.finite(o)) return(p)
+    o <- o %% 24
+    xs <- if (isTRUE(double_plot)) c(o, o + 24) else o
+    p + ggplot2::geom_vline(xintercept = xs, color = col, linewidth = 0.6,
+                            linetype = "longdash")
+  }
+  p <- add_onset(p, L5_onset, "#2563eb")   # L5 onset (blue)
+  p <- add_onset(p, M10_onset, "#ea580c")  # M10 onset (orange)
   p
 }
 

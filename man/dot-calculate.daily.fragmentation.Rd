@@ -4,7 +4,14 @@
 \alias{.calculate.daily.fragmentation}
 \title{Calculate Daily Fragmentation Patterns}
 \usage{
-.calculate.daily.fragmentation(intensity, timestamps, wear_time, epoch_length)
+.calculate.daily.fragmentation(
+  intensity,
+  timestamps,
+  wear_time,
+  epoch_length,
+  min_break_length = 5,
+  sleep_mask = NULL
+)
 }
 \description{
 Calculate Daily Fragmentation Patterns

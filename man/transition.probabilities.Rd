@@ -7,7 +7,11 @@
 transition.probabilities(
   intensity,
   wear_time = NULL,
-  sedentary_threshold = "sedentary"
+  sedentary_threshold = "sedentary",
+  min_break_length = 5,
+  epoch_length = 60,
+  sleep_mask = NULL,
+  min_bout_length = 1
 )
 }
 \arguments{
@@ -16,6 +20,19 @@ transition.probabilities(
 \item{wear_time}{Optional logical vector indicating wear time}
 
 \item{sedentary_threshold}{Character. What counts as sedentary? (default "sedentary")}
+
+\item{min_break_length}{Numeric. Minimum sustained active minutes to count as a
+true break; shorter active runs flanked by sedentary on both sides are bridged
+(Healy/GGIR), matching \code{\link{sedentary.fragmentation}} (default 5).}
+
+\item{epoch_length}{Numeric. Epoch length in seconds (default 60).}
+
+\item{sleep_mask}{Optional logical/character vector marking sleep epochs to
+exclude (same convention as \code{\link{detect.sedentary.bouts}}).}
+
+\item{min_bout_length}{Numeric. Minimum sedentary bout duration in minutes;
+shorter runs are dropped before computing SATP, matching
+\code{\link{detect.sedentary.bouts}} (default 1).}
 }
 \value{
 List with ASTP, SATP, and related metrics

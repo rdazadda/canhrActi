@@ -205,6 +205,14 @@ mod_sedentary_ui <- function(id) {
                   )
                 )
               )
+            ),
+
+            # Tab 5: Break Patterns (inter-bout intervals)
+            tabPanel(
+              "Break Patterns",
+              div(class = "py-4",
+                uiOutput(ns("ibi_analysis_output"))
+              )
             )
           )
           )
@@ -218,7 +226,7 @@ mod_sedentary_ui <- function(id) {
         tags$details(
           class = "expert-panel",
           tags$summary(
-            icon("microscope"), " Expert Metrics (SATP, ASTP, Alpha, Gini, W25/50/75/90)"
+            "Expert Metrics: transitions & regularity, distribution shape (alpha + GoF), usual bout duration (W25/50/75/90), bout statistics"
           ),
           div(
             class = "expert-content pt-4",
@@ -226,7 +234,7 @@ mod_sedentary_ui <- function(id) {
               # Transition Probabilities
               column(3,
                 div(class = "expert-group",
-                  h5("Transition Probabilities"),
+                  h5("Transitions & Regularity"),
                   div(class = "adv-metric",
                     div(class = "adv-metric-value", textOutput(ns("exp_satp"), inline = TRUE)),
                     div(class = "adv-metric-label", "SATP"),
@@ -241,6 +249,11 @@ mod_sedentary_ui <- function(id) {
                     div(class = "adv-metric-value", textOutput(ns("exp_abi"), inline = TRUE)),
                     div(class = "adv-metric-label", "ABI"),
                     div(class = "adv-metric-desc", "Balance Index")
+                  ),
+                  div(class = "adv-metric",
+                    div(class = "adv-metric-value", textOutput(ns("exp_sri"), inline = TRUE)),
+                    div(class = "adv-metric-label", "SRI"),
+                    div(class = "adv-metric-desc", "Day-to-day Regularity")
                   )
                 )
               ),
@@ -259,6 +272,11 @@ mod_sedentary_ui <- function(id) {
                     div(class = "adv-metric-desc", "Inequality Index")
                   ),
                   div(class = "adv-metric",
+                    div(class = "adv-metric-value", textOutput(ns("exp_gof"), inline = TRUE)),
+                    div(class = "adv-metric-label", "GoF p"),
+                    div(class = "adv-metric-desc", "Power-law Fit (Clauset)")
+                  ),
+                  div(class = "adv-metric",
                     div(class = "adv-metric-value", textOutput(ns("exp_dist_type"), inline = TRUE)),
                     div(class = "adv-metric-label", "Distribution"),
                     div(class = "adv-metric-desc", "Best Fit Model")
@@ -273,6 +291,11 @@ mod_sedentary_ui <- function(id) {
                     div(class = "adv-metric-value", textOutput(ns("exp_w25"), inline = TRUE)),
                     div(class = "adv-metric-label", "W25"),
                     div(class = "adv-metric-desc", "25th Percentile")
+                  ),
+                  div(class = "adv-metric",
+                    div(class = "adv-metric-value", textOutput(ns("exp_w50"), inline = TRUE)),
+                    div(class = "adv-metric-label", "W50"),
+                    div(class = "adv-metric-desc", "Usual Bout Duration")
                   ),
                   div(class = "adv-metric",
                     div(class = "adv-metric-value", textOutput(ns("exp_w75"), inline = TRUE)),
@@ -304,6 +327,11 @@ mod_sedentary_ui <- function(id) {
                     div(class = "adv-metric-value", textOutput(ns("exp_max_bout"), inline = TRUE)),
                     div(class = "adv-metric-label", "Max Bout"),
                     div(class = "adv-metric-desc", "Longest Session")
+                  ),
+                  div(class = "adv-metric",
+                    div(class = "adv-metric-value", textOutput(ns("exp_weibull"), inline = TRUE)),
+                    div(class = "adv-metric-label", "Weibull k"),
+                    div(class = "adv-metric-desc", "Bout Hazard Shape")
                   )
                 )
               )
@@ -322,29 +350,12 @@ mod_sedentary_ui <- function(id) {
             div(class = "card-title", "All Subjects Summary"),
             div(
               class = "btn-group",
-              downloadButton(ns("dl_csv"), span(icon("download"), "Summary CSV"),
-                            class = "btn-success btn-sm"),
-              downloadButton(ns("dl_bouts_csv"), span(icon("list"), "Bout-Level CSV"),
-                            class = "btn-info btn-sm", style = "margin-left: 5px;"),
-              tags$button(
-                id = ns("show_ibi_analysis"),
-                class = "btn btn-outline-secondary btn-sm action-button",
-                style = "margin-left: 5px;",
-                icon("chart-bar"), " Break Analysis"
-              )
+              downloadButton(ns("dl_workbook"), span(icon("file-excel"), "Download Workbook (XLSX)"),
+                            class = "btn-success btn-sm")
             )
           ),
           div(class = "card-body",
-            DT::dataTableOutput(ns("summary_table")),
-            # IBI Analysis panel (hidden by default)
-            conditionalPanel(
-              condition = sprintf("input['%s'] > 0", ns("show_ibi_analysis")),
-              div(
-                style = "margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;",
-                h5(icon("chart-bar"), " Inter-Bout Interval Analysis (Break Patterns)", style = "color: #236192; margin-bottom: 15px;"),
-                uiOutput(ns("ibi_analysis_output"))
-              )
-            )
+            DT::dataTableOutput(ns("summary_table"))
           )
         )
       )
@@ -529,7 +540,9 @@ mod_sedentary_server <- function(id, shared) {
               wear_time = wear_mask,
               sleep_mask = sleep_mask,
               epoch_length = epoch_length,
-              min_break_length = min_break_length
+              min_break_length = min_break_length,
+              # Real Clauset bootstrap GoF backs the power-law label (~0.1s/file).
+              bootstrap_gof = TRUE
             )
           }, error = function(e) {
             showNotification(paste(f$name, ":", e$message), type = "error")
@@ -636,27 +649,40 @@ mod_sedentary_server <- function(id, shared) {
         prolonged_time <- sum(prolonged_durations, na.rm = TRUE)
         prolonged_pct <- if (total_sed_time > 0) 100 * prolonged_time / total_sed_time else 0
 
+        # Distribution-shape metrics (alpha/Gini/W50/SATP/central tendency) are
+        # RE-ESTIMATED on the pooled bout pool, not averaged across per-file values.
+        epl_pooled <- tryCatch(
+          as.numeric(stats::median(diff(as.numeric(res[[1]]$timestamps)))),
+          error = function(e) 60)
+        if (!is.finite(epl_pooled) || epl_pooled <= 0) epl_pooled <- 60
+        pooled <- canhrActi::bout.distribution.metrics(all_durations, epoch_length = epl_pooled)
+
         list(
           mode = "all",
           total_sedentary_min = mean(safe_extract(res, "total_sedentary_min"), na.rm = TRUE),
           total_bouts = sum(safe_extract(res, "total_bouts"), na.rm = TRUE),
-          mean_bout_duration = mean(safe_extract(res, "mean_bout_duration"), na.rm = TRUE),
-          median_bout_duration = mean(safe_extract(res, "median_bout_duration"), na.rm = TRUE),
-          max_bout_duration = max(safe_extract(res, "max_bout_duration"), na.rm = TRUE),
+          mean_bout_duration = pooled$mean_bout,
+          median_bout_duration = pooled$median_bout,
+          max_bout_duration = pooled$max_bout,
           breaks_per_sed_hour = mean(safe_extract(res, "breaks_per_sed_hour"), na.rm = TRUE),
-          alpha = mean(safe_extract(res, "alpha"), na.rm = TRUE),
-          gini = mean(safe_extract(res, "gini"), na.rm = TRUE),
+          alpha = pooled$alpha,
+          gini = pooled$gini,
           ASTP = mean(safe_extract(res, "ASTP"), na.rm = TRUE),
-          SATP = mean(safe_extract(res, "SATP"), na.rm = TRUE),
-          W50 = mean(safe_extract(res, "W50"), na.rm = TRUE),
-          W25 = mean(safe_extract(res, "W25"), na.rm = TRUE),
-          W75 = mean(safe_extract(res, "W75"), na.rm = TRUE),
-          W90 = mean(safe_extract(res, "W90"), na.rm = TRUE),
+          SATP = pooled$SATP,
+          W50 = pooled$W50,
+          W25 = pooled$W25,
+          W75 = pooled$W75,
+          W90 = pooled$W90,
           prolonged_percent = prolonged_pct,
           prolonged_count = length(prolonged_durations),
           prolonged_threshold = prolonged_thresh,
           ABI = abi_result$ABI,
-          dist_type = dist_type
+          dist_type = dist_type,
+          # Weibull pooled on the bout pool; SRI/GoF averaged across recordings.
+          weibull_shape = tryCatch(canhrActi::survival.weibull(all_durations)$shape,
+                                   error = function(e) NA_real_),
+          sedentary_regularity_index = mean(safe_extract(res, "sedentary_regularity_index"), na.rm = TRUE),
+          alpha_gof_pvalue = mean(safe_extract(res, "alpha_gof_pvalue"), na.rm = TRUE)
         )
       } else if (sel %in% names(res)) {
         r <- res[[sel]]
@@ -700,7 +726,10 @@ mod_sedentary_server <- function(id, shared) {
           prolonged_count = length(prolonged_durations),
           prolonged_threshold = prolonged_thresh,
           ABI = abi_result$ABI,
-          dist_type = dist_type
+          dist_type = dist_type,
+          weibull_shape = r$fragmentation$weibull_shape,
+          sedentary_regularity_index = r$fragmentation$sedentary_regularity_index,
+          alpha_gof_pvalue = r$fragmentation$alpha_gof_pvalue
         )
       } else {
         NULL
@@ -938,7 +967,10 @@ mod_sedentary_server <- function(id, shared) {
                 icon(pattern_icon, style = paste0("color: ", pattern_color, ";")),
                 span(class = "sed-score-status", style = paste0("color: ", pattern_color, ";"), pattern)
               ),
-              p(advice, class = "sed-score-advice")
+              p(advice, class = "sed-score-advice"),
+              p("Heuristic 0-100 screening index (combines SATP, W50 and prolonged %); not a validated clinical score; see the validated metrics below.",
+                class = "sed-score-advice",
+                style = "font-size: 0.72rem; color: #94a3b8; margin-top: 4px;")
             )
           ),
 
@@ -1093,7 +1125,8 @@ mod_sedentary_server <- function(id, shared) {
             ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No bout data", size = 5) +
             ggplot2::theme_void()
         } else {
-          avg_alpha <- mean(sapply(res, function(r) r$fragmentation$alpha), na.rm = TRUE)
+          # Use the same alpha the Expert panel shows (pooled in cohort mode).
+          avg_alpha <- current_frag()$alpha
 
           ggplot2::ggplot(all_bouts, ggplot2::aes(x = duration_min)) +
             ggplot2::geom_histogram(binwidth = 5, fill = "#236192", alpha = 0.8, color = "white") +
@@ -1258,7 +1291,7 @@ mod_sedentary_server <- function(id, shared) {
           tryCatch({
             # If single subject, pass durations directly; if multiple, pass as list
             if (length(all_durations) == 1) {
-              canhrActi::plot_survival_curves(
+              p <- canhrActi::plot_survival_curves(
                 bout_durations = all_durations[[1]],
                 groups = NULL,
                 show_ci = TRUE,
@@ -1266,6 +1299,16 @@ mod_sedentary_server <- function(id, shared) {
                 max_time = NULL,
                 title = "Sedentary Bout Survival Analysis"
               )
+              # Annotate the Weibull hazard direction of the bout durations.
+              wb <- tryCatch(canhrActi::survival.weibull(all_durations[[1]]),
+                             error = function(e) NULL)
+              if (!is.null(wb) && isTRUE(wb$converged)) {
+                # Use caption so the plot's own "n = .. | Median: .." subtitle stays.
+                p <- p + ggplot2::labs(
+                  caption = sprintf("Weibull shape k = %.2f: %s",
+                                    wb$shape, wb$hazard_interpretation))
+              }
+              p
             } else {
               # Multiple subjects - combine into one vector with group labels
               combined_durations <- unlist(all_durations)
@@ -1295,7 +1338,6 @@ mod_sedentary_server <- function(id, shared) {
                 ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No survival data", size = 5) +
                 ggplot2::theme_void()
             } else {
-              avg_w50 <- mean(sapply(res, function(r) r$fragmentation$W50), na.rm = TRUE)
               ggplot2::ggplot(all_curves, ggplot2::aes(x = time, y = survival_prob,
                                                        group = subject, color = subject)) +
                 ggplot2::geom_step(alpha = 0.8, linewidth = 1) +
@@ -1384,10 +1426,10 @@ mod_sedentary_server <- function(id, shared) {
             ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No bout data", size = 5) +
             ggplot2::theme_void()
         } else {
-          ggplot2::ggplot(all_bouts, ggplot2::aes(x = factor(hour), y = duration_min)) +
+          ggplot2::ggplot(all_bouts, ggplot2::aes(x = factor(hour, levels = 0:23), y = duration_min)) +
             ggplot2::geom_boxplot(fill = "#236192", alpha = 0.6, outlier.alpha = 0.3) +
             ggplot2::geom_hline(yintercept = 30, linetype = "dashed", color = "#f4b942") +
-            ggplot2::scale_x_discrete(breaks = as.character(seq(0, 23, 3))) +
+            ggplot2::scale_x_discrete(breaks = as.character(seq(0, 23, 3)), drop = FALSE) +
             ggplot2::labs(
               title = "Hourly Bout Duration Distribution",
               subtitle = "Boxplot of bout durations by hour (dashed = 30 min threshold)",
@@ -1413,8 +1455,10 @@ mod_sedentary_server <- function(id, shared) {
                            size = 5, hjust = 0.5, color = "#64748b") +
           ggplot2::theme_void()
       } else {
-        avg_astp <- mean(sapply(res, function(r) r$fragmentation$ASTP), na.rm = TRUE)
-        avg_satp <- mean(sapply(res, function(r) r$fragmentation$SATP), na.rm = TRUE)
+        # Same ASTP/SATP the Expert panel shows (SATP pooled in cohort mode).
+        cf_tm <- current_frag()
+        avg_astp <- cf_tm$ASTP
+        avg_satp <- cf_tm$SATP
 
         trans_data <- data.frame(
           from = c("Active", "Active", "Sedentary", "Sedentary"),
@@ -1515,6 +1559,29 @@ mod_sedentary_server <- function(id, shared) {
       else paste0(round(cf$max_bout_duration), " min")
     })
 
+    output$exp_w50 <- renderText({
+      cf <- current_frag()
+      if (is.null(cf) || is.na(cf$W50)) "--" else paste0(round(cf$W50, 1), " min")
+    })
+
+    output$exp_weibull <- renderText({
+      cf <- current_frag()
+      v <- cf$weibull_shape
+      if (is.null(cf) || is.null(v) || is.na(v)) "--" else round(v, 2)
+    })
+
+    output$exp_sri <- renderText({
+      cf <- current_frag()
+      v <- cf$sedentary_regularity_index
+      if (is.null(cf) || is.null(v) || is.na(v)) "--" else round(v, 1)
+    })
+
+    output$exp_gof <- renderText({
+      cf <- current_frag()
+      v <- cf$alpha_gof_pvalue
+      if (is.null(cf) || is.null(v) || is.na(v)) "--" else sprintf("%.3f", v)
+    })
+
     # SUMMARY TABLE
     output$summary_table <- DT::renderDataTable({
       res <- results()
@@ -1587,193 +1654,17 @@ mod_sedentary_server <- function(id, shared) {
     })
 
     # CSV EXPORT
-    output$dl_csv <- downloadHandler(
-      filename = function() {
-        paste0("sedentary_analysis_", format(Sys.Date(), "%Y%m%d"), ".csv")
-      },
+    # REPRODUCIBLE MULTI-SHEET XLSX WORKBOOK (supersedes the Summary + Bout CSVs)
+    output$dl_workbook <- downloadHandler(
+      filename = function() paste0("sedentary_workbook_", format(Sys.Date(), "%Y%m%d"), ".xlsx"),
       content = function(file) {
         res <- results()
-        req(length(res) > 0)
-
-        df <- data.frame(
-          subject_id = sapply(res, function(r) r$subject_id),
-          file_name = sapply(res, function(r) r$name),
-          sleep_excluded = sapply(res, function(r) isTRUE(r$sleep_excluded)),
-          total_sedentary_hours = sapply(res, function(r) round(r$fragmentation$total_sedentary_min / 60, 2)),
-          total_bouts = sapply(res, function(r) r$fragmentation$total_bouts),
-          mean_bout_min = sapply(res, function(r) round(r$fragmentation$mean_bout_duration, 2)),
-          median_bout_min = sapply(res, function(r) round(r$fragmentation$median_bout_duration, 2)),
-          max_bout_min = sapply(res, function(r) round(r$fragmentation$max_bout_duration, 2)),
-          breaks_per_sed_hour = sapply(res, function(r) round(r$fragmentation$breaks_per_sed_hour, 3)),
-          ASTP = sapply(res, function(r) round(r$fragmentation$ASTP, 4)),
-          SATP = sapply(res, function(r) round(r$fragmentation$SATP, 4)),
-          W25 = sapply(res, function(r) round(r$fragmentation$W25, 2)),
-          W50 = sapply(res, function(r) round(r$fragmentation$W50, 2)),
-          W75 = sapply(res, function(r) round(r$fragmentation$W75, 2)),
-          W90 = sapply(res, function(r) round(r$fragmentation$W90, 2)),
-          alpha = sapply(res, function(r) round(r$fragmentation$alpha, 3)),
-          gini = sapply(res, function(r) round(r$fragmentation$gini, 4)),
-          prolonged_bouts_count = sapply(res, function(r) {
-            ps <- r$fragmentation$prolonged_summary
-            if (is.null(ps)) 0L else ps$n_bouts[ps$threshold == 30]
-          }),
-          prolonged_percent = sapply(res, function(r) round(r$fragmentation$pct_time_30min_bouts, 2)),
-          stringsAsFactors = FALSE
-        )
-
-        write.csv(df, file, row.names = FALSE)
-      }
-    )
-
-    # BOUT-LEVEL CSV EXPORT (format)
-    output$dl_bouts_csv <- downloadHandler(
-      filename = function() {
-        paste0("sedentary_bouts_", format(Sys.Date(), "%Y%m%d"), ".csv")
-      },
-      content = function(file) {
-        res <- results()
-        req(length(res) > 0)
-
-        all_bouts <- list()
-        min_bout <- input$min_bout_duration
-
-        for (fid in names(res)) {
-          r <- res[[fid]]
-          f <- shared$files[[fid]]
-          data <- f$data
-          epoch_length <- f$epoch_length
-
-          subj <- f$subject_info
-          subject_id <- subj$id
-          weight_lbs <- if (!is.null(subj$weight_lbs)) subj$weight_lbs else 0
-          age <- if (!is.null(subj$age)) subj$age else 0
-          gender <- if (!is.null(subj$sex)) subj$sex else ""
-
-          bouts <- r$fragmentation$bouts
-          if (is.null(bouts) || nrow(bouts) == 0) next
-
-          valid_bouts <- bouts[bouts$duration_min >= min_bout, ]
-          if (nrow(valid_bouts) == 0) next
-
-          for (i in seq_len(nrow(valid_bouts))) {
-            start_idx <- valid_bouts$start_index[i]
-            end_idx <- valid_bouts$end_index[i]
-            duration_min_i <- valid_bouts$duration_min[i]
-
-            bout_data <- data[start_idx:end_idx, ]
-            bout_start_time <- data$timestamp[start_idx]
-            bout_end_time <- data$timestamp[end_idx]
-
-            if (i == 1) {
-              time_since_last <- 0
-            } else {
-              prev_end_idx <- valid_bouts$end_index[i - 1]
-              prev_end_time <- data$timestamp[prev_end_idx]
-              time_since_last <- as.numeric(difftime(bout_start_time, prev_end_time, units = "mins"))
-            }
-
-            n_epochs <- nrow(bout_data)
-
-            # Activity counts - all axes
-            axis1_counts <- sum(bout_data$axis1, na.rm = TRUE)
-            axis2_counts <- if ("axis2" %in% names(bout_data)) sum(bout_data$axis2, na.rm = TRUE) else 0
-            axis3_counts <- if ("axis3" %in% names(bout_data)) sum(bout_data$axis3, na.rm = TRUE) else 0
-
-            axis1_avg <- mean(bout_data$axis1, na.rm = TRUE)
-            axis2_avg <- if ("axis2" %in% names(bout_data)) mean(bout_data$axis2, na.rm = TRUE) else 0
-            axis3_avg <- if ("axis3" %in% names(bout_data)) mean(bout_data$axis3, na.rm = TRUE) else 0
-
-            axis1_max <- max(bout_data$axis1, na.rm = TRUE)
-            axis2_max <- if ("axis2" %in% names(bout_data)) max(bout_data$axis2, na.rm = TRUE) else 0
-            axis3_max <- if ("axis3" %in% names(bout_data)) max(bout_data$axis3, na.rm = TRUE) else 0
-
-            axis1_cpm <- axis1_avg * (60 / epoch_length)
-            axis2_cpm <- axis2_avg * (60 / epoch_length)
-            axis3_cpm <- axis3_avg * (60 / epoch_length)
-
-            # Vector magnitude - full metrics
-            if (all(c("axis1", "axis2", "axis3") %in% names(bout_data))) {
-              vm <- sqrt(bout_data$axis1^2 + bout_data$axis2^2 + bout_data$axis3^2)
-              vm_counts <- sum(vm, na.rm = TRUE)
-              vm_avg <- mean(vm, na.rm = TRUE)
-              vm_max <- max(vm, na.rm = TRUE)
-              vm_cpm <- vm_avg * (60 / epoch_length)
-            } else {
-              vm_counts <- vm_avg <- vm_max <- vm_cpm <- 0
-            }
-
-            # Steps - full metrics
-            if ("steps" %in% names(bout_data)) {
-              steps_counts <- sum(bout_data$steps, na.rm = TRUE)
-              steps_avg <- mean(bout_data$steps, na.rm = TRUE)
-              steps_max <- max(bout_data$steps, na.rm = TRUE)
-              steps_per_min <- steps_avg * (60 / epoch_length)
-            } else {
-              steps_counts <- steps_avg <- steps_max <- steps_per_min <- 0
-            }
-
-            # Lux (light)
-            if ("lux" %in% names(bout_data)) {
-              lux_avg <- mean(bout_data$lux, na.rm = TRUE)
-              lux_max <- max(bout_data$lux, na.rm = TRUE)
-            } else {
-              lux_avg <- lux_max <- 0
-            }
-
-            # Calendar days spanned
-            start_date <- as.Date(bout_start_time)
-            end_date <- as.Date(bout_end_time)
-            calendar_days <- as.numeric(end_date - start_date) + 1
-
-            # column names (matching exact format)
-            all_bouts[[length(all_bouts) + 1]] <- data.frame(
-              Subject = subject_id,
-              Filename = r$name,
-              Epoch = epoch_length,
-              `Weight (lbs)` = weight_lbs,
-              Age = age,
-              Gender = gender,
-              `Sedentary Bout Start` = format(bout_start_time, "%m/%d/%Y %I:%M:%S %p"),
-              `Sedentary Bout End` = format(bout_end_time, "%m/%d/%Y %I:%M:%S %p"),
-              `Time in Sedentary Bout` = round(duration_min_i, 1),
-              `Time since last Sedentary Bout` = round(time_since_last, 1),
-              `Axis 1 Counts` = round(axis1_counts, 1),
-              `Axis 2 Counts` = round(axis2_counts, 1),
-              `Axis 3 Counts` = round(axis3_counts, 1),
-              `Axis 1 Average Counts` = round(axis1_avg, 1),
-              `Axis 2 Average Counts` = round(axis2_avg, 1),
-              `Axis 3 Average Counts` = round(axis3_avg, 1),
-              `Axis 1 Max Counts` = axis1_max,
-              `Axis 2 Max Counts` = axis2_max,
-              `Axis 3 Max Counts` = axis3_max,
-              `Axis 1 CPM` = round(axis1_cpm, 1),
-              `Axis 2 CPM` = round(axis2_cpm, 1),
-              `Axis 3 CPM` = round(axis3_cpm, 1),
-              `Vector Magnitude Counts` = round(vm_counts, 1),
-              `Vector Magnitude Average Counts` = round(vm_avg, 1),
-              `Vector Magnitude Max Counts` = round(vm_max, 1),
-              `Vector Magnitude CPM` = round(vm_cpm, 1),
-              `Steps Counts` = steps_counts,
-              `Steps Average Counts` = round(steps_avg, 1),
-              `Steps Max Counts` = steps_max,
-              `Steps Per Minute` = round(steps_per_min, 1),
-              `Lux Average Counts` = round(lux_avg, 1),
-              `Lux Max Counts` = lux_max,
-              `Number of Epochs` = n_epochs,
-              Time = round(duration_min_i, 1),
-              `Calendar Days` = calendar_days,
-              stringsAsFactors = FALSE,
-              check.names = FALSE
-            )
-          }
-        }
-
-        if (length(all_bouts) > 0) {
-          bout_df <- do.call(rbind, all_bouts)
-          write.csv(bout_df, file, row.names = FALSE)
-        } else {
-          write.csv(data.frame(Message = "No sedentary bouts detected"), file, row.names = FALSE)
-        }
+        validate(need(length(res) > 0, "Run the analysis first."))
+        cp_label <- switch(input$cut_points %||% "freedson",
+                           freedson = "Sedentary <100 CPM (Freedson 1998)",
+                           canhr = "Sedentary <100 CPM (CANHR 2025)",
+                           paste0("Sedentary (", input$cut_points, ")"))
+        sedentary_write_workbook(file, res, shared, metric = cp_label)
       }
     )
 

@@ -9,7 +9,11 @@ plot_actogram(
   timestamps,
   epoch_length = NULL,
   wear_time = NULL,
-  double_plot = TRUE
+  double_plot = TRUE,
+  L5_onset = NULL,
+  M10_onset = NULL,
+  sleep_mask = NULL,
+  scale = c("linear", "sqrt")
 )
 }
 \arguments{
@@ -25,6 +29,16 @@ as \code{counts}; non-wear epochs are blanked.}
 
 \item{double_plot}{Logical; draw the 48-hour double plot (default
 \code{TRUE}) or a single 24-hour plot.}
+
+\item{L5_onset, M10_onset}{Optional L5 / M10 onset to overlay as a dashed
+vertical phase line. Accepts a decimal hour, an \code{"HH:MM"} string, or a
+\code{POSIXct}.}
+
+\item{sleep_mask}{Optional logical/character vector (\code{TRUE}/"S" = asleep)
+the same length as \code{counts}; sleep is shaded over the raster.}
+
+\item{scale}{Fill scaling: \code{"linear"} (default) or \code{"sqrt"} to
+compress a heavy-tailed activity range.}
 }
 \value{
 A \code{ggplot} object. Never errors; returns an annotated empty plot

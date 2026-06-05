@@ -357,10 +357,16 @@ sedentary.fragmentation <- function(intensity,
   # 
   prolonged <- prolonged.sedentary(durations, c(20, 30, 60))
 
-  # 
+  #
   survival <- bout.survival.analysis(durations)
 
-  # 
+  # Weibull shape of the bout-duration distribution (hazard direction) and the
+  # day-to-day regularity of the sedentary/active pattern (adapted SRI).
+  weibull <- tryCatch(survival.weibull(durations), error = function(e) NULL)
+  sed_sri <- tryCatch(sedentary.regularity.index(intensity, timestamps, wear_time),
+                      error = function(e) NA_real_)
+
+  #
   dist_comparison <- NULL
   if (compare_distributions && n_bouts >= 10) {
     dist_comparison <- compare.bout.distributions(durations, bootstrap_gof = bootstrap_gof)
@@ -419,8 +425,10 @@ sedentary.fragmentation <- function(intensity,
     stringsAsFactors = FALSE
   )
 
-  # 
-  daily_frag <- .calculate.daily.fragmentation(intensity, timestamps, wear_time, epoch_length)
+  # Per-day breakdown using the SAME gap-bridging + sleep exclusion as the totals.
+  daily_frag <- .calculate.daily.fragmentation(intensity, timestamps, wear_time, epoch_length,
+                                               min_break_length = min_break_length,
+                                               sleep_mask = sleep_mask)
 
   # 
   n_days <- length(unique(as.Date(timestamps)))
@@ -484,6 +492,13 @@ sedentary.fragmentation <- function(intensity,
     median_bout_survival = survival$median_survival,
     hazard_rate = survival$hazard_rate,
     survival_curve = survival$survival_curve,
+    weibull_shape = if (!is.null(weibull)) weibull$shape else NA_real_,
+    weibull_scale = if (!is.null(weibull)) weibull$scale else NA_real_,
+    weibull_hazard = if (!is.null(weibull) && !is.null(weibull$hazard_interpretation))
+      weibull$hazard_interpretation else NA_character_,
+
+    # Day-to-day regularity of the sedentary/active pattern
+    sedentary_regularity_index = sed_sri,
 
     # Distribution comparison
     distribution_fit = dist_comparison,
@@ -676,6 +691,15 @@ detect.sedentary.bouts <- function(intensity, timestamps, wear_time = NULL,
 #' @param intensity Factor or character vector of intensity classifications
 #' @param wear_time Optional logical vector indicating wear time
 #' @param sedentary_threshold Character. What counts as sedentary? (default "sedentary")
+#' @param min_break_length Numeric. Minimum sustained active minutes to count as a
+#'   true break; shorter active runs flanked by sedentary on both sides are bridged
+#'   (Healy/GGIR), matching \code{\link{sedentary.fragmentation}} (default 5).
+#' @param epoch_length Numeric. Epoch length in seconds (default 60).
+#' @param sleep_mask Optional logical/character vector marking sleep epochs to
+#'   exclude (same convention as \code{\link{detect.sedentary.bouts}}).
+#' @param min_bout_length Numeric. Minimum sedentary bout duration in minutes;
+#'   shorter runs are dropped before computing SATP, matching
+#'   \code{\link{detect.sedentary.bouts}} (default 1).
 #'
 #' @return List with ASTP, SATP, and related metrics
 #'
@@ -695,25 +719,25 @@ detect.sedentary.bouts <- function(intensity, timestamps, wear_time = NULL,
 #'
 #' @export
 transition.probabilities <- function(intensity, wear_time = NULL,
-                                     sedentary_threshold = "sedentary") {
+                                     sedentary_threshold = "sedentary",
+                                     min_break_length = 5, epoch_length = 60,
+                                     sleep_mask = NULL, min_bout_length = 1) {
 
-  n <- length(intensity)
-  intensity <- as.character(intensity)
-
-  # Apply wear time
-  if (!is.null(wear_time)) {
-    intensity[!wear_time] <- NA
+  # Mask wear + sleep, treat non-wear/sleep as non-sedentary (FALSE) rather than
+  # dropping epochs, then apply the SAME two-sided gap bridge as
+  # detect.sedentary.bouts() so ASTP/SATP match sedentary.fragmentation()'s.
+  is_sed <- as.character(intensity) == sedentary_threshold
+  if (!is.null(wear_time)) is_sed <- is_sed & as.logical(wear_time)
+  if (!is.null(sleep_mask)) {
+    is_sleep <- if (is.character(sleep_mask)) {
+      sleep_mask %in% c("S", "sleep") | tolower(sleep_mask) %in% "sleep"
+    } else as.logical(sleep_mask)
+    is_sleep[is.na(is_sleep)] <- FALSE
+    is_sed <- is_sed & !is_sleep
   }
+  is_sed[is.na(is_sed)] <- FALSE
 
-  # Binary classification: sedentary vs active
-  is_sedentary <- intensity == sedentary_threshold
-  is_active <- !is_sedentary & !is.na(intensity)
-
-  # Remove NA periods
-  valid_idx <- !is.na(is_sedentary)
-  is_sed_valid <- is_sedentary[valid_idx]
-
-  if (length(is_sed_valid) < 2) {
+  if (length(is_sed) < 2) {
     return(list(
       ASTP = NA_real_,
       SATP = NA_real_,
@@ -727,11 +751,32 @@ transition.probabilities <- function(intensity, wear_time = NULL,
     ))
   }
 
-  # Run-length encoding for bout detection
-  rle_result <- rle(is_sed_valid)
+  # Two-sided gap bridge: fill a short non-sedentary run only when flanked by
+  # sedentary on both sides.
+  min_break_epochs <- ceiling(min_break_length * 60 / epoch_length)
+  if (min_break_epochs > 0) {
+    rle_b <- rle(is_sed)
+    n_runs <- length(rle_b$lengths)
+    if (n_runs > 1) {
+      end_b <- cumsum(rle_b$lengths)
+      start_b <- c(1, end_b[-n_runs] + 1)
+      for (i in seq_len(n_runs)) {
+        if (!rle_b$values[i] && rle_b$lengths[i] <= min_break_epochs &&
+            i > 1 && rle_b$values[i - 1] && i < n_runs && rle_b$values[i + 1]) {
+          is_sed[start_b[i]:end_b[i]] <- TRUE
+        }
+      }
+    }
+  }
 
-  # Sedentary bouts
+  # Run-length encoding for bout detection (bout lengths are in epochs)
+  rle_result <- rle(is_sed)
+
+  # Sedentary bouts. Drop runs below min_bout_length minutes, matching
+  # detect.sedentary.bouts() (duration_min >= min_bout_length) so SATP agrees
+  # with sedentary.fragmentation() at sub-minute epochs, not only at 60 s.
   sed_lengths <- rle_result$lengths[rle_result$values == TRUE]
+  sed_lengths <- sed_lengths[(sed_lengths * epoch_length / 60) >= min_bout_length]
   n_sed_bouts <- length(sed_lengths)
   mean_sed_bout <- if (n_sed_bouts > 0) mean(sed_lengths) else NA_real_
   median_sed_bout <- if (n_sed_bouts > 0) median(sed_lengths) else NA_real_
@@ -742,7 +787,7 @@ transition.probabilities <- function(intensity, wear_time = NULL,
   mean_active_bout <- if (n_active_bouts > 0) mean(active_lengths) else NA_real_
   median_active_bout <- if (n_active_bouts > 0) median(active_lengths) else NA_real_
 
-  # Transition probabilities
+  # Transition probabilities (reciprocal of mean bout length in epochs)
   ASTP <- if (!is.na(mean_active_bout) && mean_active_bout > 0) {
     1 / mean_active_bout
   } else NA_real_
@@ -752,7 +797,7 @@ transition.probabilities <- function(intensity, wear_time = NULL,
   } else NA_real_
 
   # Count transitions
-  transitions <- diff(as.integer(is_sed_valid))
+  transitions <- diff(as.integer(is_sed))
   n_sed_to_active <- sum(transitions == -1, na.rm = TRUE)
   n_active_to_sed <- sum(transitions == 1, na.rm = TRUE)
 
@@ -768,6 +813,63 @@ transition.probabilities <- function(intensity, wear_time = NULL,
     n_transitions_sed_to_active = n_sed_to_active,
     n_transitions_active_to_sed = n_active_to_sed,
     total_transitions = n_sed_to_active + n_active_to_sed
+  )
+}
+
+
+#' Distribution-Shape Fragmentation Metrics from Bout Durations
+#'
+#' Computes the bout-duration-distribution fragmentation metrics (power-law
+#' alpha, Gini, usual bout duration W50 + weighted percentiles, central tendency,
+#' and the sedentary-to-active transition probability) directly from a vector of
+#' bout durations. Useful for estimating COHORT-level fragmentation from a pooled
+#' bout pool rather than averaging per-recording statistics.
+#'
+#' @param durations Numeric vector of sedentary bout durations in minutes.
+#' @param epoch_length Numeric. Epoch length in seconds, used to express SATP per
+#'   epoch (default 60).
+#' @param bootstrap_gof Logical. Run the Clauset (2009) semiparametric bootstrap
+#'   goodness-of-fit for the power-law alpha (default FALSE).
+#'
+#' @return A named list: \code{alpha}, \code{alpha_ci_lower}, \code{alpha_ci_upper},
+#'   \code{gini}, \code{W50}, \code{W25}, \code{W75}, \code{W90}, \code{mean_bout},
+#'   \code{median_bout}, \code{max_bout}, \code{SATP}, \code{n_bouts}. All-NA with
+#'   \code{n_bouts = 0} if no valid durations are supplied.
+#' @export
+bout.distribution.metrics <- function(durations, epoch_length = 60,
+                                      bootstrap_gof = FALSE) {
+  durations <- durations[is.finite(durations) & durations > 0]
+  n <- length(durations)
+  na_out <- list(
+    alpha = NA_real_, alpha_ci_lower = NA_real_, alpha_ci_upper = NA_real_,
+    gini = NA_real_, W50 = NA_real_, W25 = NA_real_, W75 = NA_real_, W90 = NA_real_,
+    mean_bout = NA_real_, median_bout = NA_real_, max_bout = NA_real_,
+    SATP = NA_real_, n_bouts = n
+  )
+  if (n == 0) return(na_out)
+
+  epoch_min <- epoch_length / 60
+  alpha_fit <- if (n >= 10) {
+    .calculate.alpha.robust(durations, bootstrap_n = 100, bootstrap_gof = bootstrap_gof)
+  } else {
+    list(alpha = .calculate.alpha.simple(durations, xmin = 1),
+         alpha_ci = c(NA_real_, NA_real_))
+  }
+  wp <- usual.bout.percentiles(durations, c(25, 50, 75, 90))
+  mean_epochs <- mean(durations) / epoch_min
+
+  list(
+    alpha = alpha_fit$alpha,
+    alpha_ci_lower = alpha_fit$alpha_ci[1],
+    alpha_ci_upper = alpha_fit$alpha_ci[2],
+    gini = round(.calculate.gini(durations), 4),
+    W50 = usual.bout.duration(durations),
+    W25 = unname(wp["W25"]), W75 = unname(wp["W75"]), W90 = unname(wp["W90"]),
+    mean_bout = round(mean(durations), 2),
+    median_bout = round(median(durations), 2),
+    max_bout = round(max(durations), 1),
+    SATP = if (mean_epochs > 0) round(1 / mean_epochs, 5) else NA_real_,
+    n_bouts = n
   )
 }
 
@@ -1501,10 +1603,22 @@ bout.survival.analysis <- function(bout_durations) {
 #' Calculate Daily Fragmentation Patterns
 #'
 #' @keywords internal
-.calculate.daily.fragmentation <- function(intensity, timestamps, wear_time, epoch_length) {
+.calculate.daily.fragmentation <- function(intensity, timestamps, wear_time, epoch_length,
+                                           min_break_length = 5, sleep_mask = NULL) {
 
   dates <- as.Date(timestamps)
   unique_dates <- unique(dates)
+
+  # Normalise the sleep mask once (same rule as detect.sedentary.bouts).
+  is_sleep_all <- NULL
+  if (!is.null(sleep_mask)) {
+    is_sleep_all <- if (is.character(sleep_mask)) {
+      sleep_mask %in% c("S", "sleep") | tolower(sleep_mask) %in% "sleep"
+    } else {
+      as.logical(sleep_mask)
+    }
+    is_sleep_all[is.na(is_sleep_all)] <- FALSE
+  }
 
   daily_stats <- data.frame(
     date = as.character(unique_dates),
@@ -1523,18 +1637,22 @@ bout.survival.analysis <- function(bout_durations) {
     day_intensity <- intensity[day_idx]
     day_timestamps <- timestamps[day_idx]
     day_wear <- if (!is.null(wear_time)) wear_time[day_idx] else NULL
+    day_sleep <- if (!is.null(is_sleep_all)) is_sleep_all[day_idx] else NULL
 
-    # Get bouts for this day
+    # Get bouts for this day with the SAME bridging + sleep exclusion as the totals
     day_bouts <- tryCatch({
       detect.sedentary.bouts(day_intensity, day_timestamps, day_wear,
-                             min_bout_length = 1, epoch_length = epoch_length)
+                             sleep_mask = day_sleep,
+                             min_bout_length = 1, epoch_length = epoch_length,
+                             min_break_length = min_break_length)
     }, error = function(e) NULL)
 
     if (is.null(day_bouts) || nrow(day_bouts) == 0) next
 
-    # Calculate daily metrics
+    # Calculate daily metrics (sedentary epochs over wear & waking time)
     is_sed <- as.character(day_intensity) == "sedentary"
     if (!is.null(day_wear)) is_sed <- is_sed & day_wear
+    if (!is.null(day_sleep)) is_sed <- is_sed & !day_sleep
 
     daily_stats$sedentary_min[i] <- sum(is_sed) * (epoch_length / 60)
     daily_stats$n_bouts[i] <- nrow(day_bouts)
@@ -1796,92 +1914,6 @@ sedentary.regularity.index <- function(intensity, timestamps, wear_time = NULL,
   sri <- 200 * mean(same_state) - 100
 
   round(sri, 1)
-}
-
-
-#' Calculate Sample Entropy for Activity Patterns
-#'
-#' Sample Entropy (SampEn) measures the complexity and unpredictability of
-#' activity patterns. Lower entropy = more regular/predictable, higher = more
-#' complex/variable. Useful for detecting changes in physical behavior regulation.
-#'
-#' @param activity Numeric vector of activity counts or intensity values
-#' @param m Embedding dimension (default 2)
-#' @param r Tolerance threshold as proportion of SD (default 0.2)
-#' @param normalize Logical; normalize input before calculation? (default TRUE)
-#'
-#' @return Sample entropy value (typically 0-3 for physiological time series)
-#'
-#' @details
-#' Sample Entropy is defined as the negative log probability that two sequences
-#' similar for m points remain similar for m+1 points. It quantifies the
-#' unpredictability of fluctuations in activity.
-#'
-#' Interpretation for activity data:
-#' \itemize{
-#'   \item SampEn < 0.5: Highly regular/predictable patterns
-#'   \item SampEn 0.5-1.5: Moderate complexity (typical healthy)
-#'   \item SampEn > 1.5: High complexity/randomness
-#' }
-#'
-#' Lower SampEn may indicate:
-#' - Reduced adaptability (aging, frailty)
-#' - Highly structured/repetitive behavior
-#' - Reduced motor control
-#'
-#' @references
-#' Richman JS, Moorman JR. (2000). Physiological time-series analysis using
-#' approximate entropy and sample entropy. Am J Physiol Heart Circ Physiol.
-#'
-#' @export
-sample.entropy <- function(activity, m = 2, r = 0.2, normalize = TRUE) {
-
-  activity <- activity[!is.na(activity)]
-  n <- length(activity)
-
-  if (n < 100) {
-    warning("Sample entropy may be unreliable with fewer than 100 points")
-    if (n < 10) return(NA_real_)
-  }
-
-  # Normalize
-  if (normalize) {
-    activity <- (activity - mean(activity)) / sd(activity)
-  }
-
-  # Set tolerance
-  tolerance <- r * sd(activity)
-  if (tolerance == 0) tolerance <- r  # Fallback if no variance
-
-  # Count matches for m and m+1 dimensions
-  count_m <- 0
-  count_m1 <- 0
-
-  for (i in 1:(n - m)) {
-    for (j in (i + 1):(n - m)) {
-      # Check m-length match
-      max_dist_m <- max(abs(activity[i:(i + m - 1)] - activity[j:(j + m - 1)]))
-      if (max_dist_m < tolerance) {
-        count_m <- count_m + 1
-
-        # Check (m+1)-length match
-        if (i + m <= n && j + m <= n) {
-          max_dist_m1 <- max(abs(activity[i:(i + m)] - activity[j:(j + m)]))
-          if (max_dist_m1 < tolerance) {
-            count_m1 <- count_m1 + 1
-          }
-        }
-      }
-    }
-  }
-
-  # Calculate sample entropy
-  if (count_m == 0 || count_m1 == 0) {
-    return(NA_real_)
-  }
-
-  sampen <- -log(count_m1 / count_m)
-  round(sampen, 4)
 }
 
 
@@ -2252,6 +2284,10 @@ hourly.fragmentation.pattern <- function(intensity, timestamps, wear_time = NULL
     median_bout_survival = NA_real_,
     hazard_rate = NA_real_,
     survival_curve = NULL,
+    weibull_shape = NA_real_,
+    weibull_scale = NA_real_,
+    weibull_hazard = NA_character_,
+    sedentary_regularity_index = NA_real_,
     distribution_fit = NULL,
     daily_fragmentation = NULL,
     bout_distribution = data.frame(

@@ -99,7 +99,8 @@ mod_graphing_ui <- function(id) {
                     "Heatmap" = "heatmap",
                     "Intensity Pie" = "intensity_pie",
                     "Intensity Area" = "intensity_area",
-                    "24h Clock" = "activity_clock"
+                    "24h Clock" = "activity_clock",
+                    "Light Exposure" = "light_exposure"
                   ),
                   "Sleep" = c(
                     "Hypnogram" = "hypnogram",
@@ -107,7 +108,18 @@ mod_graphing_ui <- function(id) {
                   ),
                   "Circadian" = c(
                     "Polar Chart" = "polar",
-                    "IS/IV Analysis" = "is_iv"
+                    "IS/IV Analysis" = "is_iv",
+                    "Actogram" = "actogram",
+                    "Periodogram (LS)" = "periodogram",
+                    "Chi-square Periodogram" = "chisq",
+                    "Extended Cosinor" = "extcosinor",
+                    "DFA" = "dfa"
+                  ),
+                  "Sedentary" = c(
+                    "Bout Histogram" = "bout_histogram",
+                    "Accumulation (Lorenz)" = "bout_lorenz",
+                    "Bout Survival" = "bout_survival",
+                    "State Transitions" = "transition_matrix"
                   ),
                   "Summary" = c(
                     "Daily Bars" = "daily_bars",
@@ -140,7 +152,10 @@ mod_graphing_ui <- function(id) {
             ),
             div(class = "sidebar-section-content", id = ns("section_size_content"),
               sliderInput(ns("plot_width"), "Width", value = 1000, min = 600, max = 2000, step = 50, post = "px"),
-              sliderInput(ns("plot_height"), "Height", value = 800, min = 400, max = 2000, step = 50, post = "px")
+              sliderInput(ns("plot_height"), "Height", value = 800, min = 400, max = 2000, step = 50, post = "px"),
+              checkboxInput(ns("interactive"), "Interactive (hover / zoom)", value = FALSE),
+              div(class = "text-muted", style = "font-size: 0.72rem;",
+                  "Interactive works for line, bar and area charts; radial and raster charts always render static.")
             )
           ),
 
@@ -212,14 +227,21 @@ mod_graphing_server <- function(id, shared) {
 
     # Reactive values
     current_plot <- reactiveVal(NULL)
+    current_chart_type <- reactiveVal(NULL)
 
     # Chart name lookup
     chart_names <- c(
       daily_timeline = "Daily Timeline", heatmap = "Heatmap",
       intensity_pie = "Intensity Pie", intensity_area = "Intensity Area",
-      activity_clock = "24h Clock", hypnogram = "Hypnogram",
+      activity_clock = "24h Clock", light_exposure = "Light Exposure",
+      hypnogram = "Hypnogram",
       sleep_quality = "Sleep Quality", polar = "Polar Chart",
-      is_iv = "IS/IV Analysis", daily_bars = "Daily Bars",
+      is_iv = "IS/IV Analysis",
+      actogram = "Actogram", periodogram = "Periodogram (LS)",
+      chisq = "Chi-square Periodogram", extcosinor = "Extended Cosinor", dfa = "DFA",
+      bout_histogram = "Bout Histogram", bout_lorenz = "Accumulation (Lorenz)",
+      bout_survival = "Bout Survival", transition_matrix = "State Transitions",
+      daily_bars = "Daily Bars",
       weekend_weekday = "Weekend vs Weekday", day_comparison = "Day Comparison"
     )
 
@@ -227,9 +249,15 @@ mod_graphing_server <- function(id, shared) {
     chart_categories <- c(
       daily_timeline = "Activity", heatmap = "Activity",
       intensity_pie = "Activity", intensity_area = "Activity",
-      activity_clock = "Activity", hypnogram = "Sleep",
+      activity_clock = "Activity", light_exposure = "Activity",
+      hypnogram = "Sleep",
       sleep_quality = "Sleep", polar = "Circadian",
-      is_iv = "Circadian", daily_bars = "Summary",
+      is_iv = "Circadian",
+      actogram = "Circadian", periodogram = "Circadian",
+      chisq = "Circadian", extcosinor = "Circadian", dfa = "Circadian",
+      bout_histogram = "Sedentary", bout_lorenz = "Sedentary",
+      bout_survival = "Sedentary", transition_matrix = "Sedentary",
+      daily_bars = "Summary",
       weekend_weekday = "Summary", day_comparison = "Summary"
     )
 
@@ -554,7 +582,7 @@ mod_graphing_server <- function(id, shared) {
             "daily_timeline" = {
               canhrActi::plot_daily_timeline(
                 data = data,
-                show_axes = input$show_axes %||% "axis1",
+                show_axes = if (length(input$show_axes)) input$show_axes else "axis1",
                 show_cutpoints = input$show_cutpoints %||% TRUE,
                 epoch_length = epoch_len,
                 title = chart_title
@@ -732,6 +760,72 @@ mod_graphing_server <- function(id, shared) {
             )
           },
 
+          "actogram" = {
+            if (!inherits(data$timestamp, "POSIXct")) data$timestamp <- as.POSIXct(data$timestamp)
+            wt <- tryCatch(shared$results$wear_time[[sel]]$wear, error = function(e) NULL)
+            cd <- shared$results$circadian[[sel]]
+            ss <- tryCatch(shared$results$sleep[[sel]]$sleep_state, error = function(e) NULL)
+            canhrActi::plot_actogram(
+              data$axis1, data$timestamp, epoch_length = epoch_len,
+              wear_time = if (!is.null(wt) && length(wt) == nrow(data)) wt else NULL,
+              L5_onset = if (!is.null(cd)) cd$L5_start else NULL,
+              M10_onset = if (!is.null(cd)) cd$M10_start else NULL,
+              sleep_mask = if (!is.null(ss) && length(ss) == nrow(data)) ss else NULL,
+              scale = "sqrt"
+            )
+          },
+
+          "light_exposure" = {
+            if (!"lux" %in% names(data)) {
+              showNotification("This recording has no light (lux) data.", type = "warning")
+              return(NULL)
+            }
+            if (!inherits(data$timestamp, "POSIXct")) data$timestamp <- as.POSIXct(data$timestamp)
+            canhrActi::plot_light_exposure(data, title = chart_title)
+          },
+
+          "periodogram" = {
+            if (!inherits(data$timestamp, "POSIXct")) data$timestamp <- as.POSIXct(data$timestamp)
+            canhrActi::plot_periodogram(data$axis1, data$timestamp)
+          },
+
+          "chisq" = {
+            if (!inherits(data$timestamp, "POSIXct")) data$timestamp <- as.POSIXct(data$timestamp)
+            canhrActi::plot_chisq(data$axis1, data$timestamp, epoch_length = epoch_len)
+          },
+
+          "extcosinor" = {
+            if (!inherits(data$timestamp, "POSIXct")) data$timestamp <- as.POSIXct(data$timestamp)
+            canhrActi::plot_extended_cosinor(data$axis1, data$timestamp)
+          },
+
+          "dfa" = {
+            canhrActi::plot_dfa(data$axis1)
+          },
+
+          "bout_histogram" = ,
+          "bout_lorenz" = ,
+          "bout_survival" = ,
+          "transition_matrix" = {
+            if (!inherits(data$timestamp, "POSIXct")) data$timestamp <- as.POSIXct(data$timestamp)
+            cp <- input$pie_cutpoints %||% "freedson"
+            cpm <- canhrActi::to_cpm(data$axis1, if (is.null(epoch_len)) 60 else epoch_len)
+            intensity <- if (identical(cp, "canhr")) canhrActi::CANHR.Cutpoints(cpm) else canhrActi::freedson(cpm)
+            wt <- tryCatch(shared$results$wear_time[[sel]]$wear, error = function(e) NULL)
+            fr <- canhrActi::sedentary.fragmentation(
+              intensity, data$timestamp,
+              wear_time = if (!is.null(wt) && length(wt) == nrow(data)) wt else NULL,
+              epoch_length = epoch_len
+            )
+            switch(chart,
+              "bout_survival" = canhrActi::plot_survival_curves(fr$bouts$duration_min,
+                                                                title = chart_title),
+              "bout_histogram" = canhrActi::plot_bout_histogram(fr, title = chart_title),
+              "bout_lorenz" = canhrActi::plot_bout_lorenz(fr, title = chart_title),
+              "transition_matrix" = canhrActi::plot_transition_matrix(fr, title = chart_title)
+            )
+          },
+
           "daily_bars" = {
             activity_data <- shared$results$activity[[sel]]
             if (!is.null(activity_data) && !is.null(activity_data$daily)) {
@@ -787,6 +881,7 @@ mod_graphing_server <- function(id, shared) {
       })
 
       current_plot(p)
+      current_chart_type(chart)
       if (!is.null(p)) {
         shared$visualization_complete <- TRUE
       }
@@ -805,9 +900,27 @@ mod_graphing_server <- function(id, shared) {
           p("Choose a chart type from the gallery and click 'Generate Chart'")
         )
       } else {
-        plotOutput(ns("main_plot"), width = paste0(width, "px"), height = paste0(height, "px"))
+        ch <- current_chart_type()
+        static_only <- c("polar", "activity_clock", "intensity_pie", "hypnogram", "actogram")
+        if (isTRUE(input$interactive) && requireNamespace("plotly", quietly = TRUE) &&
+            !is.null(ch) && !(ch %in% static_only)) {
+          plotly::plotlyOutput(ns("main_plotly"), width = paste0(width, "px"),
+                               height = paste0(height, "px"))
+        } else {
+          plotOutput(ns("main_plot"), width = paste0(width, "px"), height = paste0(height, "px"))
+        }
       }
     })
+
+    # Interactive (plotly) version, only wired when plotly is available.
+    if (requireNamespace("plotly", quietly = TRUE)) {
+      output$main_plotly <- plotly::renderPlotly({
+        p <- current_plot()
+        req(inherits(p, "ggplot"))
+        tryCatch(suppressWarnings(plotly::ggplotly(p)),
+                 error = function(e) plotly::ggplotly(ggplot2::ggplot()))
+      })
+    }
 
     # Render main plot
     output$main_plot <- renderPlot({

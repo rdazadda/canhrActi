@@ -110,6 +110,16 @@ jobs:
           ls -la resources/R/R.framework/Resources/ 2>/dev/null || ls -la resources/R/bin/ 2>/dev/null || true
           resources/R/R.framework/Resources/Rscript --version 2>&1 || resources/R/bin/Rscript --version 2>&1 || true
 
+      - name: Install gettext (macOS, fixes data.table libintl.h build)
+        if: matrix.target == 'mac'
+        shell: bash
+        run: |
+          brew install gettext
+          GETTEXT="$(brew --prefix gettext)"
+          echo "CPPFLAGS=-I${GETTEXT}/include ${CPPFLAGS:-}" >> "$GITHUB_ENV"
+          echo "LDFLAGS=-L${GETTEXT}/lib ${LDFLAGS:-}" >> "$GITHUB_ENV"
+          echo "Using gettext at ${GETTEXT}"
+
       - name: Install canhrActi and pinned packages
         run: npm run setup:packages
 

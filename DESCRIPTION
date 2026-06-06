@@ -58,13 +58,16 @@ Suggests:
     openxlsx,
     future,
     promises,
+    digest,
+    zip,
     ActCR,
     pracma,
     cosinor2,
     nonlinearTseries,
     lomb,
     nparACT,
-    cosinor
+    cosinor,
+    agcounts
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Config/roxygen2/version: 8.0.0

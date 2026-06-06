@@ -39,7 +39,7 @@ mod_upload_ui <- function(id) {
           ns("files"),
           NULL,
           multiple = TRUE,
-          accept = ".agd",
+          accept = c(".agd", ".gt3x"),
           buttonLabel = "",
           placeholder = ""
         )
@@ -69,7 +69,7 @@ mod_upload_ui <- function(id) {
             webkitdirectory = TRUE,
             multiple = TRUE,
             class = "hidden",
-            accept = ".agd"
+            accept = ".agd,.gt3x"
           )
         ),
 
@@ -78,13 +78,20 @@ mod_upload_ui <- function(id) {
           ns("demo_btn"),
           span(icon("database"), "Try Sample Files"),
           class = "btn-upload-action btn-demo"
+        ),
+
+        # Convert a raw .gt3x to a small .agd
+        actionButton(
+          ns("convert_btn"),
+          span(icon("right-left"), "Convert .gt3x → .agd"),
+          class = "btn-upload-action btn-convert"
         )
       ),
 
       div(
         class = "upload-helper",
         icon("info-circle"),
-        "Supports batch import of multiple files. AGD files from ActiLife are automatically detected."
+        "Supports .agd and raw .gt3x files. Raw .gt3x files are converted to counts on import."
       )
     ),
 
@@ -187,7 +194,8 @@ mod_upload_server <- function(id, shared) {
         if (ext == "agd") {
           canhrActi::read.agd(file_path)
         } else {
-          stop("Unsupported file type: ", ext, ". Only AGD files are supported.")
+          # .gt3x is converted to .agd upstream (convert_and_load); only .agd reaches here.
+          stop("Unsupported file type: ", ext, ". Only .agd files are supported here.")
         }
       }, error = function(e) {
         return(list(error = e$message))
@@ -331,6 +339,132 @@ mod_upload_server <- function(id, shared) {
 
     # FILE UPLOAD HANDLERS
 
+    # Raw .gt3x conversion: content-hash cache + background (ExtendedTask).
+    gt3x_cache_dir <- file.path(tempdir(), "canhrActi_gt3x_cache")
+    dir.create(gt3x_cache_dir, showWarnings = FALSE, recursive = TRUE)
+
+    add_file_record <- function(result, display_name, original_path) {
+      if (!isTRUE(result$success)) {
+        showNotification(paste0("Could not load ", display_name, ": ",
+                                result$error %||% "unknown error"), type = "error", duration = 8)
+        return(invisible())
+      }
+      file_id <- paste0("file_", local$next_id)
+      shared$files[[file_id]] <- list(
+        id = file_id, name = display_name, original_path = original_path,
+        data = result$data, settings = result$settings,
+        device_info = result$device_info, subject_info = result$subject_info,
+        epoch_length = result$epoch_length, duration_hrs = result$duration_hrs,
+        n_epochs = result$n_epochs, actilife_sleep = result$actilife_sleep,
+        actilife_awakenings = result$actilife_awakenings,
+        actilife_wear_time = result$actilife_wear_time, capsense = result$capsense
+      )
+      local$next_id <- local$next_id + 1
+      shared$file_count <- length(shared$files)
+      shared$data_loaded <- TRUE
+      if (is.null(shared$selected_file)) shared$selected_file <- file_id
+    }
+
+    # Bounded conversion pool: small files convert in parallel, large files
+    # (>50MB) run solo, so peak RAM stays safe (each conversion holds the full
+    # raw signal, ~3GB at 30Hz and far more at higher rates).
+    POOL_N   <- 2
+    LARGE_MB <- 50
+    conv_queue <- reactiveVal(list())
+    pool <- lapply(seq_len(POOL_N), function(i) {
+      ExtendedTask$new(function(datapath, out_agd, epoch, lfe, libpaths, name, orig) {
+        promises::catch(
+          promises::future_promise({
+            .libPaths(libpaths)
+            canhrActi::gt3x.to.agd(datapath, agd_path = out_agd, epoch = epoch, lfe = lfe)
+            list(ok = TRUE, agd = out_agd, name = name, orig = orig)
+          }, seed = TRUE),
+          function(e) list(ok = FALSE, name = name, error = conditionMessage(e))
+        )
+      })
+    })
+    pool_large <- reactiveVal(rep(FALSE, POOL_N))   # slots currently running a large file
+
+    pump_pool <- function() isolate({
+      repeat {
+        q <- conv_queue()
+        if (length(q) == 0) break
+        busy <- vapply(pool, function(t) t$status() == "running", logical(1))
+        if (any(busy & pool_large())) break          # a large file is running -> wait
+        job  <- q[[1]]
+        if (job$large && any(busy)) break             # large waits for a fully idle pool
+        free <- which(!busy)[1]
+        if (is.na(free)) break
+        conv_queue(q[-1])
+        pl <- pool_large(); pl[free] <- job$large; pool_large(pl)
+        pool[[free]]$invoke(job$datapath, job$cached, job$epoch, job$lfe, .libPaths(), job$name, job$datapath)
+        if (job$large) break                          # large runs solo
+      }
+    })
+
+    lapply(seq_len(POOL_N), function(i) {
+      observeEvent(pool[[i]]$status(), {
+        if (pool[[i]]$status() != "success") return()
+        r  <- pool[[i]]$result()
+        isolate({ pl <- pool_large(); pl[i] <- FALSE; pool_large(pl) })
+        if (isTRUE(r$ok)) {
+          add_file_record(load_single_file(r$agd, "converted.agd"), r$name, r$orig)
+          showNotification(paste0("Converted ", r$name), type = "message", duration = 3)
+        } else {
+          showNotification(paste0("Conversion failed for ", r$name, ": ", r$error),
+                           type = "error", duration = 8)
+        }
+        pump_pool()
+      })
+    })
+
+    hash_memo <- new.env(parent = emptyenv())   # content hash per upload (files don't change in-session)
+    cache_path <- function(datapath, epoch, lfe) {
+      h <- hash_memo[[datapath]]
+      if (is.null(h)) {
+        h <- digest::digest(file = datapath, algo = "xxhash64")
+        hash_memo[[datapath]] <- h
+      }
+      file.path(gt3x_cache_dir, paste0(h, "_e", epoch, "_", if (lfe) "l" else "n", ".agd"))
+    }
+
+    # Cached .agd path for a .gt3x, converting it once if not already cached.
+    ensure_agd <- function(datapath, epoch, lfe) {
+      cached <- cache_path(datapath, epoch, lfe)
+      if (!file.exists(cached)) {
+        canhrActi::gt3x.to.agd(datapath, agd_path = cached, epoch = epoch, lfe = lfe)
+      }
+      cached
+    }
+
+    # .agd output name for a .gt3x file name.
+    agd_name <- function(nm, ep) sub("\\.gt3x$", sprintf("_%ssec.agd", ep), nm, ignore.case = TRUE)
+
+    # Convert a .gt3x and load it into the dashboard (cache hit loads instantly).
+    convert_and_load <- function(datapath, name, epoch = 60, lfe = FALSE, notify = TRUE) {
+      cached <- cache_path(datapath, epoch, lfe)
+      if (file.exists(cached)) {
+        add_file_record(load_single_file(cached, "converted.agd"), name, datapath)
+        return(invisible())
+      }
+      large <- isTRUE((file.info(datapath)$size / 1048576) > LARGE_MB)
+      isolate({ q <- conv_queue(); q[[length(q) + 1]] <- list(
+        datapath = datapath, cached = cached, name = name, epoch = epoch, lfe = lfe, large = large)
+        conv_queue(q) })
+      if (notify) showNotification(paste0("Converting ", name, " in the background…"),
+                                   type = "message", duration = 4)
+      pump_pool()
+    }
+
+    # Route an uploaded file: .agd loads now; .gt3x auto-converts (Normal, 60s) and loads.
+    process_uploaded_file <- function(datapath, name) {
+      if (tolower(tools::file_ext(name)) == "gt3x") {
+        convert_and_load(datapath, name, epoch = 60, lfe = FALSE)
+      } else {
+        add_file_record(load_single_file(datapath, name), name, datapath)
+      }
+    }
+
     # Handle file upload
     observeEvent(input$files, {
       req(input$files)
@@ -352,38 +486,7 @@ mod_upload_server <- function(id, shared) {
           }
           setProgress(value = i / n_files, detail = detail_msg)
 
-          result <- load_single_file(file_info$datapath, file_info$name)
-
-          if (result$success) {
-            file_id <- paste0("file_", local$next_id)
-
-            shared$files[[file_id]] <- list(
-              id = file_id,
-              name = file_info$name,
-              original_path = file_info$datapath,
-              data = result$data,
-              settings = result$settings,
-              device_info = result$device_info,
-              subject_info = result$subject_info,
-              epoch_length = result$epoch_length,
-              duration_hrs = result$duration_hrs,
-              n_epochs = result$n_epochs,
-              actilife_sleep = result$actilife_sleep,
-              actilife_awakenings = result$actilife_awakenings,
-              actilife_wear_time = result$actilife_wear_time,
-              capsense = result$capsense
-            )
-
-            local$next_id <- local$next_id + 1
-            shared$file_count <- length(shared$files)
-            shared$data_loaded <- TRUE
-
-            if (is.null(shared$selected_file)) {
-              shared$selected_file <- file_id
-            }
-          } else {
-            showNotification(paste("Error loading", file_info$name, ":", result$error), type = "error", duration = 5)
-          }
+          process_uploaded_file(file_info$datapath, file_info$name)
         }
       })
 
@@ -395,11 +498,11 @@ mod_upload_server <- function(id, shared) {
       req(input$dir_files)
 
       all_files <- input$dir_files
-      supported_ext <- c("agd")
+      supported_ext <- c("agd", "gt3x")
       valid_idx <- which(tolower(tools::file_ext(all_files$name)) %in% supported_ext)
 
       if (length(valid_idx) == 0) {
-        showNotification("No AGD files found in selected folder", type = "warning")
+        showNotification("No .agd or .gt3x files found in selected folder", type = "warning")
         return()
       }
 
@@ -422,35 +525,8 @@ mod_upload_server <- function(id, shared) {
           }
           setProgress(value = i / n_files, detail = detail_msg)
 
-          result <- load_single_file(file_info$datapath, file_info$name)
-
-          if (result$success) {
-            file_id <- paste0("file_", local$next_id)
-
-            shared$files[[file_id]] <- list(
-              id = file_id,
-              name = file_info$name,
-              original_path = file_info$datapath,
-              data = result$data,
-              settings = result$settings,
-              device_info = result$device_info,
-              subject_info = result$subject_info,
-              epoch_length = result$epoch_length,
-              duration_hrs = result$duration_hrs,
-              n_epochs = result$n_epochs,
-              actilife_sleep = result$actilife_sleep,
-              actilife_awakenings = result$actilife_awakenings,
-              actilife_wear_time = result$actilife_wear_time,
-              capsense = result$capsense
-            )
-
-            local$next_id <- local$next_id + 1
-            loaded <- loaded + 1
-
-            if (is.null(shared$selected_file)) {
-              shared$selected_file <- file_id
-            }
-          }
+          process_uploaded_file(file_info$datapath, file_info$name)
+          loaded <- loaded + 1
         }
         shared$file_count <- length(shared$files)
         shared$data_loaded <- length(shared$files) > 0
@@ -508,6 +584,111 @@ mod_upload_server <- function(id, shared) {
 
       showNotification(paste(loaded, "example files loaded!"), type = "message")
     })
+
+    # Convert a raw .gt3x: load it into the dashboard, and/or download the .agd.
+    observeEvent(input$convert_btn, {
+      showModal(modalDialog(
+        title = NULL, footer = NULL, size = "m", easyClose = TRUE,
+        div(class = "convert-modal",
+          div(class = "convert-modal-header",
+            div(class = "convert-modal-icon", icon("right-left")),
+            div(
+              h4(class = "convert-modal-title", "Convert Raw .gt3x"),
+              p(class = "convert-modal-sub", "Compute activity counts from a raw accelerometer file")
+            )
+          ),
+          div(class = "convert-field",
+            tags$label(class = "convert-label", "Raw file(s)"),
+            fileInput(ns("convert_gt3x"), NULL, accept = ".gt3x", multiple = TRUE, width = "100%"),
+            tags$label(class = "btn btn-convert-folder",
+              icon("folder-open"), span(" Choose a folder of .gt3x instead"),
+              tags$input(type = "file", id = ns("convert_dir"), webkitdirectory = TRUE,
+                         multiple = TRUE, class = "hidden", accept = ".gt3x")
+            )
+          ),
+          div(class = "convert-options",
+            div(class = "convert-field",
+              tags$label(class = "convert-label", "Epoch length"),
+              selectInput(ns("convert_epoch"), NULL, width = "100%", selected = 60,
+                          choices = c("5 sec" = 5, "10 sec" = 10, "15 sec" = 15,
+                                      "30 sec" = 30, "60 sec" = 60))
+            ),
+            div(class = "convert-field",
+              tags$label(class = "convert-label", "Filter"),
+              selectInput(ns("convert_filter"), NULL, width = "100%", selected = "normal",
+                          choices = c("Normal" = "normal", "Low-frequency extension" = "lfe"))
+            )
+          ),
+          div(class = "convert-note",
+            icon("circle-info"),
+            span(tags$b("Low-frequency extension"),
+                 " captures slow, gentle movement (for older or clinical groups); keep ",
+                 tags$b("Normal"), " for standard analysis. Large files take a while to convert.")
+          ),
+          div(class = "convert-modal-footer",
+            tags$button(type = "button", class = "btn btn-convert-cancel",
+                        `data-dismiss` = "modal", "Cancel"),
+            downloadButton(ns("download_agd"), "Download", class = "btn-convert-secondary"),
+            actionButton(ns("convert_load"), span(icon("chart-line"), " Convert & Analyze"),
+                         class = "btn-convert-primary")
+          )
+        )
+      ))
+    })
+
+    # The selected .gt3x files (from the file picker and/or the folder picker).
+    selected_gt3x <- reactive({
+      combined <- rbind(input$convert_gt3x, input$convert_dir)
+      if (is.null(combined) || nrow(combined) == 0) return(NULL)
+      combined[tolower(tools::file_ext(combined$name)) == "gt3x", , drop = FALSE]
+    })
+
+    # Convert every selected file and load each into the dashboard for analysis.
+    observeEvent(input$convert_load, {
+      sel <- selected_gt3x()
+      if (is.null(sel) || nrow(sel) == 0) {
+        showNotification("Choose a .gt3x file or a folder first.", type = "warning")
+        return()
+      }
+      ep <- as.numeric(input$convert_epoch %||% 60); lf <- isTRUE(input$convert_filter == "lfe")
+      for (i in seq_len(nrow(sel))) {
+        convert_and_load(sel$datapath[i], sel$name[i], epoch = ep, lfe = lf, notify = FALSE)
+      }
+      removeModal()
+      showNotification(sprintf("Converting %d file(s) in the background…", nrow(sel)),
+                       type = "message", duration = 4)
+    })
+
+    output$download_agd <- downloadHandler(
+      filename = function() {
+        sel <- selected_gt3x(); ep <- input$convert_epoch %||% "60"
+        if (is.null(sel) || nrow(sel) <= 1) {
+          agd_name(if (!is.null(sel) && nrow(sel) >= 1) sel$name[1] else "converted.gt3x", ep)
+        } else {
+          sprintf("converted_%ssec_agd.zip", ep)
+        }
+      },
+      content = function(file) {
+        sel <- selected_gt3x()
+        if (is.null(sel) || nrow(sel) == 0) stop("Choose a .gt3x file or folder first.")
+        ep <- as.numeric(input$convert_epoch %||% 60); lf <- isTRUE(input$convert_filter == "lfe")
+        agds <- character(nrow(sel)); outs <- character(nrow(sel))
+        withProgress(message = "Converting to .agd…", value = 0, {
+          for (i in seq_len(nrow(sel))) {
+            setProgress(value = i / nrow(sel), detail = sel$name[i])
+            agds[i] <- ensure_agd(sel$datapath[i], ep, lf)
+            outs[i] <- agd_name(sel$name[i], ep)
+          }
+        })
+        if (length(agds) == 1) {
+          file.copy(agds[1], file, overwrite = TRUE)
+        } else {
+          stage <- tempfile("agd_zip_"); dir.create(stage)
+          for (j in seq_along(agds)) file.copy(agds[j], file.path(stage, outs[j]), overwrite = TRUE)
+          zip::zipr(zipfile = file, root = stage, files = outs)
+        }
+      }
+    )
 
     # Clear all files
     observeEvent(input$clear_all_btn, {

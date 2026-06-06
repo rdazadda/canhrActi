@@ -16,6 +16,11 @@ library(shinyjs)
 # Load canhrActi package
 library(canhrActi)
 
+# Run raw .gt3x -> counts conversions off the main session (else they block the UI).
+if (requireNamespace("future", quietly = TRUE) && requireNamespace("promises", quietly = TRUE)) {
+  future::plan(future::multisession, workers = 2)
+}
+
 # Optional: loading spinners
 if (requireNamespace("shinycssloaders", quietly = TRUE)) {
 

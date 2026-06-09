@@ -1,6 +1,6 @@
 {
   "name": "canhractivity-desktop",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Desktop application for canhrActi: CANHR Accelerometer Physical Activity and Sleep Analysis",
   "main": "src/main/index.js",
   "private": true,
@@ -24,6 +24,8 @@
     "start:debug": "cross-env CANHRACTI_DEBUG=1 electron .",
     "build:win": "electron-builder --win --x64 --publish never",
     "build:mac": "electron-builder --mac --publish never",
+    "build:mac:arm64": "electron-builder --mac --arm64 --publish never",
+    "build:mac:x64": "electron-builder --mac --x64 --publish never",
     "build:linux": "electron-builder --linux --publish never",
     "publish:win": "electron-builder --win --x64 --publish always",
     "release": "electron-builder --publish always"

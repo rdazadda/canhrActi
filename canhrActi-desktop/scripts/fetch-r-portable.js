@@ -17,7 +17,7 @@ function arg(name, fallback) {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 
-const R_VERSION = arg('--version', '4.5.2');
+const R_VERSION = arg('--version', '4.5.3');
 const PLATFORM = arg('--platform', detectPlatform());
 const ARCH = arg('--arch', detectArch());
 

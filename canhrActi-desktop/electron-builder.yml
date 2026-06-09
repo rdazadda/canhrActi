@@ -45,8 +45,7 @@ nsis:
 
 mac:
   target:
-    - target: dmg
-      arch: [arm64]
+    - target: dmg   # arch comes from the CLI flag (--arm64 / --x64) per build
   category: public.app-category.healthcare-fitness
   icon: build/icon.icns
   hardenedRuntime: true

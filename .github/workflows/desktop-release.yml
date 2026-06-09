@@ -15,18 +15,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-2022
+          - os: windows-2025
             target: win
             arch: x64
-            r-version: "4.5.2"
-          - os: macos-14
+            r-version: "4.5.3"
+          - os: macos-26            # Apple Silicon (arm64)
             target: mac
             arch: arm64
             r-version: "4.5.3"
-          - os: ubuntu-22.04
+          - os: macos-26-intel      # native Intel x86_64 (macOS 26 is the final Intel-capable line)
+            target: mac
+            arch: x64
+            r-version: "4.5.3"
+          - os: ubuntu-24.04
             target: linux
             arch: x64
-            r-version: "4.5.2"
+            r-version: "4.5.3"
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -63,7 +67,7 @@ jobs:
             rm /tmp/gfortran.pkg
           fi
           /opt/gfortran/bin/gfortran --version
-          ls /opt/gfortran/lib/gcc/aarch64-apple-darwin*/14.2.0/libemutls_w.a 2>&1 || true
+          ls /opt/gfortran/lib/gcc/*-apple-darwin*/14.2.0/libemutls_w.a 2>&1 || true
 
       - name: Install Node dependencies
         run: npm ci
@@ -73,7 +77,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: canhrActi-desktop/resources/R
-          key: portable-r-${{ matrix.r-version }}-${{ matrix.target }}-${{ matrix.arch }}-v4-${{ hashFiles('canhrActi-desktop/scripts/fetch-r-portable.js') }}-${{ hashFiles('DESCRIPTION', 'NAMESPACE', 'R/**', 'src/**', 'inst/shiny/**') }}
+          key: portable-r-${{ matrix.r-version }}-${{ matrix.os }}-${{ matrix.arch }}-v5-${{ hashFiles('canhrActi-desktop/scripts/fetch-r-portable.js') }}-${{ hashFiles('DESCRIPTION', 'NAMESPACE', 'R/**', 'src/**', 'inst/shiny/**') }}
 
       - name: Validate cached R bundle
         if: steps.cache-r.outputs.cache-hit == 'true'
@@ -117,12 +121,9 @@ jobs:
           brew install gettext
           GETTEXT="$(brew --prefix gettext)"
           mkdir -p ~/.R
-          # data.table builds from source on macOS arm64 (no PPM binary) and needs
-          # libintl.h / -lintl from gettext. Exporting CPPFLAGS via env does NOT work:
-          # R's etc/Makeconf is included after Makevars during make and shadows env
-          # macros. The personal ~/.R/Makevars is the documented user hook, and pak
-          # (via pkgbuild) reads it and appends its own flags - so this reaches the
-          # actual compile. Use += so we don't clobber R's / pkgbuild's flags.
+          # data.table compiles from source on macOS and needs libintl.h/-lintl
+          # from gettext. Env CPPFLAGS doesn't reach the compile (Makeconf shadows
+          # it); ~/.R/Makevars is the hook pak/pkgbuild honors. Use += to append.
           {
             echo "CPPFLAGS += -I${GETTEXT}/include"
             echo "LDFLAGS  += -L${GETTEXT}/lib"
@@ -147,7 +148,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: npm run build:mac
+        run: npm run build:mac:${{ matrix.arch }}
 
       - name: Build installer (Linux)
         if: matrix.target == 'linux'

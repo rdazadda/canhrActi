@@ -432,7 +432,7 @@
       "description": {
         "Package": "canhrActi",
         "Title": "CANHR Accelerometer Physical Activity and Sleep Analysis",
-        "Version": "0.3.1",
+        "Version": "0.4.0",
         "Authors@R": "c(\n    person(\"Raymond Dacosta\", \"Azadda\",\n           email = \"rdazadda@alaska.edu\",\n           role = c(\"aut\", \"cre\")),\n    person(\"Andrew\", \"Grogan-Kaylor\",\n           email = \"agrogan@umich.edu\",\n           role = \"aut\"),\n    person(\"KyungSook\", \"Lee\",\n           email = \"klee98@alaska.edu\",\n           role = \"aut\"))",
         "Author": "Raymond Dacosta Azadda [aut, cre], Andrew Grogan-Kaylor [aut], KyungSook Lee [aut]",
         "Maintainer": "Raymond Dacosta Azadda <rdazadda@alaska.edu>",

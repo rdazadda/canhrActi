@@ -463,6 +463,11 @@ jobs:
                 -v "$RUNNER_TEMP/ci/check-bundle.R:/opt/check-bundle.R:ro" \
                 "$image" sh -c "$prep > /dev/null && /opt/canhr-r/bin/Rscript --vanilla /opt/check-bundle.R"; then
               failed+=("$image")
+              # R hides why a default package did not load; show the real error and the missing libraries
+              docker run --rm -v "$PWD/resources/R:/opt/canhr-r:ro" "$image" sh -c "$prep > /dev/null; \
+                R_DEFAULT_PACKAGES=NULL /opt/canhr-r/bin/Rscript --vanilla -e 'for (p in c(\"utils\", \"stats\")) print(tryCatch(loadNamespace(p), error = function(e) conditionMessage(e)))'; \
+                for f in /opt/canhr-r/lib/R/bin/exec/R /opt/canhr-r/lib/R/lib/libR.so /opt/canhr-r/lib/R/library/utils/libs/utils.so /opt/canhr-r/lib/R/library/stats/libs/stats.so; do \
+                  echo \"== \$f\"; LD_LIBRARY_PATH=/opt/canhr-r/lib/R/lib ldd \$f 2>&1 | grep -E 'not found|GLIBC' || echo '   all libraries found'; done" || true
             fi
             echo "::endgroup::"
           done

@@ -455,7 +455,8 @@ jobs:
           for image in ubuntu:22.04 ubuntu:24.04 debian:12 fedora:latest; do
             echo "::group::$image"
             case "$image" in
-              fedora:*) prep='dnf -y -q install ca-certificates fontconfig' ;;
+              # the bare Fedora image lacks which, which a desktop install has and R's utils runs on load
+              fedora:*) prep='dnf -y -q install ca-certificates fontconfig which' ;;
               *) prep='apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends ca-certificates fontconfig' ;;
             esac
             if ! docker run --rm \

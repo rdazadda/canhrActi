@@ -10,6 +10,60 @@
     "has_parameters": false
   },
   "packages": {
+    "pdftools": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "pdftools",
+        "Type": "Package",
+        "Title": "Text Extraction, Rendering and Converting of PDF Documents",
+        "Version": "3.6.0",
+        "Authors@R": "person(\"Jeroen\", \"Ooms\", role = c(\"aut\", \"cre\"), email = \"jeroenooms@gmail.com\",\ncomment = c(ORCID = \"0000-0002-4035-0289\"))",
+        "Description": "Utilities based on 'libpoppler' <https://poppler.freedesktop.org> for extracting\ntext, fonts, attachments and metadata from a PDF file. Also supports high quality rendering\nof PDF documents into PNG, JPEG, TIFF format, or into raw bitmap vectors for further\nprocessing in R.",
+        "License": "MIT + file LICENSE",
+        "URL": "https://ropensci.r-universe.dev/pdftools,\nhttps://docs.ropensci.org/pdftools/",
+        "BugReports": "https://github.com/ropensci/pdftools/issues",
+        "SystemRequirements": "Poppler C++ API: libpoppler-cpp-dev (deb) or\npoppler-cpp-devel (rpm), and poppler-data (rpm/deb) package.",
+        "Encoding": "UTF-8",
+        "Imports": "Rcpp (>= 0.12.12), qpdf",
+        "LinkingTo": "Rcpp",
+        "Suggests": "png, webp, tesseract, testthat",
+        "RoxygenNote": "7.3.2",
+        "NeedsCompilation": "yes",
+        "Packaged": "2025-09-09 11:28:39 UTC; jeroen",
+        "Author": "Jeroen Ooms [aut, cre] (ORCID: <https://orcid.org/0000-0002-4035-0289>)",
+        "Maintainer": "Jeroen Ooms <jeroenooms@gmail.com>",
+        "Repository": "CRAN",
+        "Date/Publication": "2025-09-10 07:50:15 UTC"
+      }
+    },
+    "qpdf": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "qpdf",
+        "Type": "Package",
+        "Title": "Split, Combine and Compress PDF Files",
+        "Version": "1.4.1",
+        "Authors@R": "c(person(\"Jeroen\", \"Ooms\", role = c(\"aut\", \"cre\"),\nemail = \"jeroenooms@gmail.com\", comment = c(ORCID = \"0000-0002-4035-0289\")),\nperson(\"Ben\", \"Raymond\", role = \"ctb\"),\nperson(\"Jay Berkenbilt\", role = \"cph\", comment = \"Author of libqpdf\"))",
+        "Description": "Content-preserving transformations transformations of PDF files such\nas split, combine, and compress. This package interfaces directly to the 'qpdf'\nC++ library <https://qpdf.sourceforge.io/> and does not require any command\nline utilities. Note that 'qpdf' does not read actual content from PDF files:\nto extract text and data you need the 'pdftools' package.",
+        "License": "Apache License 2.0",
+        "URL": "https://docs.ropensci.org/qpdf/\nhttps://ropensci.r-universe.dev/qpdf",
+        "BugReports": "https://github.com/ropensci/qpdf/issues",
+        "Encoding": "UTF-8",
+        "Imports": "Rcpp, askpass, curl",
+        "LinkingTo": "Rcpp",
+        "RoxygenNote": "7.2.1",
+        "Suggests": "testthat",
+        "SystemRequirements": "libjpeg",
+        "NeedsCompilation": "yes",
+        "Packaged": "2025-06-30 11:12:14 UTC; jeroen",
+        "Author": "Jeroen Ooms [aut, cre] (ORCID: <https://orcid.org/0000-0002-4035-0289>),\nBen Raymond [ctb],\nJay Berkenbilt [cph] (Author of libqpdf)",
+        "Maintainer": "Jeroen Ooms <jeroenooms@gmail.com>",
+        "Repository": "CRAN",
+        "Date/Publication": "2025-07-02 09:40:02 UTC"
+      }
+    },
     "GGIR": {
       "Source": "CRAN",
       "Repository": "https://cloud.r-project.org",

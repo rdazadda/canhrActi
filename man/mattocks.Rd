@@ -32,8 +32,6 @@ activities in children. Int J Pediatr Obes, 2(4), 218-226.
 \seealso{
 Other children cut-points:
 \code{\link[=butte_preschool]{butte_preschool()}},
-\code{\link[=chandler]{chandler()}},
-\code{\link[=copeland]{copeland()}},
 \code{\link[=evenson]{evenson()}},
 \code{\link[=pate_preschool]{pate_preschool()}},
 \code{\link[=puyau]{puyau()}},

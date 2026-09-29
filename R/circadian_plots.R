@@ -46,11 +46,7 @@ NULL
 # Internal helper: resolve the package theme, falling back to theme_minimal().
 # ---------------------------------------------------------------------------
 .circ_theme <- function() {
-  if (exists("theme_canhrActi", mode = "function")) {
-    tryCatch(theme_canhrActi(), error = function(e) ggplot2::theme_minimal())
-  } else {
-    ggplot2::theme_minimal()
-  }
+  tryCatch(theme_canhrActi(), error = function(e) ggplot2::theme_minimal())
 }
 
 
@@ -59,17 +55,13 @@ NULL
 # ---------------------------------------------------------------------------
 .circ_color <- function(name = "blue") {
   fallback <- "#236192"
-  if (exists("canhrActi_palette", mode = "function")) {
-    out <- tryCatch(
-      {
-        pal <- canhrActi_palette("primary")
-        if (!is.null(pal[[name]])) pal[[name]] else fallback
-      },
-      error = function(e) fallback
-    )
-    return(out)
-  }
-  fallback
+  tryCatch(
+    {
+      pal <- canhrActi_palette("primary")
+      if (!is.null(pal[[name]])) pal[[name]] else fallback
+    },
+    error = function(e) fallback
+  )
 }
 
 
@@ -139,7 +131,7 @@ NULL
 #'   (default \code{18}).
 #' @param to Numeric. Upper bound of the period search window, in hours
 #'   (default \code{30}).
-#' @param ofac Integer oversampling factor passed to \code{lomb::lsp}. Higher
+#' @param ofac Integer oversampling factor of the Lomb-Scargle scan. Higher
 #'   values give a finer period grid (default \code{4}).
 #'
 #' @return A \code{ggplot} object: Lomb-Scargle power (y) versus period in hours
@@ -149,10 +141,10 @@ NULL
 #'   annotation is returned instead; the function never errors.
 #'
 #' @details
-#' The full spectrum is obtained from
-#' \code{lomb::lsp(x, times, from, to, type = "period", ofac, plot = FALSE)},
-#' whose \code{$scanned} component holds the trial periods (hours) and
-#' \code{$power} the corresponding normalized Lomb-Scargle power. The peak period
+#' The full spectrum is the standard-normalized Lomb-Scargle periodogram over the
+#' period window, computed in the package the same way as
+#' \code{lomb::lsp(x, times, from, to, type = "period", ofac)}: the trial periods
+#' (hours) against their normalized power. The peak period
 #' \code{tau} and its \code{p_value} come from \code{\link{circadian.period}} so
 #' that the highlighted peak is exactly the value reported by the analytic
 #' function. The Lomb-Scargle periodogram is the least-squares spectral estimator
@@ -246,6 +238,10 @@ plot_periodogram <- function(counts, timestamps, from = 18, to = 30,
   tau <- if (!is.null(cp) && is.finite(cp$tau)) cp$tau else NA_real_
   p_value <- if (!is.null(cp) && is.finite(cp$p_value)) cp$p_value else NA_real_
 
+  # Power level whose Baluev (2008) false-alarm probability equals alpha
+  fap_alpha <- 0.05
+  thr <- tryCatch(.lomb_fap_power(fap_alpha, lsp$n, lsp$W), error = function(e) NA_real_)
+
   accent <- .circ_color("blue")
   peak_col <- .circ_color("orange")
 
@@ -269,6 +265,20 @@ plot_periodogram <- function(counts, timestamps, from = 18, to = 30,
       )
   }
 
+  # False-alarm threshold line, before the peak marker so the peak stays on top.
+  if (is.finite(thr)) {
+    p <- p +
+      ggplot2::geom_hline(
+        yintercept = thr, linetype = "dashed",
+        color = "grey45", linewidth = 0.5
+      ) +
+      ggplot2::annotate(
+        "text", x = from, y = thr,
+        label = sprintf("p = %.2f", fap_alpha),
+        hjust = -0.1, vjust = -0.5, size = 3, color = "grey35"
+      )
+  }
+
   # Peak period marker + label.
   if (is.finite(tau)) {
     y_top <- max(spectrum$power, na.rm = TRUE)
@@ -286,6 +296,8 @@ plot_periodogram <- function(counts, timestamps, from = 18, to = 30,
   p +
     ggplot2::labs(
       title = ttl,
+      subtitle = if (is.finite(thr))
+        sprintf("dashed line: %.2f false-alarm threshold (Baluev 2008)", fap_alpha) else NULL,
       x = "Period (hours)",
       y = "Lomb-Scargle power"
     ) +
@@ -433,7 +445,7 @@ plot_actogram <- function(counts, timestamps, epoch_length = NULL,
 
   x_max <- if (isTRUE(double_plot)) 48 else 24
   brks <- seq(0, x_max, 6)
-  day_labels <- format(day0 + seq_len(n_days) - 1L, "%a %m-%d")
+  day_labels <- .format_english(day0 + seq_len(n_days) - 1L, "%a %m-%d")
 
   p <- ggplot2::ggplot(
     grid, ggplot2::aes(x = .data$x_h, y = .data$day, fill = .data$value)
@@ -927,5 +939,93 @@ plot_dfa <- function(counts) {
       x = "log10(window size)",
       y = "log10(F(n))"
     ) +
+    .circ_theme()
+}
+
+
+# Ported from actiRhythm R/circadian_cosinor_plots.R, unchanged.
+
+#' Cosinor Amplitude-Acrophase Confidence Ellipse
+#'
+#' Draws the joint confidence ellipse of the cosinor cosine and sine coefficients
+#' on the amplitude-acrophase plane, over clock-hour spokes and amplitude rings.
+#' The estimate is the vector from the pole, and the rhythm is detectable when the
+#' ellipse excludes the pole (Bingham et al. 1982). When the fit fails, an empty
+#' placeholder plot is returned instead of an error.
+#'
+#' @param counts Numeric activity vector.
+#' @param timestamps POSIXct timestamps, one per value.
+#' @param period Cosinor period in hours (default 24).
+#' @param level Confidence level for the ellipse (default 0.95).
+#'
+#' @return A \code{ggplot} object.
+#'
+#' @references
+#' Bingham C, Arbogast B, Guillaume GC, Lee JK, Halberg F (1982). Inferential statistical methods for estimating and comparing cosinor parameters. Chronobiologia, 9(4), 397-439.
+#'
+#' @examples
+#' set.seed(1)
+#' ts <- seq(as.POSIXct("2024-01-01", tz = "UTC"), by = 60, length.out = 3 * 1440)
+#' h  <- as.numeric(format(ts, "%H"))
+#' counts <- pmax(0, 100 + 80 * cos(2 * pi * (h - 14) / 24) + rnorm(length(h), 0, 25))
+#' plot_cosinor_ellipse(counts, ts)
+#'
+#' @export
+plot_cosinor_ellipse <- function(counts, timestamps, period = 24, level = 0.95) {
+  empty <- function() .circ_empty_plot("Confidence ellipse unavailable",
+                                        title = "Cosinor confidence ellipse")
+  cos <- tryCatch(cosinor.analysis(counts, timestamps, period = period),
+                  error = function(e) NULL)
+  if (is.null(cos)) return(empty())
+  ell <- tryCatch(cosinor.confidence.ellipse(cos, level = level),
+                  error = function(e) NULL)
+  if (is.null(ell) || anyNA(ell$center) || anyNA(ell$ellipse$x) || nrow(ell$ellipse) < 3L)
+    return(empty())
+
+  cx <- unname(ell$center[1]); cy <- unname(ell$center[2])
+  amp  <- sqrt(cx^2 + cy^2)
+  acro <- (atan2(cy, cx) * period / (2 * pi)) %% period
+  hit  <- isTRUE(ell$rhythm_detected)
+  col  <- .circ_color(if (hit) "blue" else "orange")
+
+  rmax  <- max(sqrt(ell$ellipse$x^2 + ell$ellipse$y^2), amp) * 1.15
+  th    <- seq(0, 2 * pi, length.out = 100)
+  rings <- pretty(c(0, rmax), n = 4); rings <- rings[rings > 0 & rings < rmax]
+  ringd <- if (length(rings))
+    do.call(rbind, lapply(rings, function(r) data.frame(x = r * cos(th), y = r * sin(th), r = r)))
+  else data.frame(x = numeric(0), y = numeric(0), r = numeric(0))
+  hrs    <- seq(0, period - 1e-9, by = period / 8)
+  ang    <- hrs * 2 * pi / period
+  spokes <- data.frame(x = rmax * cos(ang), y = rmax * sin(ang),
+                       lab = sprintf("%02d:00", as.integer(round(hrs))))
+  vec  <- data.frame(x = 0, y = 0, xend = cx, yend = cy)
+  pole <- data.frame(x = 0, y = 0)
+
+  ggplot2::ggplot() +
+    ggplot2::geom_path(data = ringd,
+      ggplot2::aes(.data$x, .data$y, group = .data$r),
+      colour = "grey88", linewidth = 0.3) +
+    ggplot2::geom_segment(data = spokes,
+      ggplot2::aes(x = 0, y = 0, xend = .data$x, yend = .data$y),
+      colour = "grey88", linewidth = 0.3) +
+    ggplot2::geom_text(data = spokes,
+      ggplot2::aes(1.07 * .data$x, 1.07 * .data$y, label = .data$lab),
+      size = 3, colour = "grey45") +
+    ggplot2::geom_polygon(data = ell$ellipse,
+      ggplot2::aes(.data$x, .data$y),
+      fill = col, alpha = 0.18, colour = col, linewidth = 0.7) +
+    ggplot2::geom_segment(data = vec,
+      ggplot2::aes(.data$x, .data$y, xend = .data$xend, yend = .data$yend),
+      colour = col, linewidth = 0.9,
+      arrow = ggplot2::arrow(length = ggplot2::unit(0.12, "inches"))) +
+    ggplot2::geom_point(data = pole, ggplot2::aes(.data$x, .data$y),
+      shape = 3, size = 3.5, stroke = 0.9, colour = "grey25") +
+    ggplot2::coord_fixed(xlim = c(-rmax, rmax) * 1.18, ylim = c(-rmax, rmax) * 1.18) +
+    ggplot2::labs(
+      title = "Cosinor confidence ellipse",
+      subtitle = sprintf("amplitude %.1f, acrophase %.1f h, %s",
+        amp, acro, if (hit) "rhythm detected" else "not detected"),
+      x = expression(beta[1] == A * cos(phi)),
+      y = expression(beta[2] == A * sin(phi))) +
     .circ_theme()
 }

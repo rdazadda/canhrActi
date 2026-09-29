@@ -13,13 +13,15 @@ apply_cutpoints(
 )
 }
 \arguments{
-\item{data}{Numeric vector of activity metric (CPM or VM CPM)}
+\item{data}{Numeric vector of activity metric per minute (CPM or VM CPM);
+\code{\link{to_cpm}} converts counts of other epoch lengths}
 
 \item{algorithm}{Character string specifying algorithm. See Details.}
 
-\item{epoch_seconds}{Current epoch length (for CPM conversion)}
+\item{epoch_seconds}{Epoch length in seconds. \code{data} is already per
+minute, so it is not rescaled for any algorithm.}
 
-\item{age}{Numeric age in years (for age-specific algorithms)}
+\item{age}{Numeric age in years, used by "auto"}
 
 \item{...}{Additional arguments passed to specific algorithms}
 }
@@ -33,15 +35,14 @@ Unified function to apply any supported cut-point algorithm.
 Supported algorithms:
 
 \strong{Adult count-based:}
-"freedson", "troiano", "matthews", "santos_lozano_younger",
-"santos_lozano_older", "crouter"
+"freedson", "troiano", "matthews", "crouter"
 
 \strong{Triaxial/VM:}
-"sasaki_vm3", "freedson_vm3"
+"sasaki_vm3", "freedson_vm3", "santos_lozano_younger", "santos_lozano_older"
 
 \strong{Children count-based:}
 "evenson", "puyau", "mattocks", "pate_preschool",
-"butte_preschool", "chandler", "copeland", "romanzini"
+"butte_preschool", "romanzini"
 
 \strong{Older adults:}
 "copeland_older"

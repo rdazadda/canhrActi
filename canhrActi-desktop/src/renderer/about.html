@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About CANHRActi</title>
+<link rel="stylesheet" href="ui.css">
+<script src="ui.js"></script>
+<script src="about.js" defer></script>
+</head>
+<body>
+<main class="card about" id="card" role="dialog" aria-labelledby="app-name" aria-describedby="version">
+  <div class="panel">
+    <img class="app-icon" src="icon.png" alt="">
+    <div class="lockup-text">
+      <h1 class="app-name" id="app-name">CANHRActi</h1>
+      <p class="version" id="version">Version</p>
+    </div>
+    <div class="panel-foot legal">
+      <p>© 2026 Center for Alaska Native Health Research</p>
+    </div>
+  </div>
+  <button type="button" class="icon-btn close" id="close" aria-label="Close">
+    <svg viewBox="0 -960 960 960" aria-hidden="true"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>
+  </button>
+</main>
+</body>
+</html>

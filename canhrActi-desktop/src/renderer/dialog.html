@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quit CANHRActi</title>
+<link rel="stylesheet" href="ui.css">
+<script src="ui.js"></script>
+<script src="dialog.js" defer></script>
+</head>
+<body>
+<main class="card dialog" id="card" role="alertdialog" aria-labelledby="dialog-title" aria-describedby="dialog-text">
+  <h1 class="dialog-title" id="dialog-title">Quit CANHRActi?</h1>
+  <p class="dialog-text" id="dialog-text">Results you have not exported will be lost.</p>
+  <div class="actions">
+    <span class="spacer"></span>
+    <button type="button" class="btn btn-secondary" id="cancel">Cancel</button>
+    <button type="button" class="btn btn-danger" id="quit">Quit</button>
+  </div>
+</main>
+</body>
+</html>

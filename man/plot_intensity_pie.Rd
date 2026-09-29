@@ -18,7 +18,10 @@ plot_intensity_pie(
   show_thresholds = TRUE,
   colorblind_safe = FALSE,
   title = "Activity Intensity Distribution",
-  subtitle = NULL
+  subtitle = NULL,
+  thresholds = NULL,
+  unit = "CPM",
+  cutpoint_label = NULL
 )
 }
 \arguments{
@@ -49,6 +52,13 @@ plot_intensity_pie(
 \item{title}{Character. Plot title (default: "Activity Intensity Distribution")}
 
 \item{subtitle}{Character. Optional plot subtitle (default: NULL)}
+
+\item{thresholds}{Optional named numeric vector of intensity thresholds. NULL
+looks the count cut points up by name}
+
+\item{unit}{Character. Unit of the values and thresholds (default: "CPM")}
+
+\item{cutpoint_label}{Character. Optional cut point name for the subtitle}
 }
 \value{
 A ggplot2 object

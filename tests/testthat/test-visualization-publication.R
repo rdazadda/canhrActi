@@ -4,8 +4,6 @@
 # Acceleration Distribution Tests
 
 test_that("plot_acceleration_distribution creates plot with valid data", {
-  skip_if_not_installed("ggplot2")
-
   set.seed(42)
   data <- data.frame(axis1 = abs(rnorm(1000, mean = 200, sd = 100)))
 
@@ -15,8 +13,6 @@ test_that("plot_acceleration_distribution creates plot with valid data", {
 })
 
 test_that("plot_acceleration_distribution accepts numeric vector", {
-  skip_if_not_installed("ggplot2")
-
   set.seed(42)
   acc <- abs(rnorm(500, mean = 150, sd = 80))
 
@@ -26,8 +22,6 @@ test_that("plot_acceleration_distribution accepts numeric vector", {
 })
 
 test_that("plot_acceleration_distribution handles wear time filter", {
-  skip_if_not_installed("ggplot2")
-
   set.seed(42)
   data <- data.frame(axis1 = abs(rnorm(1000, mean = 200, sd = 100)))
   wear <- rep(TRUE, 1000)
@@ -39,8 +33,6 @@ test_that("plot_acceleration_distribution handles wear time filter", {
 })
 
 test_that("plot_acceleration_distribution supports different types", {
-  skip_if_not_installed("ggplot2")
-
   set.seed(42)
   acc <- abs(rnorm(500, mean = 150, sd = 80))
 
@@ -54,15 +46,15 @@ test_that("plot_acceleration_distribution supports different types", {
 })
 
 test_that("plot_acceleration_distribution validates input", {
-  expect_error(plot_acceleration_distribution("not numeric"))
-  expect_error(plot_acceleration_distribution(data.frame(x = 1:10), acc_col = "missing"))
+  expect_error(plot_acceleration_distribution("not numeric"),
+               "data must be a data.frame or numeric vector")
+  expect_error(plot_acceleration_distribution(data.frame(x = 1:10), acc_col = "missing"),
+               "Column 'missing' not found in data")
 })
 
 # Intensity Bins Tests
 
 test_that("plot_intensity_bins creates plot", {
-  skip_if_not_installed("ggplot2")
-
   set.seed(42)
   acc <- abs(rnorm(500, mean = 100, sd = 60))
 
@@ -72,8 +64,6 @@ test_that("plot_intensity_bins creates plot", {
 })
 
 test_that("plot_intensity_bins handles data frame input", {
-  skip_if_not_installed("ggplot2")
-
   set.seed(42)
   data <- data.frame(axis1 = abs(rnorm(500, mean = 100, sd = 60)))
 
@@ -85,8 +75,6 @@ test_that("plot_intensity_bins handles data frame input", {
 # Activity Clock Tests
 
 test_that("plot_activity_clock creates circular plot", {
-  skip_if_not_installed("ggplot2")
-
   set.seed(42)
   n <- 1440
   data <- data.frame(
@@ -100,8 +88,6 @@ test_that("plot_activity_clock creates circular plot", {
 })
 
 test_that("plot_activity_clock shows sleep window", {
-  skip_if_not_installed("ggplot2")
-
   set.seed(42)
   n <- 1440
   data <- data.frame(
@@ -117,8 +103,6 @@ test_that("plot_activity_clock shows sleep window", {
 # Activity Heatmap with Wear Time Tests
 
 test_that("plot_activity_heatmap_wear creates heatmap", {
-  skip_if_not_installed("ggplot2")
-
   set.seed(42)
   n <- 1440 * 3  # 3 days
   data <- data.frame(
@@ -132,8 +116,6 @@ test_that("plot_activity_heatmap_wear creates heatmap", {
 })
 
 test_that("plot_activity_heatmap_wear shows non-wear overlay", {
-  skip_if_not_installed("ggplot2")
-
   set.seed(42)
   n <- 1440 * 2
   data <- data.frame(
@@ -148,11 +130,18 @@ test_that("plot_activity_heatmap_wear shows non-wear overlay", {
   expect_s3_class(p, "gg")
 })
 
+test_that("plot_activity_heatmap_wear puts each hour on the day of its own clock", {
+  # 18:00 to 23:59 in Anchorage is already the next day in UTC
+  ts <- seq(as.POSIXct("2024-03-04 18:00:00", tz = "America/Anchorage"), by = "1 min", length.out = 360)
+  p <- plot_activity_heatmap_wear(data.frame(timestamp = ts, axis1 = 100))
+  cells <- p$data[order(p$data$hour), ]
+  expect_equal(cells$hour, 18:23)
+  expect_equal(cells$date, rep(as.Date("2024-03-04"), 6))
+})
+
 # Publication Export Tests
 
 test_that("export_publication_figure saves file", {
-  skip_if_not_installed("ggplot2")
-
   set.seed(42)
   p <- ggplot2::ggplot(data.frame(x = 1:10, y = rnorm(10)),
                        ggplot2::aes(x, y)) + ggplot2::geom_point()
@@ -166,8 +155,6 @@ test_that("export_publication_figure saves file", {
 })
 
 test_that("export_publication_figure applies journal presets", {
-  skip_if_not_installed("ggplot2")
-
   set.seed(42)
   p <- ggplot2::ggplot(data.frame(x = 1:10, y = rnorm(10)),
                        ggplot2::aes(x, y)) + ggplot2::geom_point()
@@ -184,7 +171,6 @@ test_that("export_publication_figure applies journal presets", {
 # Multi-Panel Figure Tests
 
 test_that("create_multipanel_figure combines plots", {
-  skip_if_not_installed("ggplot2")
   skip_if_not_installed("patchwork")
 
   p1 <- ggplot2::ggplot(data.frame(x = 1:10), ggplot2::aes(x)) +

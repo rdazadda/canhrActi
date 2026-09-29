@@ -61,7 +61,7 @@ read.accelerometer <- function(filepath,
   if (verbose) cat("Reading ActiGraph AGD file\n")
 
   # Use existing read.agd function
-  agd_data <- read.agd(filepath)
+  agd_data <- read.agd(filepath, verbose = verbose)
   counts_data <- agd.counts(agd_data)
 
   list(

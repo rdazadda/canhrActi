@@ -2,7 +2,6 @@
 # canonical IS/IV, locale-independent weekend, >7-day colors).
 
 test_that("plot_intensity_area does not smear non-contiguous intensities", {
-  skip_if_not_installed("ggplot2")
   ts <- as.POSIXct("2024-01-06 00:00", tz = "UTC") + (0:(3 * 60 - 1)) * 60
   intensity <- ifelse(format(ts, "%H") == "01", "moderate", "sedentary")
   p <- plot_intensity_area(data.frame(timestamp = ts, intensity = intensity),
@@ -14,7 +13,6 @@ test_that("plot_intensity_area does not smear non-contiguous intensities", {
 })
 
 test_that("plot_daily_summary_bars converts epoch counts to minutes", {
-  skip_if_not_installed("ggplot2")
   daily <- data.frame(date = as.Date(c("2024-01-06", "2024-01-07")),
                       sedentary = c(800, 600), light = c(200, 300),
                       moderate = c(40, 50), vigorous = c(10, 5), very_vigorous = c(2, 0))
@@ -26,7 +24,6 @@ test_that("plot_daily_summary_bars converts epoch counts to minutes", {
 })
 
 test_that("plot_is_iv fallback matches the canonical IS/IV engine", {
-  skip_if_not_installed("ggplot2")
   set.seed(1)
   ts <- as.POSIXct("2024-01-06", tz = "UTC") + (0:(4 * 1440 - 1)) * 60
   act <- pmax(0, 100 + 80 * cos(2 * pi * (as.numeric(difftime(ts, ts[1], units = "hours")) - 14) / 24) +
@@ -39,7 +36,6 @@ test_that("plot_is_iv fallback matches the canonical IS/IV engine", {
 })
 
 test_that("plot_weekend_weekday classifies Sat/Sun as weekend (locale-independent)", {
-  skip_if_not_installed("ggplot2")
   # Fri 2024-01-05 .. Mon 2024-01-08 spans Sat+Sun.
   ts <- as.POSIXct("2024-01-05 00:00", tz = "UTC") + (0:(4 * 1440 - 1)) * 60
   p <- plot_weekend_weekday(data.frame(timestamp = ts, axis1 = rep(100, length(ts))))
@@ -47,7 +43,6 @@ test_that("plot_weekend_weekday classifies Sat/Sun as weekend (locale-independen
 })
 
 test_that("plot_circadian_polar accepts HH:MM / POSIXct / integer onsets", {
-  skip_if_not_installed("ggplot2")
   set.seed(1); n <- 5 * 1440
   ts <- as.POSIXct("2024-01-06", tz = "UTC") + (seq_len(n) - 1) * 60
   th <- as.numeric(difftime(ts, ts[1], units = "hours"))
@@ -59,7 +54,6 @@ test_that("plot_circadian_polar accepts HH:MM / POSIXct / integer onsets", {
 })
 
 test_that("plot_day_comparison handles more than 7 days without error", {
-  skip_if_not_installed("ggplot2")
   ts <- as.POSIXct("2024-01-01", tz = "UTC") + (0:(9 * 1440 - 1)) * 60  # 9 days
   set.seed(2)
   d <- data.frame(timestamp = ts, axis1 = pmax(0, rnorm(length(ts), 200, 150)))
@@ -78,7 +72,6 @@ test_that("plot_day_comparison handles more than 7 days without error", {
 }
 
 test_that("plot_bout_histogram / lorenz / transition_matrix render", {
-  skip_if_not_installed("ggplot2")
   fr <- .vp_frag()
   expect_s3_class(plot_bout_histogram(fr), "ggplot")
   expect_s3_class(plot_bout_lorenz(fr), "ggplot")
@@ -86,7 +79,6 @@ test_that("plot_bout_histogram / lorenz / transition_matrix render", {
 })
 
 test_that("plot_bout_lorenz curve is monotonic and ends at 100%", {
-  skip_if_not_installed("ggplot2")
   p <- plot_bout_lorenz(.vp_frag())
   d <- p$data
   expect_true(all(diff(d$pct_time) >= -1e-9))      # monotone non-decreasing
@@ -95,13 +87,11 @@ test_that("plot_bout_lorenz curve is monotonic and ends at 100%", {
 })
 
 test_that("plot_transition_matrix probabilities are in [0,1]", {
-  skip_if_not_installed("ggplot2")
   p <- plot_transition_matrix(.vp_frag())
   expect_true(all(p$data$prob >= 0 & p$data$prob <= 1))
 })
 
 test_that("plot_actogram accepts L5/M10/sleep overlays + sqrt scale", {
-  skip_if_not_installed("ggplot2")
   set.seed(1); epl <- 60; n <- 6 * 1440
   ts <- as.POSIXct("2024-01-06", tz = "UTC") + (seq_len(n) - 1) * epl
   th <- as.numeric(difftime(ts, ts[1], units = "hours")); hod <- th %% 24
@@ -115,7 +105,6 @@ test_that("plot_actogram accepts L5/M10/sleep overlays + sqrt scale", {
 })
 
 test_that("plot_light_exposure renders + handles missing lux", {
-  skip_if_not_installed("ggplot2")
   ts <- as.POSIXct("2024-01-06", tz = "UTC") + (0:(3 * 1440 - 1)) * 60
   hod <- as.numeric(format(ts, "%H"))
   d <- data.frame(timestamp = ts, lux = pmax(0, ifelse(hod >= 8 & hod < 20, 300, 2)))
@@ -123,7 +112,6 @@ test_that("plot_light_exposure renders + handles missing lux", {
 })
 
 test_that("new sedentary plots degrade gracefully", {
-  skip_if_not_installed("ggplot2")
   expect_s3_class(plot_bout_histogram(list(bouts = NULL)), "ggplot")
   expect_s3_class(plot_bout_lorenz(list(bouts = NULL)), "ggplot")
   expect_s3_class(plot_transition_matrix(list(ASTP = NA_real_, SATP = NA_real_)), "ggplot")

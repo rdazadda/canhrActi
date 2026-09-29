@@ -4,12 +4,14 @@
 \alias{.export.actilife.sleep}
 \title{Export Sleep Data to ActiLife Format (Internal)}
 \usage{
-.export.actilife.sleep(results.list, output_dir)
+.export.actilife.sleep(results.list, output_dir, verbose = TRUE)
 }
 \arguments{
 \item{results.list}{List of individual sleep results}
 
 \item{output_dir}{Output directory}
+
+\item{verbose}{Print the paths written? (default: TRUE)}
 }
 \description{
 Internal function called by batch_sleep.R to export ActiLife-compatible files.

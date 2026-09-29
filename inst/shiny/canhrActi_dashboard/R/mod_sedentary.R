@@ -3,364 +3,246 @@
 #' Clean, insight-focused analysis of sedentary behavior patterns
 #' Emphasizes actionable health insights over raw metrics
 
+# One chart panel at the top and the Summary table underneath, one row per
+# recording with a bar for the Prolonged % column.
+
 mod_sedentary_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
-    # Page Header
-    page_header(
-      icon_name = "couch",
-      title = "Sedentary Behavior Analysis",
-      subtitle = "Sedentary behavior patterns",
-      status_output_id = ns("analysis_status_badge")
+    tags$div(
+      class = "sd-page",
+      uiOutput(ns("switch"), class = "sd-out"),
+      uiOutput(ns("rule"), class = "sd-out"),
+      tags$div(id = ns("settings_panel"), class = "sd-settings", style = "display: none;",
+               sd_settings_panel(ns)),
+      uiOutput(ns("figures"), class = "sd-out"),
+      uiOutput(ns("plot_panel"), class = "sd-out sd-plot-out"),
+      uiOutput(ns("table_panel"), class = "sd-out sd-table-out"),
+
+      # Hidden; the chooser and a row click both set it
+      tags$div(class = "sd-hidden",
+        selectInput(ns("file_select"), NULL,
+                    choices = c("All files (average)" = "all"), selectize = FALSE),
+        # which of the three hero views the shared plot output draws
+        selectInput(ns("hero_chart_type"), NULL,
+                    choices = c("Timeline view" = "timeline", "Hourly Heatmap" = "heatmap",
+                                "Bout Occurrence" = "occurrence"),
+                    selected = "timeline", selectize = FALSE)),
+
+      tags$div(id = ns("processing_indicator"), class = "sd-busy", style = "display: none;",
+               tags$span(class = "sd-spinner", `aria-hidden` = "true"),
+               tags$span("Analysing"))
     ),
-
-    # CONTROLS BAR - Compact, clean
-    fluidRow(
-      column(12,
-        div(
-          class = "control-bar",
-          fluidRow(
-            column(3,
-              actionButton(ns("analyze"), span(icon("play"), "Run Analysis"),
-                          class = "btn-primary btn-block")
-            ),
-            column(3,
-              selectInput(ns("file_select"), NULL,
-                         choices = c("All Files (Average)" = "all"),
-                         width = "100%")
-            ),
-            column(3,
-              selectInput(ns("cut_points"), NULL,
-                         choices = c("Freedson (1998)" = "freedson",
-                                    "CANHR (2025)" = "canhr"),
-                         selected = "freedson", width = "100%")
-            ),
-            column(3,
-              tags$details(
-                class = "sed-advanced-details",
-                tags$summary(
-                  class = "sed-advanced-summary",
-                  icon("sliders-h"), " Advanced"
-                ),
-                div(
-                  class = "sed-advanced-panel",
-                  sliderInput(ns("prolonged_threshold"), "Prolonged Bout Threshold",
-                             min = 20, max = 60, value = 30, step = 5, post = " min"),
-                  sliderInput(ns("min_bout_duration"), "Minimum Bout Duration",
-                             min = 1, max = 10, value = 1, step = 1, post = " min"),
-                  sliderInput(ns("min_break_length"), "Gap Bridging (Healy)",
-                             min = 1, max = 10, value = 5, step = 1, post = " min"),
-                  div(
-                    style = "margin-top: 10px; padding: 8px; background: #f8fafc; border-radius: 4px; border-left: 3px solid #236192;",
-                    checkboxInput(ns("include_sleep"), "Include Sleep in Sedentary (uncheck to exclude)", value = FALSE),
-                    tags$small(
-                      style = "color: #64748b; display: block; margin-top: -8px;",
-                      "SBRN recommends: sedentary = waking behavior only"
-                    )
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
-    ),
-
-    # KEY METRICS STRIP - Compact horizontal display
-    fluidRow(
-      column(12,
-        div(
-          class = "metrics-strip metrics-strip--transparent",
-          uiOutput(ns("metric_sed_percent")),
-          uiOutput(ns("metric_breaks_hr")),
-          uiOutput(ns("metric_typical_bout")),
-          uiOutput(ns("metric_alpha"))
-        )
-      )
-    ),
-
-    # HERO CHART - Daily Sedentary Pattern (Large, Primary Focus)
-    fluidRow(
-      column(12,
-        div(
-          class = "card",
-          div(
-            class = "card-header",
-            div(class = "stack stack--gap-1",
-              div(class = "card-title", "Daily Sedentary Pattern"),
-              div(class = "card-subtitle", "When and how long you sit throughout the day")
-            ),
-            div(
-              selectInput(ns("hero_chart_type"), NULL,
-                         choices = c("Timeline View" = "timeline",
-                                    "Hourly Heatmap" = "heatmap",
-                                    "Bout Occurrence" = "occurrence"),
-                         selected = "timeline", width = "180px")
-            )
-          ),
-          div(class = "card-body",
-            plotOutput(ns("hero_chart"), height = "320px")
-          )
-        )
-      )
-    ),
-
-    # TWO-COLUMN LAYOUT: Fragmentation Insights + Prolonged Warnings
-    fluidRow(
-      # LEFT: Fragmentation Insights Card
-      column(6,
-        div(
-          class = "card",
-          div(class = "card-header",
-            div(class = "card-title", "Fragmentation Pattern")
-          ),
-          div(class = "card-body",
-            uiOutput(ns("fragmentation_insight_card"))
-          )
-        )
-      ),
-      # RIGHT: Prolonged Sedentary Warnings
-      column(6,
-        div(
-          class = "card",
-          div(class = "card-header",
-            div(class = "card-title", "Prolonged Sitting Alert")
-          ),
-          div(class = "card-body",
-            uiOutput(ns("prolonged_warning_card"))
-          )
-        )
-      )
-    ),
-
-    # BOUT ANALYSIS - Tabbed Interface
-    fluidRow(
-      column(12,
-        div(
-          class = "card",
-          div(class = "card-header",
-            div(class = "card-title", "Detailed Bout Analysis")
-          ),
-          div(class = "card-body",
-          tabsetPanel(
-            id = ns("bout_tabs"),
-            type = "pills",
-
-            # Tab 1: Bout Distribution
-            tabPanel(
-              "Distribution",
-              div(class = "py-4",
-                fluidRow(
-                  column(6, plotOutput(ns("bout_histogram"), height = "300px")),
-                  column(6, plotOutput(ns("bout_categories"), height = "300px"))
-                )
-              )
-            ),
-
-            # Tab 2: Accumulation & Survival
-            tabPanel(
-              "Accumulation",
-              div(class = "py-4",
-                fluidRow(
-                  column(6, plotOutput(ns("accumulation_curve"), height = "300px")),
-                  column(6, plotOutput(ns("survival_curve"), height = "300px"))
-                )
-              )
-            ),
-
-            # Tab 3: Hourly Patterns
-            tabPanel(
-              "Hourly Breakdown",
-              div(class = "py-4",
-                fluidRow(
-                  column(6, plotOutput(ns("hourly_bouts"), height = "300px")),
-                  column(6, plotOutput(ns("hourly_duration"), height = "300px"))
-                )
-              )
-            ),
-
-            # Tab 4: Transitions
-            tabPanel(
-              "State Transitions",
-              div(class = "py-4",
-                fluidRow(
-                  column(6, plotOutput(ns("transition_matrix"), height = "300px")),
-                  column(6,
-                    div(
-                      class = "sed-help-panel",
-                      h5(class = "sed-help-title", "Understanding Transitions"),
-                      p(class = "sed-help-text",
-                        tags$strong("SATP"), " (Sedentary to Active Transition Probability): ",
-                        "Higher values indicate more frequent breaks from sitting. ",
-                        "Values above 0.05 suggest good movement patterns."
-                      ),
-                      hr(class = "my-3"),
-                      p(class = "sed-help-text",
-                        tags$strong("ASTP"), " (Active to Sedentary Transition Probability): ",
-                        "Lower values mean activity bouts are sustained longer. ",
-                        "Balance between SATP and ASTP reflects overall movement quality."
-                      )
-                    )
-                  )
-                )
-              )
-            ),
-
-            # Tab 5: Break Patterns (inter-bout intervals)
-            tabPanel(
-              "Break Patterns",
-              div(class = "py-4",
-                uiOutput(ns("ibi_analysis_output"))
-              )
-            )
-          )
-          )
-        )
-      )
-    ),
-
-    # EXPERT METRICS - Collapsible Panel
-    fluidRow(
-      column(12,
-        tags$details(
-          class = "expert-panel",
-          tags$summary(
-            "Expert Metrics: transitions & regularity, distribution shape (alpha + GoF), usual bout duration (W25/50/75/90), bout statistics"
-          ),
-          div(
-            class = "expert-content pt-4",
-            fluidRow(
-              # Transition Probabilities
-              column(3,
-                div(class = "expert-group",
-                  h5("Transitions & Regularity"),
-                  div(class = "adv-metric",
-                    div(class = "adv-metric-value", textOutput(ns("exp_satp"), inline = TRUE)),
-                    div(class = "adv-metric-label", "SATP"),
-                    div(class = "adv-metric-desc", "Sed to Active")
-                  ),
-                  div(class = "adv-metric",
-                    div(class = "adv-metric-value", textOutput(ns("exp_astp"), inline = TRUE)),
-                    div(class = "adv-metric-label", "ASTP"),
-                    div(class = "adv-metric-desc", "Active to Sed")
-                  ),
-                  div(class = "adv-metric",
-                    div(class = "adv-metric-value", textOutput(ns("exp_abi"), inline = TRUE)),
-                    div(class = "adv-metric-label", "ABI"),
-                    div(class = "adv-metric-desc", "Balance Index")
-                  ),
-                  div(class = "adv-metric",
-                    div(class = "adv-metric-value", textOutput(ns("exp_sri"), inline = TRUE)),
-                    div(class = "adv-metric-label", "SRI"),
-                    div(class = "adv-metric-desc", "Day-to-day Regularity")
-                  )
-                )
-              ),
-              # Distribution Shape
-              column(3,
-                div(class = "expert-group",
-                  h5("Distribution Shape"),
-                  div(class = "adv-metric",
-                    div(class = "adv-metric-value", textOutput(ns("exp_alpha"), inline = TRUE)),
-                    div(class = "adv-metric-label", "Alpha"),
-                    div(class = "adv-metric-desc", "Power-Law Exponent")
-                  ),
-                  div(class = "adv-metric",
-                    div(class = "adv-metric-value", textOutput(ns("exp_gini"), inline = TRUE)),
-                    div(class = "adv-metric-label", "Gini"),
-                    div(class = "adv-metric-desc", "Inequality Index")
-                  ),
-                  div(class = "adv-metric",
-                    div(class = "adv-metric-value", textOutput(ns("exp_gof"), inline = TRUE)),
-                    div(class = "adv-metric-label", "GoF p"),
-                    div(class = "adv-metric-desc", "Power-law Fit (Clauset)")
-                  ),
-                  div(class = "adv-metric",
-                    div(class = "adv-metric-value", textOutput(ns("exp_dist_type"), inline = TRUE)),
-                    div(class = "adv-metric-label", "Distribution"),
-                    div(class = "adv-metric-desc", "Best Fit Model")
-                  )
-                )
-              ),
-              # Weighted Percentiles
-              column(3,
-                div(class = "expert-group",
-                  h5("Weighted Bout Percentiles"),
-                  div(class = "adv-metric",
-                    div(class = "adv-metric-value", textOutput(ns("exp_w25"), inline = TRUE)),
-                    div(class = "adv-metric-label", "W25"),
-                    div(class = "adv-metric-desc", "25th Percentile")
-                  ),
-                  div(class = "adv-metric",
-                    div(class = "adv-metric-value", textOutput(ns("exp_w50"), inline = TRUE)),
-                    div(class = "adv-metric-label", "W50"),
-                    div(class = "adv-metric-desc", "Usual Bout Duration")
-                  ),
-                  div(class = "adv-metric",
-                    div(class = "adv-metric-value", textOutput(ns("exp_w75"), inline = TRUE)),
-                    div(class = "adv-metric-label", "W75"),
-                    div(class = "adv-metric-desc", "75th Percentile")
-                  ),
-                  div(class = "adv-metric",
-                    div(class = "adv-metric-value", textOutput(ns("exp_w90"), inline = TRUE)),
-                    div(class = "adv-metric-label", "W90"),
-                    div(class = "adv-metric-desc", "90th Percentile")
-                  )
-                )
-              ),
-              # Bout Statistics
-              column(3,
-                div(class = "expert-group",
-                  h5("Bout Statistics"),
-                  div(class = "adv-metric",
-                    div(class = "adv-metric-value", textOutput(ns("exp_total_bouts"), inline = TRUE)),
-                    div(class = "adv-metric-label", "Total Bouts"),
-                    div(class = "adv-metric-desc", "Count")
-                  ),
-                  div(class = "adv-metric",
-                    div(class = "adv-metric-value", textOutput(ns("exp_mean_bout"), inline = TRUE)),
-                    div(class = "adv-metric-label", "Mean Bout"),
-                    div(class = "adv-metric-desc", "Average Duration")
-                  ),
-                  div(class = "adv-metric",
-                    div(class = "adv-metric-value", textOutput(ns("exp_max_bout"), inline = TRUE)),
-                    div(class = "adv-metric-label", "Max Bout"),
-                    div(class = "adv-metric-desc", "Longest Session")
-                  ),
-                  div(class = "adv-metric",
-                    div(class = "adv-metric-value", textOutput(ns("exp_weibull"), inline = TRUE)),
-                    div(class = "adv-metric-label", "Weibull k"),
-                    div(class = "adv-metric-desc", "Bout Hazard Shape")
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
-    ),
-
-    # DATA TABLE & EXPORT
-    fluidRow(
-      column(12,
-        div(
-          class = "card",
-          div(class = "card-header",
-            div(class = "card-title", "All Subjects Summary"),
-            div(
-              class = "btn-group",
-              downloadButton(ns("dl_workbook"), span(icon("file-excel"), "Download Workbook (XLSX)"),
-                            class = "btn-success btn-sm")
-            )
-          ),
-          div(class = "card-body",
-            DT::dataTableOutput(ns("summary_table"))
-          )
-        )
-      )
-    )
+    tags$script(HTML(sd_page_script(ns(""))))
   )
+}
+
+# The charts the page draws, in their groups
+sd_charts <- function() {
+  list(
+    list(key = "timeline",       label = "Timeline",           out = "hero_chart",         group = "The day",      hero = "timeline"),
+    list(key = "heatmap",        label = "Hourly heatmap",     out = "hero_chart",         group = "The day",      hero = "heatmap"),
+    list(key = "occurrence",     label = "Bout occurrence",    out = "hero_chart",         group = "The day",      hero = "occurrence"),
+    list(key = "histogram",      label = "Bout histogram",     out = "bout_histogram",     group = "Distribution"),
+    list(key = "categories",     label = "Bout categories",    out = "bout_categories",    group = "Distribution"),
+    list(key = "accumulation",   label = "Accumulation curve", out = "accumulation_curve", group = "Accumulation"),
+    list(key = "survival",       label = "Survival curve",     out = "survival_curve",     group = "Accumulation"),
+    list(key = "hourlybouts",    label = "Bouts by hour",      out = "hourly_bouts",       group = "Hourly"),
+    list(key = "hourlyduration", label = "Duration by hour",   out = "hourly_duration",    group = "Hourly"),
+    list(key = "transitions",    label = "State transitions",  out = "transition_matrix",  group = "Transitions")
+  )
+}
+
+# Settings panel: every parameter the run reads
+sd_settings_panel <- function(ns) {
+  field <- function(label, control, note) {
+    tags$div(class = "sd-field",
+      tags$div(class = "sd-field-k", label),
+      control,
+      tags$div(class = "sd-field-n", note))
+  }
+  num <- function(id, value, unit, ...) {
+    tags$div(class = "sd-num",
+      numericInput(ns(id), NULL, value = value, width = "100%", ...),
+      tags$span(class = "sd-unit", `aria-hidden` = "true", unit))
+  }
+
+  tags$div(
+    class = "sd-panel sd-settings-grid",
+    tags$div(
+      class = "sd-fields",
+      field("Cut points",
+            tags$div(class = "sd-select",
+              selectInput(ns("cut_points"), NULL,
+                          choices = c("Freedson (1998)" = "freedson", "CANHR (2025)" = "canhr"),
+                          selected = "freedson", width = "100%", selectize = FALSE)),
+            "what counts as sedentary"),
+      field("Prolonged bout at", num("prolonged_threshold", 30, "min", min = 20, max = 60, step = 5),
+            "what the Prolonged % column counts"),
+      field("Gap bridging", num("min_break_length", 5, "min", min = 1, max = 10, step = 1),
+            "Healy: a shorter break does not end a bout"),
+      field("Sleep",
+            tags$div(class = "sd-check",
+              checkboxInput(ns("include_sleep"), "Count sleep as sedentary", value = FALSE)),
+            "SBRN: sedentary is waking behaviour")
+    ),
+    tags$div(class = "sd-settings-foot",
+      tags$span(class = "sd-spacer"),
+      # rendered, because the note depends on the family
+      uiOutput(ns("settings_foot"), inline = TRUE))
+  )
+}
+
+# Page script. The menus open and close client side; Export starts the
+# download inside the click itself, through a hidden iframe, since a browser
+# allows a download only during a user action.
+sd_page_script <- function(ns_prefix) {
+  js <- "
+(function () {
+  var NS = '__NS__';
+  function setVal(name, value) { Shiny.setInputValue(NS + name, value, { priority: 'event' }); }
+  function closeMenus() {
+    document.querySelectorAll('.sd-page .sd-menu, .sd-page .sd-whomenu, .sd-page .sd-gomenu, .sd-page .sd-exportmenu').forEach(function (m) {
+      m.style.display = 'none';
+    });
+    document.querySelectorAll('.sd-page .sd-pick, .sd-page .sd-who, .sd-page .sd-export-btn').forEach(function (b) {
+      b.classList.remove('is-open');
+    });
+  }
+  function toggleMenu(button, menu) {
+    var open = menu && menu.style.display !== 'none';
+    closeMenus();
+    if (menu && !open) { menu.style.display = 'block'; button.classList.add('is-open'); }
+  }
+
+  // Go to: the scrolling columns start just right of the two pinned ones
+  function gridOf(el) {
+    var panel = el.closest('.sd-tablepanel');
+    return panel && panel.querySelector('.sd-scroll');
+  }
+  function pinEdge(sc) {
+    var pin = sc.querySelector('th.sd-p1');
+    return (pin || sc).getBoundingClientRect()[pin ? 'right' : 'left'];
+  }
+  function markGroup(go, menu) {
+    var sc = gridOf(go);
+    if (!sc || !menu) return;
+    var edge = pinEdge(sc), cur = 0;
+    sc.querySelectorAll('th.sd-gg').forEach(function (t, i) {
+      if (t.getBoundingClientRect().left <= edge + 1) cur = i;
+    });
+    menu.querySelectorAll('.sd-gi').forEach(function (it) {
+      var on = Number(it.dataset.go) === cur;
+      it.classList.toggle('is-on', on);
+      it.querySelector('.sd-tick').textContent = on ? '\\u2713' : '';
+    });
+  }
+  function goToGroup(item) {
+    var sc = gridOf(item);
+    var th = sc && sc.querySelectorAll('th.sd-gg')[Number(item.dataset.go)];
+    if (th) sc.scrollLeft += th.getBoundingClientRect().left - pinEdge(sc);
+  }
+
+  function fireAll(row) {
+    var ids = ['dl_workbook'];
+    var sent = 0;
+    ids.forEach(function (id) {
+      var a = document.getElementById(NS + id);
+      var href = a && a.getAttribute('href');
+      if (!href) return;
+      var f = document.createElement('iframe');
+      f.style.display = 'none';
+      f.src = href;
+      document.body.appendChild(f);
+      setTimeout(function () { if (f.parentNode) f.parentNode.removeChild(f); }, 120000);
+      sent++;
+    });
+    var label = row.querySelector('.sd-ei-label');
+    if (label) {
+      if (!label.dataset.rest) label.dataset.rest = label.textContent;
+      label.textContent = sent ? 'Workbook sent to your downloads folder' : 'Nothing to export yet';
+      row.classList.toggle('is-done', sent > 0);
+      clearTimeout(row._t);
+      row._t = setTimeout(function () {
+        label.textContent = label.dataset.rest;
+        row.classList.remove('is-done');
+        closeMenus();
+      }, 2600);
+    }
+  }
+
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest || !e.target.closest('.sd-page')) { closeMenus(); return; }
+
+    var go = e.target.closest('.sd-page .sd-goto');
+    if (go) {
+      var gm = go.parentNode.querySelector('.sd-gomenu');
+      markGroup(go, gm);
+      toggleMenu(go, gm);
+      return;
+    }
+
+    var gi = e.target.closest('.sd-page .sd-gi[data-go]');
+    if (gi) { closeMenus(); goToGroup(gi); return; }
+
+    var pick = e.target.closest('.sd-page .sd-pick');
+    if (pick) { toggleMenu(pick, document.querySelector('.sd-page .sd-menu')); return; }
+
+    var mi = e.target.closest('.sd-page .sd-mi[data-chart]');
+    if (mi) { closeMenus(); setVal('chart_pick', mi.dataset.chart); return; }
+
+    var who = e.target.closest('.sd-page .sd-who');
+    if (who) { toggleMenu(who, document.querySelector('.sd-page .sd-whomenu')); return; }
+
+    var wi = e.target.closest('.sd-page .sd-wi[data-who]');
+    if (wi) {
+      var fid = wi.dataset.who;
+      document.querySelectorAll('.sd-page .sd-row[data-fid]').forEach(function (r) {
+        r.classList.toggle('is-selected', fid !== 'all' && r.dataset.fid === fid);
+      });
+      closeMenus();
+      setVal('pick', fid);
+      return;
+    }
+
+    var ex = e.target.closest('.sd-page .sd-export-btn');
+    if (ex) { toggleMenu(ex, document.getElementById(NS + 'export_menu')); return; }
+
+    var all = e.target.closest('.sd-page .sd-ei-all');
+    if (all) { fireAll(all); return; }
+
+    if (e.target.closest('.sd-page .sd-exportmenu')) return;
+
+    var row = e.target.closest('.sd-page .sd-row[data-fid]');
+    if (row) {
+      var was = row.classList.contains('is-selected');
+      document.querySelectorAll('.sd-page .sd-row.is-selected').forEach(function (r) { r.classList.remove('is-selected'); });
+      if (!was) row.classList.add('is-selected');
+      setVal('pick', was ? 'all' : row.dataset.fid);
+      closeMenus();
+      return;
+    }
+
+    closeMenus();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { closeMenus(); return; }
+    if (!e.target.closest || !e.target.closest('.sd-page')) return;
+    var row = e.target.closest('.sd-row[data-fid]');
+    if (!row) return;
+    var rows = Array.prototype.slice.call(document.querySelectorAll('.sd-page .sd-row[data-fid]'));
+    var i = rows.indexOf(row);
+    var next = null;
+    if (e.key === 'ArrowDown') next = rows[Math.min(i + 1, rows.length - 1)];
+    else if (e.key === 'ArrowUp') next = rows[Math.max(i - 1, 0)];
+    else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); row.click(); return; }
+    if (next) { e.preventDefault(); next.focus(); next.click(); }
+  });
+})();
+"
+  sub("__NS__", ns_prefix, js, fixed = TRUE)
 }
 
 mod_sedentary_server <- function(id, shared) {
@@ -368,33 +250,395 @@ mod_sedentary_server <- function(id, shared) {
     ns <- session$ns
 
     results <- reactiveVal(list())
-    # Update file selector when files change
+    not_scored <- reactiveVal(list())
+
+    # The Counts/Raw switch picks which recordings and which threshold, never
+    # which analysis; both sides run this page's engine
+    local_fam <- reactiveVal(NULL)
+    res_fam <- reactiveValues(counts = list(), raw = list())
+    not_scored_fam <- reactiveValues(counts = list(), raw = list())
+
     observe({
-      files <- shared$files
-      if (length(files) > 0) {
-        choices <- c("All Files (Average)" = "all")
-        for (fid in names(files)) {
-          f <- files[[fid]]
-          choices[f$subject_info$id] <- fid
-        }
-        updateSelectInput(session, "file_select", choices = choices)
+      fams <- circ_families(shared)
+      cur <- isolate(local_fam())
+      if (length(fams) == 0) return(invisible(NULL))
+      if (is.null(cur) || !cur %in% fams) local_fam(circ_default_family(shared))
+    })
+    observeEvent(input$sd_fam_counts, local_fam("counts"))
+    observeEvent(input$sd_fam_raw, local_fam("raw"))
+
+    # The recording ids one family can show
+    fam_ids <- function(f) {
+      if (identical(f, "raw")) names(shared$raw %||% list()) else names(shared$files %||% list())
+    }
+
+    # Each side keeps its own run, and a choice from the other side does not carry over
+    observeEvent(local_fam(), {
+      f <- local_fam() %||% "counts"
+      results(res_fam[[f]] %||% list())
+      not_scored(not_scored_fam[[f]] %||% list())
+      cur <- input$file_select %||% "all"
+      if (!identical(cur, "all") && !cur %in% fam_ids(f)) {
+        updateSelectInput(session, "file_select",
+                          selected = focus_get(shared, among = fam_ids(f)) %||% "all")
       }
+    }, ignoreNULL = FALSE)
+
+    on_tab_shown(shared, "sedentary", function() {
+      id <- focus_get(shared, among = fam_ids(local_fam() %||% "counts"))
+      if (!is.null(id)) updateSelectInput(session, "file_select", selected = id)
+    })
+
+    output$switch <- renderUI({
+      fams <- circ_families(shared)
+      if (length(fams) < 2) return(NULL)
+      f <- local_fam() %||% "counts"
+      seg <- function(key, label, n) {
+        tags$button(id = ns(paste0("sd_fam_", key)), type = "button",
+                    class = paste("action-button ovr-seg-b", if (identical(f, key)) "is-on" else ""),
+                    label, tags$b(fmt_int(n)))
+      }
+      tags$div(class = "ovr-seg", role = "tablist",
+               seg("counts", "Counts", circ_n_counts(shared)),
+               seg("raw", "Raw", circ_n_raw(shared)))
+    })
+
+    output$settings_foot <- renderUI({
+      tags$span(class = "sd-field-n",
+        if (identical(local_fam() %||% "counts", "raw"))
+          "Wear comes from GGIR part 2 and the sleep window from part 3, already settled by the read."
+        else
+          "Needs the Wear time and Sleep analyses to have been run.")
+    })
+    outputOptions(output, "settings_foot", suspendWhenHidden = FALSE)
+
+    # The threshold list follows the family: count cut points, or the light
+    # boundary of the published raw cut points
+    observe({
+      ch <- sed_cut_choices(shared, local_fam() %||% "counts")
+      if (length(ch) == 0) return(invisible(NULL))
+      cur <- isolate(input$cut_points)
+      sel <- if (!is.null(cur) && cur %in% unname(ch)) cur else unname(ch)[1]
+      updateSelectInput(session, "cut_points", choices = ch, selected = sel)
+    })
+
+    # Drop the results of recordings removed on Overview, on both families
+    # (raw ids are never in names(shared$files))
+    sd_prune <- function() {
+      live <- c(names(shared$files %||% list()), names(shared$raw %||% list()))
+      for (f in c("counts", "raw")) {
+        r <- res_fam[[f]] %||% list()
+        if (!length(r)) next
+        keep <- intersect(names(r), live)
+        if (length(keep) != length(r)) res_fam[[f]] <- r[keep]
+      }
+      res <- results()
+      if (!length(res)) return(invisible(NULL))
+      keep <- intersect(names(res), live)
+      if (length(keep) == length(res)) return(invisible(NULL))
+      results(res[keep])
+      sh <- shared$results$sedentary %||% list()
+      drop <- setdiff(names(res), keep)
+      if (length(drop)) shared$results$sedentary <- sh[setdiff(names(sh), drop)]
+      invisible(NULL)
+    }
+    observeEvent(names(shared$files), sd_prune(), ignoreNULL = FALSE)
+    observeEvent(names(shared$raw), sd_prune(), ignoreNULL = FALSE)
+    run_stamp <- reactiveVal(NULL)
+
+    # file_select carries file ids, with "all" for the cohort
+
+    cut_label <- reactive({
+      paste0("Sedentary: ", sed_cut_label(shared, input$cut_points,
+                                          local_fam() %||% "counts"))
+    })
+
+    chart_pick <- reactiveVal("timeline")
+    observeEvent(input$chart_pick, {
+      chart_pick(input$chart_pick %||% "timeline")
+    })
+
+    # A pick by chooser or row click is the user's, so it becomes the focus
+    observeEvent(input$pick, {
+      updateSelectInput(session, "file_select", selected = input$pick %||% "all")
+      focus_set(shared, input$pick)
+    })
+
+    # Kept here because output$rule redraws Change and would lose a client class
+    settings_open <- reactiveVal(FALSE)
+    observeEvent(input$toggle_settings, {
+      settings_open(!settings_open())
+      shinyjs::toggle("settings_panel", condition = settings_open())
+    })
+
+    sel_fid <- reactive({
+      s <- input$file_select %||% "all"
+      if (identical(s, "all") || identical(s, "none")) NULL else s
+    })
+
+    # The Summary table's frame
+    summary_df <- reactive({
+      res <- results()
+      if (length(res) == 0) return(NULL)
+      tryCatch(sedentary_metrics_df(res, shared, cut_label()), error = function(e) {
+        message("sedentary_metrics_df failed: ", conditionMessage(e)); NULL
+      })
+    })
+    fid_by_row <- reactive({
+      res <- results()
+      vapply(res, function(r) as.character(r$file_id), character(1), USE.NAMES = FALSE)
+    })
+
+    # The rule bar
+    run_params <- reactive({
+      r <- results()
+      if (length(r) == 0) NULL else r[[1]]$parameters
+    })
+    settings_moved <- reactive({
+      settings_moved_from(run_params(), input, list(
+        cut_points = "cut_points", prolonged_threshold = "prolonged_threshold",
+        min_break_length = "min_break_length", include_sleep = "include_sleep"))
+    })
+
+    # One bar for both families, as label and value boxes. The counts side
+    # keeps its three-state wear and sleep wording: "excluded" and "excluded,
+    # sleep not scored" are different claims.
+    sd_rule_boxes <- function(p, n, fam) {
+      g <- function(k, v, sub = NULL) {
+        tags$span(class = "wt-rule-g",
+          tags$span(class = "wt-rule-k", k),
+          tags$span(class = "wt-rule-v", tags$b(v),
+                    if (!is.null(sub)) tags$span(class = "sd-rule-sub", sub)))
+      }
+      raw <- identical(fam, "raw")
+      gap <- p$min_break_length %||% input$min_break_length %||% 5
+      # Resolved as the run resolves it
+      ckey <- sed_resolve_cut(shared, p$cut_points %||% input$cut_points, fam)
+      spec <- if (raw) sed_cut_spec(shared, ckey) else NULL
+
+      thresh <- if (raw) {
+        if (!is.null(spec)) paste0(format(spec$light, trim = TRUE), " mg") else "not set"
+      } else if (identical(ckey, "canhr")) "150 CPM" else "100 CPM"
+      study <- if (raw) {
+        if (!is.null(spec)) paste(spec$study, spec$group) else NULL
+      } else if (identical(ckey, "canhr")) "CANHR 2025" else "Freedson 1998"
+
+      wear_v <- if (raw) "GGIR part 2"
+                else if (length(shared$results$wear_time) > 0) "Wear time tab" else "not run"
+      # Where the waking-hours window came from, as the run recorded it
+      wake_v <- if (!is.null(p)) {
+        if (isTRUE(p$include_sleep)) "sleep included"
+        else switch(p$sleep_source %||% "none",
+                    "none" = "not scored",
+                    "Sleep tab" = "Sleep tab",
+                    "Cole-Kripke fallback" = "Cole-Kripke, in this tab",
+                    p$sleep_source)
+      } else if (isTRUE(input$include_sleep)) {
+        "sleep included"
+      } else if (raw) {
+        "GGIR part 3, T5A5"
+      } else if (length(shared$results$sleep) == 0) {
+        "Cole-Kripke, in this tab"
+      } else "Sleep tab"
+
+      tags$div(class = "sd-panel sd-rule sd-rule--boxes",
+        g("Sedentary below", thresh, study),
+        g("Metric", if (raw) {
+            if (is.null(spec)) "not set" else paste0(spec$metric, ", mg")
+          } else "axis1, counts"),
+        g("Epoch", paste0(fmt_int(p$epoch_length %||% circ_target_epoch(shared, fam)), " s")),
+        g("Wear", wear_v),
+        g("Waking hours", wake_v),
+        g("Gap bridging", paste0(fmt_int(gap), " min")),
+        tags$span(class = "wt-rule-g",
+          tags$span(class = "wt-rule-k", "Scored"),
+          tags$span(class = "wt-rule-v",
+            if (n == 0) "not run yet" else tags$b(fmt_int(n)))),
+        if (settings_moved()) stale_note("sd") else NULL,
+        tags$span(class = "sd-rule-actions",
+          actionButton(ns("toggle_settings"), "Change",
+                       class = if (settings_open()) "sd-btn sd-btn--secondary is-open" else "sd-btn sd-btn--secondary",
+                       `aria-expanded` = if (settings_open()) "true" else "false"),
+          tags$span(class = "sd-export-wrap",
+            tags$span(class = paste("sd-btn sd-btn--secondary sd-export-btn",
+                                    if (n == 0) "is-quiet" else ""),
+                      "Export", tags$span(class = "sd-car", `aria-hidden` = "true", HTML("&#9660;"))),
+            sd_export_menu(ns, n > 0)),
+          actionButton(ns("analyze"), if (n == 0) "Run analysis" else "Re-run",
+                       class = paste(run_button_class("sd", n > 0, settings_moved()), "sd-run"))))
+    }
+
+    output$rule <- renderUI({
+      p <- run_params()
+      sd_rule_boxes(p, length(results()),
+                    p$family %||% local_fam() %||% "counts")
+    })
+
+    # The figures, scoped to whatever is chosen
+    output$figures <- renderUI({
+      if (length(results()) == 0) return(NULL)
+      # current_frag() pools every bout across the chosen recordings and
+      # recomputes, which is not the mean of the per-recording columns
+      cf <- tryCatch(current_frag(), error = function(e) NULL)
+      if (is.null(cf)) return(NULL)
+      sel <- sel_fid()
+      dash <- "–"
+      val <- function(x, digits) {
+        if (is.null(x) || length(x) == 0 || is.na(x)) return(dash)
+        fmt_dec(x, digits)
+      }
+      n_res <- length(results())
+      who <- if (is.null(sel)) fmt_int(n_res) else {
+        r <- results()[[sel]]
+        as.character(r$subject_id %||% r$name %||% sel)
+      }
+
+      tags$div(
+        class = "sd-panel sd-figs",
+        sd_fig(who, if (is.null(sel) && n_res != 1) "Recordings" else "Recording"),
+        sd_rule_div(),
+        sd_fig(val(cf$total_sedentary_min / 60, 1), "Sedentary", "total", unit = "h"),
+        sd_rule_div(),
+        sd_fig(val(cf$breaks_per_sed_hour, 1), "Breaks", "per hour", unit = "/hr"),
+        sd_rule_div(),
+        sd_fig(val(cf$W50, 1), "Typical bout", "W50", unit = "min"),
+        sd_rule_div(),
+        sd_fig(val(cf$alpha, 2), "Alpha", "power law")
+      )
+    })
+
+    # Plot panel
+    output$plot_panel <- renderUI({
+      res <- results()
+      if (length(res) == 0) {
+        return(tags$div(class = "sd-panel sd-plotpanel",
+          tags$div(class = "sd-empty",
+            tags$div(class = "sd-empty-t", "No sedentary results"),
+            tags$div(class = "sd-empty-m",
+                     "Run the analysis to detect bouts and fill the table below."))))
+      }
+      charts <- sd_charts()
+      keys <- vapply(charts, function(c) c$key, character(1))
+      cur <- chart_pick() %||% "timeline"
+      if (!(cur %in% keys)) cur <- "timeline"
+      ch <- charts[[match(cur, keys)]]
+
+      sel <- sel_fid()
+      label_of <- function(fid) {
+        r <- res[[fid]]
+        if (is.null(r)) fid else as.character(r$subject_id %||% r$name %||% fid)
+      }
+      who_label <- if (is.null(sel)) paste("All", pluralize(length(res), "recording")) else label_of(sel)
+      covers <- if (is.null(sel)) paste("all", fmt_int(length(res))) else label_of(sel)
+
+      last_group <- ""
+      items <- lapply(charts, function(c) {
+        head <- if (!identical(c$group, last_group)) {
+          last_group <<- c$group
+          tags$div(class = "sd-mi-head", c$group)
+        } else NULL
+        tagList(head,
+          tags$div(class = paste("sd-mi", if (identical(c$key, ch$key)) "is-on" else ""),
+                   `data-chart` = c$key,
+                   tags$span(class = "sd-tick", `aria-hidden` = "true",
+                             if (identical(c$key, ch$key)) HTML("&#10003;") else ""),
+                   c$label,
+                   tags$span(class = "sd-sc", covers)))
+      })
+
+      tags$div(class = "sd-panel sd-plotpanel",
+        tags$div(class = "sd-plotbar",
+          tags$span(class = "sd-pick", tabindex = "0",
+                    ch$label, tags$span(class = "sd-car", `aria-hidden` = "true", HTML("&#9660;"))),
+          tags$div(class = "sd-menu", style = "display: none;", items),
+
+          tags$span(class = "sd-who-wrap",
+            tags$span(class = "sd-who", tabindex = "0",
+                      who_label, tags$span(class = "sd-car", `aria-hidden` = "true", HTML("&#9660;"))),
+            tags$div(class = "sd-whomenu", style = "display: none;",
+              tags$div(class = paste("sd-wi", if (is.null(sel)) "is-on" else ""), `data-who` = "all",
+                       tags$span(class = "sd-tick", `aria-hidden` = "true",
+                                 if (is.null(sel)) HTML("&#10003;") else ""),
+                       "All recordings",
+                       tags$span(class = "sd-sc", fmt_int(length(res)))),
+              tags$div(class = "sd-wi-rule", `aria-hidden` = "true"),
+              lapply(names(res), function(fid)
+                tags$div(class = paste("sd-wi", if (identical(fid, sel)) "is-on" else ""),
+                         `data-who` = fid,
+                         tags$span(class = "sd-tick", `aria-hidden` = "true",
+                                   if (identical(fid, sel)) HTML("&#10003;") else ""),
+                         label_of(fid)))))),
+        tags$div(class = "sd-plotwrap", plotOutput(ns(ch$out), height = "100%")))
+    })
+
+    # The three hero views share one plot output; choosing one sets its type
+    observeEvent(chart_pick(), {
+      charts <- sd_charts()
+      keys <- vapply(charts, function(c) c$key, character(1))
+      ch <- charts[[match(chart_pick(), keys)]]
+      if (!is.null(ch$hero)) {
+        updateSelectInput(session, "hero_chart_type", selected = ch$hero)
+      }
+    }, ignoreInit = FALSE)
+
+    # Table panel
+    output$table_panel <- renderUI({
+      df <- summary_df()
+      if (is.null(df) || nrow(df) == 0) return(NULL)
+      sel <- sel_fid()
+      n <- if (is.null(sel)) nrow(df) else sum(fid_by_row() == sel)
+      thr <- input$prolonged_threshold %||% 30
+
+      # One narrowed frame for both the caption count and the grid
+      pdf <- sd_page_columns(df, local_fam() %||% "counts")
+      tags$div(class = "sd-panel sd-tablepanel",
+        tags$div(class = "sd-table-head",
+          tags$span(class = "sd-table-title", "Sitting",
+            tags$span(class = "sd-table-sub",
+                      paste0(fmt_int(n), if (n == 1) " recording · " else " recordings · ",
+                             fmt_int(ncol(pdf)), " columns"))),
+          sd_goto(sd_grid_groups(pdf)),
+          tags$span(class = "sd-key",
+            tags$span(class = "sd-sw", tags$b(class = "long"),
+                      paste0("in bouts of ", fmt_int(thr), " min or more")),
+            tags$span(class = "sd-sw", tags$b(class = "short"), "the rest"))),
+        # On a raw run the page drops the six Recording columns a gt3x cannot
+        # fill; the workbook keeps them
+        sd_summary_grid(pdf,
+                        fid_by_row(), sel, thr))
+    })
+    # Update file selector when files change
+    # Both stores: selecting an id that is not in the list deselects the
+    # select and the input comes back NULL
+    observe({
+      files <- shared$files %||% list()
+      raws <- shared$raw %||% list()
+      if (length(files) == 0 && length(raws) == 0) return(invisible(NULL))
+      choices <- c("All files (average)" = "all")
+      for (fid in names(files)) {
+        f <- files[[fid]]
+        choices[f$subject_info$id %||% f$name %||% fid] <- fid
+      }
+      for (rid in names(raws)) {
+        choices[tryCatch(ovr_subject(raws[[rid]]), error = function(e) rid)] <- rid
+      }
+      updateSelectInput(session, "file_select", choices = choices,
+                        selected = isolate(input$file_select) %||% "all")
     })
 
     # Run Analysis
     observeEvent(input$analyze, {
-      req(length(shared$files) > 0)
+      # Either family
+      req(length(shared$files) > 0 || length(shared$raw %||% list()) > 0)
 
       # Check if wear time has been analyzed
       wt_results <- shared$results$wear_time
+      # Raw recordings carry GGIR part 2's wear from the read, so the Wear
+      # time tab is a precondition for counts only
       use_wear_time <- !is.null(wt_results) && length(wt_results) > 0
 
-      # Check if sleep analysis has been run
-      sleep_results <- shared$results$sleep
-      use_sleep_exclusion <- !is.null(sleep_results) && length(sleep_results) > 0
-
       # Warn if wear time not analyzed
-      if (!use_wear_time) {
+      if (!use_wear_time && !identical(local_fam() %||% "counts", "raw")) {
         showNotification(
           HTML("<strong>Recommendation:</strong> Run Wear Time Analysis first for accurate results.<br>
                 Currently, non-wear periods (0 counts) may be counted as sedentary."),
@@ -403,140 +647,53 @@ mod_sedentary_server <- function(id, shared) {
         )
       }
 
-      # Inform about sleep exclusion (per SBRN consensus: sedentary = waking behavior only)
       include_sleep <- input$include_sleep
-      if (!include_sleep && use_sleep_exclusion) {
-        showNotification(
-          HTML("<strong>Sleep Exclusion Active:</strong> Sleep periods will be excluded from sedentary analysis.<br>
-                Per SBRN consensus, sedentary behavior is defined as <em>waking</em> behavior only."),
-          type = "message",
-          duration = 6
-        )
-      } else if (!include_sleep && !use_sleep_exclusion) {
-        showNotification(
-          HTML("<strong>Note:</strong> Run Sleep Analysis first to exclude sleep periods from sedentary analysis.<br>
-                Currently, sleep periods may be incorrectly counted as sedentary time."),
-          type = "warning",
-          duration = 8
-        )
+
+      # One family per run; the threshold decides the metric
+      fam0 <- local_fam() %||% "counts"
+      src_all <- sed_sources(shared, input$cut_points %||% "freedson", fam0)
+      srcs <- circ_scored(src_all)
+      not_scored(circ_unscored(src_all))
+      not_scored_fam[[fam0]] <- circ_unscored(src_all)
+      if (length(srcs) == 0) {
+        showNotification(paste0("No loaded recording can be scored under ",
+                                sed_cut_label(shared, input$cut_points, fam0),
+                                ". Pick another threshold."),
+                         type = "warning", duration = 8)
+        return(invisible(NULL))
       }
 
       all_results <- list()
       min_break_length <- input$min_break_length %||% 5
 
       withProgress(message = "Analyzing sedentary patterns...", value = 0, {
-        n_files <- length(shared$files)
+        n_files <- length(srcs)
 
-        for (i in seq_along(names(shared$files))) {
-          fid <- names(shared$files)[i]
-          f <- shared$files[[fid]]
-          data <- f$data
+        for (i in seq_along(srcs)) {
+          bnd <- srcs[[i]]
+          fid <- bnd$id
 
-          setProgress(value = i / n_files, detail = f$subject_info$id)
+          setProgress(value = i / max(1L, length(srcs)), detail = bnd$name)
 
-          # Need timestamps for fragmentation analysis
-          if (!"timestamp" %in% names(data)) {
-            showNotification(paste(f$name, ": No timestamps available"), type = "warning")
-            next
-          }
-
-          counts <- data$axis1
-          epoch_length <- f$epoch_length
-
-          # Convert to CPM
-          cpm <- canhrActi::to_cpm(counts, epoch_length)
-
-          # Get wear time mask
-          wear_mask <- NULL
-          if (use_wear_time && fid %in% names(wt_results)) {
-            wear_mask <- wt_results[[fid]]$wear
-
-            # Apply day-level validity (NHANES/Troiano valid-day convention).
-            # The per-epoch wear mask alone still includes low-wear (invalid)
-            # days; AND in a per-epoch valid-day mask so sedentary totals/bouts/
-            # W50/breaks-per-hour match the Wear Time tab and exclude invalid days.
-            daily <- wt_results[[fid]]$daily
-            if (!is.null(daily) && "valid" %in% names(daily) && !is.null(wear_mask)) {
-              valid_dates <- as.Date(daily$date[daily$valid])
-              valid_day_mask <- as.Date(data$timestamp) %in% valid_dates
-              wear_mask <- as.logical(wear_mask) & valid_day_mask
-            }
-          }
-
-          # Get sleep mask (to exclude sleep from sedentary analysis)
-          # Per SBRN consensus: sedentary behavior is "waking behavior" only
+          # sed_sources() picked the metric the cut point was validated on,
+          # brought the series to one epoch (raw in mg) and classified it.
           #
-          #  Use DETECTED SLEEP PERIODS, not epoch-by-epoch classification!
-          # The Sadeh/Cole-Kripke algorithms mark ANY low-activity epoch as "sleep",
-          # which includes quiet waking sedentary (TV watching, reading, desk work).
-          # Using raw sleep_state would incorrectly exclude these waking periods.
-          #
-          # Instead, we use the detected sleep period WINDOWS (in_bed_time to out_bed_time)
-          # which represent actual sleep events, not just low activity.
-          sleep_mask <- NULL
-          if (!include_sleep && use_sleep_exclusion && fid %in% names(sleep_results)) {
-            sleep_data <- sleep_results[[fid]]
+          # Wear and the sleep window come from the bundle too.
+          tstamps      <- bnd$timestamps
+          epoch_length <- bnd$epoch_length
+          intensity    <- bnd$intensity
+          # NULL when the family has no wear to give
+          wear_mask    <- bnd$wear_time
+          # The engine excludes the sleep window; sleep_state uses the "S"/"W"
+          # convention, and the include_sleep box turns the mask off
+          sleep_mask   <- if (isTRUE(include_sleep) || is.null(bnd$sleep_state)) NULL
+                          else bnd$sleep_state %in% "S"
 
-            # PREFERRED: Use detected sleep periods (Tudor-Locke algorithm)
-            if (!is.null(sleep_data$periods) && nrow(sleep_data$periods) > 0) {
-              # Create mask based on sleep period windows
-              sleep_mask <- rep(FALSE, nrow(data))
-              n_periods <- nrow(sleep_data$periods)
-
-              for (period_idx in seq_len(n_periods)) {
-                # Convert character timestamps to POSIXct with explicit format
-                # The sleep_analysis.R stores times as "%Y-%m-%d %H:%M:%S" strings
-                period_start <- as.POSIXct(sleep_data$periods$in_bed_time[period_idx],
-                                           format = "%Y-%m-%d %H:%M:%S",
-                                           tz = attr(data$timestamp[1], "tzone") %||% "")
-                period_end <- as.POSIXct(sleep_data$periods$out_bed_time[period_idx],
-                                         format = "%Y-%m-%d %H:%M:%S",
-                                         tz = attr(data$timestamp[1], "tzone") %||% "")
-
-                # Mark epochs within this sleep period
-                in_period <- data$timestamp >= period_start & data$timestamp <= period_end
-                sleep_mask[in_period] <- TRUE
-              }
-
-              # Count sleep epochs for notification
-              n_sleep_epochs <- sum(sleep_mask)
-              sleep_hours <- round(n_sleep_epochs * epoch_length / 3600, 1)
-
-            } else if (!is.null(sleep_data$sleep_state)) {
-              # FALLBACK: Use epoch classification only if no periods detected
-              # This is less accurate but better than nothing
-              sleep_mask <- sleep_data$sleep_state %in% "S"
-
-              showNotification(
-                HTML(paste0(
-                  "<strong>Warning:</strong> No sleep periods detected for ", f$name, "<br>",
-                  "Using epoch-by-epoch classification (less accurate).<br>",
-                  "Quiet waking sedentary may be incorrectly excluded."
-                )),
-                type = "warning",
-                duration = 8
-              )
-            }
-          }
-
-          # Calculate intensity
-          intensity <- tryCatch({
-            if (input$cut_points == "freedson") {
-              canhrActi::freedson(cpm)
-            } else {
-              canhrActi::CANHR.Cutpoints(cpm)
-            }
-          }, error = function(e) {
-            showNotification(paste("Intensity calculation failed for", f$name, ":", e$message), type = "warning", duration = 5)
-            NULL
-          })
-
-          if (is.null(intensity)) next
 
           fragmentation <- tryCatch({
             canhrActi::sedentary.fragmentation(
               intensity = intensity,
-              timestamps = data$timestamp,
+              timestamps = tstamps,
               wear_time = wear_mask,
               sleep_mask = sleep_mask,
               epoch_length = epoch_length,
@@ -545,7 +702,7 @@ mod_sedentary_server <- function(id, shared) {
               bootstrap_gof = TRUE
             )
           }, error = function(e) {
-            showNotification(paste(f$name, ":", e$message), type = "error")
+            showNotification(paste(bnd$name, ":", e$message), type = "error")
             NULL
           })
 
@@ -553,46 +710,46 @@ mod_sedentary_server <- function(id, shared) {
 
           all_results[[fid]] <- list(
             file_id = fid,
-            name = f$name,
-            subject_id = f$subject_info$id,
+            name = bnd$name,
+            subject_id = bnd$subject_id,
             fragmentation = fragmentation,
             intensity = intensity,
-            timestamps = data$timestamp,
+            timestamps = tstamps,
             wear_mask = wear_mask,
             sleep_excluded = !is.null(sleep_mask),
-            sleep_mask = sleep_mask
+            sleep_mask = sleep_mask,
+            # What this run was computed with; the rule bar reads these
+            parameters = list(
+              # the resolved key the run scored against, not the input; the
+              # workbook derives its metric from it
+              cut_points = bnd$cut_key %||% input$cut_points %||% "freedson",
+              family = fam0,
+              epoch_length = epoch_length,
+              threshold = bnd$threshold_txt,
+              prolonged_threshold = input$prolonged_threshold %||% 30,
+              min_break_length = input$min_break_length %||% 5,
+              include_sleep = isTRUE(input$include_sleep),
+              sleep_excluded = !is.null(sleep_mask),
+              # as the adapter reports it: "Sleep tab", "Cole-Kripke fallback",
+              # "GGIR part 3, T5A5" or "none"
+              sleep_source = bnd$sleep_source %||% "none",
+              include_sleep = isTRUE(include_sleep),
+              # for the workbook's Provenance sheet
+              wear_time_available = !is.null(bnd$wear_time),
+              run_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+              package_version = as.character(utils::packageVersion("canhrActi"))
+            )
           )
         }
       })
 
       results(all_results)
-      shared$results$sedentary <- all_results
-
-      n_sleep_excluded <- sum(sapply(all_results, function(r) isTRUE(r$sleep_excluded)))
-
-      msg_parts <- c(paste0("<strong>Sedentary analysis complete</strong> for ", length(all_results), " files"))
-      if (n_sleep_excluded > 0) {
-        msg_parts <- c(msg_parts, paste0("<span style='color: #17a589;'>✓ Sleep periods excluded from ", n_sleep_excluded, " file(s)</span>"))
-      }
-
-      showNotification(
-        HTML(paste(msg_parts, collapse = "<br>")),
-        type = "message",
-        duration = 6
-      )
-    })
-
-    output$analysis_status_badge <- renderUI({
-      res <- results()
-      n <- length(res)
-      if (n > 0) {
-        n_sleep_excluded <- sum(sapply(res, function(r) isTRUE(r$sleep_excluded)))
-        badge_text <- paste(n, "file(s) analyzed")
-        if (n_sleep_excluded > 0) badge_text <- paste0(badge_text, " (sleep excl.)")
-        status_badge(badge_text, "success")
-      } else {
-        status_badge("Ready to analyze", "pending")
-      }
+      res_fam[[fam0]] <- all_results
+      run_stamp(Sys.time())
+      # Merge: all_results holds only this family
+      prev_sed <- shared$results$sedentary %||% list()
+      prev_sed[names(all_results)] <- all_results
+      shared$results$sedentary <- prev_sed
     })
 
     # Helper: Safely extract numeric value (handles NULL)
@@ -604,11 +761,38 @@ mod_sedentary_server <- function(id, shared) {
     }
 
     # Helper: Get filtered results based on file selection
+    # Placeholder before a run; each chart draws its own empty state
+    sed_run_first <- function(msg = "Run the analysis to see results") {
+      ggplot2::ggplot() +
+        ggplot2::annotate("text", x = 0.5, y = 0.5, label = msg,
+                          size = 5, hjust = 0.5, color = "#64748b") +
+        ggplot2::theme_void()
+    }
+
+    # Every bout in scope, pooled once. hour and date are derived per recording
+    # before the rbind, since rbind on POSIXct keeps the first frame's timezone.
+    pooled_bouts <- reactive({
+      res <- filtered_results()
+      if (length(res) == 0) return(NULL)
+      parts <- lapply(res, function(r) {
+        b <- r$fragmentation$bouts
+        if (is.null(b) || nrow(b) == 0) return(NULL)
+        b$hour <- as.integer(format(b$start_time, "%H"))
+        b$date <- as.Date(format(b$start_time, "%Y-%m-%d"))
+        b$subject <- r$subject_id
+        b
+      })
+      parts <- Filter(Negate(is.null), parts)
+      if (length(parts) == 0) return(NULL)
+      do.call(rbind, parts)
+    })
+
     filtered_results <- reactive({
       res <- results()
       if (length(res) == 0) return(list())
 
-      sel <- input$file_select
+      # NULL before the select renders, and `if (sel == "all")` on NULL is an error
+      sel <- input$file_select %||% "all"
       if (is.null(sel) || sel == "all") {
         res
       } else if (sel %in% names(res)) {
@@ -623,7 +807,8 @@ mod_sedentary_server <- function(id, shared) {
       res <- results()
       req(length(res) > 0)
 
-      sel <- input$file_select
+      # NULL before the select renders, and `if (sel == "all")` on NULL is an error
+      sel <- input$file_select %||% "all"
       prolonged_thresh <- input$prolonged_threshold %||% 30
 
       if (sel == "all") {
@@ -736,538 +921,68 @@ mod_sedentary_server <- function(id, shared) {
       }
     })
 
-    # KEY METRICS STRIP
-    output$metric_sed_percent <- renderUI({
-      cf <- current_frag()
-      if (is.null(cf)) {
-        metric_card("--", "Sedentary Time")
-      } else {
-        hours <- round(cf$total_sedentary_min / 60, 1)
-        metric_card(paste0(hours, "h"), "Sedentary Time")
-      }
-    })
-
-    output$metric_breaks_hr <- renderUI({
-      cf <- current_frag()
-      if (is.null(cf) || is.na(cf$breaks_per_sed_hour)) {
-        metric_card("--/hr", "Breaks")
-      } else {
-        brk <- round(cf$breaks_per_sed_hour, 1)
-        interp <- if (brk >= 3) "Frequent" else if (brk >= 1.5) "Moderate" else "Infrequent"
-        metric_card(paste0(brk, "/hr"), "Breaks", interp)
-      }
-    })
-
-    output$metric_typical_bout <- renderUI({
-      cf <- current_frag()
-      if (is.null(cf) || is.na(cf$W50)) {
-        metric_card("--", "Typical Bout (W50)")
-      } else {
-        w50 <- round(cf$W50, 1)
-        interp <- if (w50 < 15) "Short" else if (w50 < 30) "Moderate" else "Long"
-        metric_card(paste0(w50, " min"), "Typical Bout (W50)", interp)
-      }
-    })
-
-    output$metric_alpha <- renderUI({
-      cf <- current_frag()
-      if (is.null(cf) || is.na(cf$alpha)) {
-        metric_card("--", "Alpha Index")
-      } else {
-        alpha <- round(cf$alpha, 2)
-        interp <- if (alpha >= 2.0) "Fragmented" else if (alpha >= 1.5) "Mixed" else "Prolonged"
-        metric_card(alpha, "Alpha Index", interp)
-      }
-    })
-
     # HERO CHART - Daily Pattern
     output$hero_chart <- renderPlot({
-      res <- filtered_results()
-
-      if (length(res) == 0) {
-        ggplot2::ggplot() +
-          ggplot2::annotate("text", x = 0.5, y = 0.5,
-                          label = "Click 'Run Analysis' to visualize your sedentary behavior",
-                           size = 5, hjust = 0.5, color = "#64748b") +
-          ggplot2::theme_void()
+      gg_app(isTRUE(shared$dark), {
+      if (length(filtered_results()) == 0) {
+        sed_run_first("Run the analysis to visualize your sedentary behavior")
       } else {
-      req(input$hero_chart_type)
-        chart_type <- input$hero_chart_type
-
-        # Combine all bouts
-        all_bouts <- data.frame()
-        for (r in res) {
-          if (!is.null(r$fragmentation$bouts) && nrow(r$fragmentation$bouts) > 0) {
-            b <- r$fragmentation$bouts
-            b$hour <- as.integer(format(b$start_time, "%H"))
-            b$date <- as.Date(b$start_time)
-            b$subject <- r$subject_id
-            all_bouts <- rbind(all_bouts, b)
-          }
-        }
-
-        if (nrow(all_bouts) == 0) {
-          ggplot2::ggplot() +
-            ggplot2::annotate("text", x = 0.5, y = 0.5,
-                             label = "No sedentary bout data available", size = 5, hjust = 0.5) +
-            ggplot2::theme_void()
-        } else if (chart_type == "timeline") {
-          # Timeline view: hourly sedentary minutes
-          hourly_data <- aggregate(duration_min ~ hour, all_bouts, sum)
-          hourly_counts <- table(all_bouts$hour)
-          hourly_data$n_bouts <- as.numeric(hourly_counts[as.character(hourly_data$hour)])
-          hourly_data$avg_duration <- hourly_data$duration_min / hourly_data$n_bouts
-
-          # Add missing hours
-          all_hours <- data.frame(hour = 0:23)
-          hourly_data <- merge(all_hours, hourly_data, by = "hour", all.x = TRUE)
-          hourly_data$duration_min[is.na(hourly_data$duration_min)] <- 0
-          hourly_data$n_bouts[is.na(hourly_data$n_bouts)] <- 0
-          hourly_data$avg_duration[is.na(hourly_data$avg_duration)] <- 0
-
-          # Calculate color based on average bout duration
-          hourly_data$bout_category <- cut(hourly_data$avg_duration,
-                                           breaks = c(-Inf, 10, 20, 30, Inf),
-                                           labels = c("Short (<10)", "Moderate (10-20)", "Long (20-30)", "Prolonged (>30)"))
-
-          ggplot2::ggplot(hourly_data, ggplot2::aes(x = hour, y = duration_min)) +
-            ggplot2::geom_area(fill = "#236192", alpha = 0.3) +
-            ggplot2::geom_line(color = "#236192", linewidth = 1.2) +
-            ggplot2::geom_point(ggplot2::aes(size = n_bouts, color = avg_duration), alpha = 0.8) +
-            ggplot2::scale_color_gradient2(low = "#17a589", mid = "#FFCD00", high = "#236192",
-                                          midpoint = 20, name = "Avg Bout\n(min)") +
-            ggplot2::scale_size_continuous(name = "Bouts", range = c(2, 8)) +
-            ggplot2::scale_x_continuous(breaks = seq(0, 23, 2),
-                                       labels = paste0(seq(0, 23, 2), ":00")) +
-            ggplot2::annotate("rect", xmin = 6, xmax = 9, ymin = -Inf, ymax = Inf,
-                             fill = "#FFCD00", alpha = 0.08) +
-            ggplot2::annotate("rect", xmin = 17, xmax = 21, ymin = -Inf, ymax = Inf,
-                             fill = "#3a7ab0", alpha = 0.08) +
-            ggplot2::labs(
-              title = NULL,
-              x = "Hour of Day",
-              y = "Total Sedentary Minutes"
-            ) +
-            canhrActi::theme_canhrActi() +
-            ggplot2::theme(
-              panel.grid.minor = ggplot2::element_blank(),
-              panel.grid.major.x = ggplot2::element_blank(),
-              legend.position = "right",
-              axis.title = ggplot2::element_text(color = "#64748b"),
-              plot.background = ggplot2::element_rect(fill = "white", color = NA)
-            )
-
-        } else if (chart_type == "heatmap") {
-          # Heatmap view
-          heatmap_data <- aggregate(duration_min ~ hour + date, all_bouts, sum)
-
-          # Convert date to factor for proper discrete y-axis handling
-          heatmap_data$date_label <- format(heatmap_data$date, "%b %d")
-          heatmap_data$date_label <- factor(heatmap_data$date_label,
-                                            levels = unique(heatmap_data$date_label[order(heatmap_data$date)]))
-
-          ggplot2::ggplot(heatmap_data, ggplot2::aes(x = hour, y = date_label, fill = duration_min)) +
-            ggplot2::geom_tile(color = "white", linewidth = 0.5, width = 1, height = 1) +
-            ggplot2::scale_fill_gradient2(low = "#f8fafc", mid = "#3a7ab0", high = "#0f2d42",
-                                         midpoint = median(heatmap_data$duration_min, na.rm = TRUE),
-                                         name = "Minutes") +
-            ggplot2::scale_x_continuous(breaks = seq(0, 23, 3), expand = c(0, 0)) +
-            ggplot2::labs(title = NULL, x = "Hour of Day", y = "Date") +
-            canhrActi::theme_canhrActi() +
-            ggplot2::theme(
-              panel.grid = ggplot2::element_blank(),
-              axis.text.y = ggplot2::element_text(size = 10),
-              plot.background = ggplot2::element_rect(fill = "white", color = NA)
-            )
-
-        } else {
-          # Bout occurrence scatter
-          all_bouts$time_of_day <- as.numeric(format(all_bouts$start_time, "%H")) +
-                                   as.numeric(format(all_bouts$start_time, "%M")) / 60
-
-          # Convert date to factor for proper discrete y-axis
-          all_bouts$date_label <- format(all_bouts$date, "%b %d")
-          all_bouts$date_label <- factor(all_bouts$date_label,
-                                         levels = unique(all_bouts$date_label[order(all_bouts$date)]))
-
-          ggplot2::ggplot(all_bouts, ggplot2::aes(x = time_of_day, y = date_label, size = duration_min, color = duration_min)) +
-            ggplot2::geom_point(alpha = 0.6) +
-            ggplot2::scale_color_gradient2(low = "#17a589", mid = "#FFCD00", high = "#236192",
-                                          midpoint = 30, name = "Duration\n(min)") +
-            ggplot2::scale_size_continuous(range = c(1, 8), guide = "none") +
-            ggplot2::scale_x_continuous(breaks = seq(0, 24, 4),
-                                       labels = paste0(seq(0, 24, 4), ":00"),
-                                       limits = c(0, 24)) +
-            ggplot2::labs(title = NULL, x = "Time of Day", y = "Date") +
-            canhrActi::theme_canhrActi() +
-            ggplot2::theme(
-              panel.grid.minor = ggplot2::element_blank(),
-              plot.background = ggplot2::element_rect(fill = "white", color = NA)
-            )
-        }
+        switch(input$hero_chart_type %||% "timeline",
+          "heatmap"    = canhrActi::plot_sedentary_heatmap(pooled_bouts()),
+          "occurrence" = canhrActi::plot_sedentary_occurrence(pooled_bouts()),
+          canhrActi::plot_sedentary_timeline(pooled_bouts()))
       }
-    })
-
-    # FRAGMENTATION INSIGHT CARD
-    output$fragmentation_insight_card <- renderUI({
-      cf <- current_frag()
-
-      if (is.null(cf)) {
-        return(empty_state(
-          title = "No Fragmentation Data",
-          message = "Run Analysis to see fragmentation insights",
-          show_icon = FALSE,
-          small = TRUE,
-          extra_class = "empty-state--compact"
-        ))
-      } else {
-        # Calculate fragmentation score
-        score <- 50
-        if (!is.na(cf$SATP) && !is.na(cf$W50) && !is.na(cf$prolonged_percent)) {
-          satp_pts <- min(35, cf$SATP * 350)
-          w50_pts <- max(0, 35 - (cf$W50 / 60) * 35)
-          prolonged_pts <- max(0, 30 - cf$prolonged_percent * 0.5)
-          score <- round(satp_pts + w50_pts + prolonged_pts)
-        }
-
-        # Determine pattern type
-        if (score >= 70) {
-          pattern <- "Well-Fragmented"
-          pattern_color <- "var(--canhr-success)"
-          pattern_bg <- "rgba(23, 165, 137, 0.1)"
-          pattern_icon <- "check-circle"
-          advice <- "Your sedentary time is broken up with frequent movement. Keep up the good habits!"
-        } else if (score >= 45) {
-          pattern <- "Moderately Fragmented"
-          pattern_color <- "var(--canhr-blue)"
-          pattern_bg <- "rgba(35, 97, 146, 0.1)"
-          pattern_icon <- "info-circle"
-          advice <- "You have some prolonged sitting periods. Consider setting reminders to move every 30 minutes."
-        } else {
-          pattern <- "Prolonged Pattern"
-          pattern_color <- "var(--canhr-caution)"
-          pattern_bg <- "rgba(244, 185, 66, 0.15)"
-          pattern_icon <- "exclamation-circle"
-          advice <- "Extended sedentary periods detected. Breaking up sitting improves metabolic health."
-        }
-
-        tagList(
-          # Score display
-          div(
-            class = "sed-score",
-            div(
-              class = "sed-score-badge",
-              style = paste0("background: ", pattern_bg, ";"),
-              div(score, class = "sed-score-value", style = paste0("color: ", pattern_color, ";")),
-              div("/100", class = "sed-score-unit")
-            ),
-            div(class = "sed-score-body",
-              div(
-                class = "cluster cluster--gap-2 mb-2",
-                icon(pattern_icon, style = paste0("color: ", pattern_color, ";")),
-                span(class = "sed-score-status", style = paste0("color: ", pattern_color, ";"), pattern)
-              ),
-              p(advice, class = "sed-score-advice"),
-              p("Heuristic 0-100 screening index (combines SATP, W50 and prolonged %); not a validated clinical score; see the validated metrics below.",
-                class = "sed-score-advice",
-                style = "font-size: 0.72rem; color: #94a3b8; margin-top: 4px;")
-            )
-          ),
-
-          # Key metrics
-          div(
-            class = "sed-metric-grid",
-            div(
-              class = "sed-metric-cell",
-              div("Alpha", class = "sed-metric-label"),
-              div(
-                if (is.na(cf$alpha)) "--" else sprintf("%.2f", cf$alpha),
-                class = "sed-metric-value"
-              ),
-              div(
-                if (is.na(cf$alpha)) "N/A"
-                else if (cf$alpha >= 2.0) "Many short bouts"
-                else if (cf$alpha >= 1.5) "Mixed pattern"
-                else "Few long bouts",
-                class = "sed-metric-subtext"
-              )
-            ),
-            div(
-              class = "sed-metric-cell",
-              div("Gini Index", class = "sed-metric-label"),
-              div(
-                if (is.na(cf$gini)) "--" else sprintf("%.3f", cf$gini),
-                class = "sed-metric-value"
-              ),
-              div(
-                if (is.na(cf$gini)) "N/A"
-                else if (cf$gini < 0.4) "Even distribution"
-                else if (cf$gini < 0.6) "Moderate inequality"
-                else "High inequality",
-                class = "sed-metric-subtext"
-              )
-            )
-          )
-        )
-      }
-    })
-
-    # PROLONGED SEDENTARY WARNING CARD
-    output$prolonged_warning_card <- renderUI({
-      cf <- current_frag()
-
-      if (is.null(cf)) {
-        return(empty_state(
-          title = "No Prolonged Sitting Data",
-          message = "Run Analysis to check for prolonged sitting",
-          show_icon = FALSE,
-          small = TRUE,
-          extra_class = "empty-state--compact"
-        ))
-      } else {
-        prolonged_pct <- cf$prolonged_percent
-        prolonged_count <- cf$prolonged_count %||% NA
-        max_bout <- cf$max_bout_duration
-        prolonged_thresh <- cf$prolonged_threshold %||% 30
-
-        # Determine severity
-        if (is.na(prolonged_pct) || prolonged_pct < 20) {
-          severity <- "low"
-          severity_color <- "var(--canhr-success)"
-          severity_bg <- "rgba(23, 165, 137, 0.1)"
-          severity_icon <- "check-circle"
-          message <- "Minimal prolonged sitting detected. You're doing well at breaking up sedentary time."
-        } else if (prolonged_pct < 40) {
-          severity <- "moderate"
-          severity_color <- "var(--canhr-blue)"
-          severity_bg <- "rgba(35, 97, 146, 0.1)"
-          severity_icon <- "info-circle"
-          message <- "Some prolonged bouts found. Consider standing or walking every 30 minutes."
-        } else {
-          severity <- "high"
-          severity_color <- "var(--canhr-caution)"
-          severity_bg <- "rgba(244, 185, 66, 0.15)"
-          severity_icon <- "exclamation-triangle"
-          message <- "Significant prolonged sitting detected. This is associated with increased health risks."
-        }
-
-        tagList(
-          # Alert banner
-          div(
-            class = "sed-alert",
-            style = paste0("background: ", severity_bg, ";"),
-            icon(severity_icon, class = "sed-alert-icon", style = paste0("color: ", severity_color, ";")),
-            div(
-              class = "sed-alert-body",
-              div(
-                if (is.na(prolonged_pct)) "--%" else paste0(round(prolonged_pct, 1), "%"),
-                class = "sed-alert-value",
-                style = paste0("color: ", severity_color, ";")
-              ),
-              div(paste0("of sedentary time in bouts >", prolonged_thresh, " min"), class = "sed-alert-label")
-            )
-          ),
-
-          p(message, class = "sed-alert-message"),
-
-          # Stats
-          div(
-            class = "sed-metric-grid",
-            div(
-              class = "sed-metric-cell sed-metric-cell--center",
-              div(
-                if (is.na(prolonged_count)) "--" else prolonged_count,
-                class = "sed-metric-value"
-              ),
-              div("Prolonged Bouts", class = "sed-metric-label")
-            ),
-            div(
-              class = "sed-metric-cell sed-metric-cell--center",
-              div(
-                if (is.na(max_bout)) "--" else paste0(round(max_bout), " min"),
-                class = "sed-metric-value"
-              ),
-              div("Longest Bout", class = "sed-metric-label")
-            )
-          ),
-
-          # Health tip
-          if (prolonged_pct >= 20 && !is.na(prolonged_pct)) {
-            div(
-              class = "tip-box",
-              icon("lightbulb"),
-              tags$strong("Health Tip: "),
-              "Try the 20-8-2 rule: 20 min sitting, 8 min standing, 2 min moving each half hour."
-            )
-          }
-        )
-      }
-    })
+      })
+    }, bg = "white")
 
     # BOUT ANALYSIS PLOTS
 
     output$bout_histogram <- renderPlot({
-      res <- filtered_results()
-      prolonged_thresh <- input$prolonged_threshold %||% 30
-
-      if (length(res) == 0) {
-        ggplot2::ggplot() +
-          ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Run Analysis to see results",
-                           size = 5, hjust = 0.5, color = "#64748b") +
-          ggplot2::theme_void()
+      gg_app(isTRUE(shared$dark), {
+      if (length(filtered_results()) == 0) {
+        sed_run_first("Run the analysis to see results")
       } else {
-        all_bouts <- do.call(rbind, lapply(res, function(r) {
-          if (!is.null(r$fragmentation$bouts)) r$fragmentation$bouts else NULL
-        }))
-
-        if (is.null(all_bouts) || nrow(all_bouts) == 0) {
-          ggplot2::ggplot() +
-            ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No bout data", size = 5) +
-            ggplot2::theme_void()
-        } else {
-          # Use the same alpha the Expert panel shows (pooled in cohort mode).
-          avg_alpha <- current_frag()$alpha
-
-          ggplot2::ggplot(all_bouts, ggplot2::aes(x = duration_min)) +
-            ggplot2::geom_histogram(binwidth = 5, fill = "#236192", alpha = 0.8, color = "white") +
-            ggplot2::geom_vline(xintercept = median(all_bouts$duration_min), linetype = "dashed",
-                               color = "#FFCD00", linewidth = 1) +
-            ggplot2::geom_vline(xintercept = prolonged_thresh, linetype = "dotted",
-                               color = "#f4b942", linewidth = 1) +
-            ggplot2::annotate("label", x = prolonged_thresh, y = Inf,
-                             label = paste0(prolonged_thresh, " min threshold"),
-                             vjust = 1.5, size = 3, fill = "#fff8e1") +
-            ggplot2::labs(
-              title = "Bout Duration Distribution",
-              subtitle = sprintf("Alpha = %.2f | Median = %.1f min | N = %d bouts",
-                                avg_alpha, median(all_bouts$duration_min), nrow(all_bouts)),
-              x = "Duration (minutes)", y = "Count"
-            ) +
-            canhrActi::theme_canhrActi() +
-            ggplot2::theme(
-              plot.title = ggplot2::element_text(face = "bold", color = "#236192"),
-              plot.subtitle = ggplot2::element_text(color = "#64748b"),
-              plot.background = ggplot2::element_rect(fill = "white", color = NA)
-            )
-        }
+        canhrActi::plot_bout_histogram_pooled(
+          pooled_bouts(),
+          # alpha from the fragmentation run (pooled in cohort mode)
+          alpha = tryCatch(current_frag()$alpha, error = function(e) NA_real_),
+          prolonged_threshold = input$prolonged_threshold %||% 30)
       }
-    })
+      })
+    }, bg = "white")
 
     # Bout categories
     output$bout_categories <- renderPlot({
-      res <- filtered_results()
-
-      if (length(res) == 0) {
-        ggplot2::ggplot() +
-          ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Run Analysis to see results",
-                           size = 5, hjust = 0.5, color = "#64748b") +
-          ggplot2::theme_void()
+      gg_app(isTRUE(shared$dark), {
+      if (length(filtered_results()) == 0) {
+        sed_run_first("Run the analysis to see results")
       } else {
-        all_dist <- do.call(rbind, lapply(res, function(r) {
-          if (!is.null(r$fragmentation$bout_distribution)) r$fragmentation$bout_distribution else NULL
-        }))
-
-        if (is.null(all_dist) || nrow(all_dist) == 0) {
-          ggplot2::ggplot() +
-            ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No distribution data", size = 5) +
-            ggplot2::theme_void()
-        } else {
-          agg_dist <- aggregate(count ~ category, all_dist, sum)
-          agg_dist$category <- factor(agg_dist$category,
-                                       levels = c("1-5 min", "5-10 min", "10-20 min",
-                                                 "20-30 min", "30-60 min", ">60 min"))
-          total <- sum(agg_dist$count)
-          agg_dist$pct <- round(agg_dist$count / total * 100, 1)
-
-          # Color based on duration category
-          colors <- c("1-5 min" = "#17a589", "5-10 min" = "#3a7ab0",
-                     "10-20 min" = "#236192", "20-30 min" = "#FFCD00",
-                     "30-60 min" = "#f4b942", ">60 min" = "#e6a000")
-
-          ggplot2::ggplot(agg_dist, ggplot2::aes(x = category, y = count, fill = category)) +
-            ggplot2::geom_col(alpha = 0.9, show.legend = FALSE) +
-            ggplot2::geom_text(ggplot2::aes(label = paste0(count, "\n(", pct, "%)")),
-                              vjust = -0.3, size = 3.5) +
-            ggplot2::scale_fill_manual(values = colors) +
-            ggplot2::labs(
-              title = "Bouts by Duration Category",
-              subtitle = paste("Total:", total, "bouts"),
-              x = NULL, y = "Number of Bouts"
-            ) +
-            canhrActi::theme_canhrActi() +
-            ggplot2::theme(
-              plot.title = ggplot2::element_text(face = "bold", color = "#236192"),
-              plot.subtitle = ggplot2::element_text(color = "#64748b"),
-              axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-              plot.background = ggplot2::element_rect(fill = "white", color = NA)
-            )
-        }
+        canhrActi::plot_bout_categories(
+          do.call(rbind, lapply(filtered_results(),
+                                function(r) r$fragmentation$bout_distribution)))
       }
-    })
+      })
+    }, bg = "white")
 
     # Accumulation curve
     output$accumulation_curve <- renderPlot({
-      res <- filtered_results()
-
-      if (length(res) == 0) {
-        ggplot2::ggplot() +
-          ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Run Analysis to see results",
-                           size = 5, hjust = 0.5, color = "#64748b") +
-          ggplot2::theme_void()
+      gg_app(isTRUE(shared$dark), {
+      if (length(filtered_results()) == 0) {
+        sed_run_first("Run the analysis to see results")
       } else {
-        all_bouts <- do.call(rbind, lapply(res, function(r) {
-          if (!is.null(r$fragmentation$bouts)) r$fragmentation$bouts else NULL
-        }))
-
-        if (is.null(all_bouts) || nrow(all_bouts) == 0) {
-          ggplot2::ggplot() +
-            ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No bout data", size = 5) +
-            ggplot2::theme_void()
-        } else {
-          all_bouts <- all_bouts[order(all_bouts$duration_min, decreasing = TRUE), ]
-          total_sed <- sum(all_bouts$duration_min)
-          all_bouts$cum_time <- cumsum(all_bouts$duration_min)
-          all_bouts$cum_pct <- all_bouts$cum_time / total_sed * 100
-          all_bouts$bout_pct <- seq_len(nrow(all_bouts)) / nrow(all_bouts) * 100
-
-          # Calculate Gini with bias correction (matches package implementation)
-          n <- nrow(all_bouts)
-          x <- sort(all_bouts$duration_min)
-          gini <- (2 * sum(seq_len(n) * x) - (n + 1) * sum(x)) / (n * sum(x))
-          if (n > 1) gini <- gini * n / (n - 1)  # Finite-sample bias correction
-
-          ggplot2::ggplot(all_bouts, ggplot2::aes(x = bout_pct, y = cum_pct)) +
-            ggplot2::geom_ribbon(ggplot2::aes(ymin = bout_pct, ymax = cum_pct),
-                                fill = "#236192", alpha = 0.2) +
-            ggplot2::geom_line(color = "#236192", linewidth = 1.5) +
-            ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "#94a3b8") +
-            ggplot2::annotate("text", x = 70, y = 30, label = paste("Gini =", round(gini, 3)),
-                             size = 4, fontface = "bold", color = "#236192") +
-            ggplot2::labs(
-              title = "Sedentary Time Accumulation (Lorenz Curve)",
-              subtitle = "Shaded area represents inequality in bout durations",
-              x = "% of Bouts (longest first)", y = "% of Total Sedentary Time"
-            ) +
-            ggplot2::scale_x_continuous(limits = c(0, 100)) +
-            ggplot2::scale_y_continuous(limits = c(0, 100)) +
-            ggplot2::coord_fixed() +
-            canhrActi::theme_canhrActi() +
-            ggplot2::theme(
-              plot.title = ggplot2::element_text(face = "bold", color = "#236192"),
-              plot.subtitle = ggplot2::element_text(color = "#64748b"),
-              plot.background = ggplot2::element_rect(fill = "white", color = NA)
-            )
-        }
+        canhrActi::plot_bout_accumulation(pooled_bouts())
       }
-    })
+      })
+    }, bg = "white")
 
     # Survival curve (Kaplan-Meier style)
     output$survival_curve <- renderPlot({
+      gg_app(isTRUE(shared$dark), {
       res <- filtered_results()
 
       if (length(res) == 0) {
         ggplot2::ggplot() +
-          ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Run Analysis to see results",
+          ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Run the analysis to see results",
                            size = 5, hjust = 0.5, color = "#64748b") +
           ggplot2::theme_void()
       } else {
@@ -1297,7 +1012,7 @@ mod_sedentary_server <- function(id, shared) {
                 show_ci = TRUE,
                 show_median = TRUE,
                 max_time = NULL,
-                title = "Sedentary Bout Survival Analysis"
+                title = "Sedentary bout survival analysis"
               )
               # Annotate the Weibull hazard direction of the bout durations.
               wb <- tryCatch(canhrActi::survival.weibull(all_durations[[1]]),
@@ -1320,7 +1035,7 @@ mod_sedentary_server <- function(id, shared) {
                 show_ci = TRUE,
                 show_median = TRUE,
                 max_time = NULL,
-                title = "Sedentary Bout Survival Analysis"
+                title = "Sedentary bout survival analysis"
               )
             }
           }, error = function(e) {
@@ -1344,423 +1059,66 @@ mod_sedentary_server <- function(id, shared) {
                 ggplot2::geom_hline(yintercept = 0.5, linetype = "dashed", color = "#94a3b8") +
                 ggplot2::scale_y_continuous(labels = scales::percent_format()) +
                 ggplot2::scale_color_brewer(palette = "Set2") +
-                ggplot2::labs(title = "Bout Survival Curve", x = "Time (minutes)", y = "Survival Probability") +
+                ggplot2::labs(title = "Bout survival curve", x = "Time (minutes)", y = "Survival Probability") +
                 canhrActi::theme_canhrActi()
             }
           })
         }
       }
-    })
+      })
+    }, bg = "white")
 
     # Hourly bouts
     output$hourly_bouts <- renderPlot({
-      res <- filtered_results()
-
-      if (length(res) == 0) {
-        ggplot2::ggplot() +
-          ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Run Analysis to see results",
-                           size = 5, hjust = 0.5, color = "#64748b") +
-          ggplot2::theme_void()
+      gg_app(isTRUE(shared$dark), {
+      if (length(filtered_results()) == 0) {
+        sed_run_first("Run the analysis to see results")
       } else {
-        all_bouts <- do.call(rbind, lapply(res, function(r) {
-          if (!is.null(r$fragmentation$bouts) && nrow(r$fragmentation$bouts) > 0) {
-            b <- r$fragmentation$bouts
-            b$hour <- as.integer(format(b$start_time, "%H"))
-            b
-          } else NULL
-        }))
-
-        if (is.null(all_bouts) || nrow(all_bouts) == 0) {
-          ggplot2::ggplot() +
-            ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No bout data", size = 5) +
-            ggplot2::theme_void()
-        } else {
-          hourly_counts <- as.data.frame(table(all_bouts$hour))
-          names(hourly_counts) <- c("hour", "count")
-          hourly_counts$hour <- as.integer(as.character(hourly_counts$hour))
-
-          # Fill missing hours
-          all_hours <- data.frame(hour = 0:23)
-          hourly_counts <- merge(all_hours, hourly_counts, by = "hour", all.x = TRUE)
-          hourly_counts$count[is.na(hourly_counts$count)] <- 0
-
-          ggplot2::ggplot(hourly_counts, ggplot2::aes(x = hour, y = count)) +
-            ggplot2::geom_col(fill = "#3a7ab0", alpha = 0.8) +
-            ggplot2::geom_smooth(method = "loess", se = FALSE, color = "#FFCD00", linewidth = 1.5, span = 0.4) +
-            ggplot2::scale_x_continuous(breaks = seq(0, 23, 3)) +
-            ggplot2::labs(
-              title = "Hourly Bout Frequency",
-              subtitle = "Number of sedentary bouts starting each hour",
-              x = "Hour of Day", y = "Number of Bouts"
-            ) +
-            canhrActi::theme_canhrActi() +
-            ggplot2::theme(
-              plot.title = ggplot2::element_text(face = "bold", color = "#236192"),
-              plot.subtitle = ggplot2::element_text(color = "#64748b"),
-              plot.background = ggplot2::element_rect(fill = "white", color = NA)
-            )
-        }
+        canhrActi::plot_hourly_bout_frequency(pooled_bouts())
       }
-    })
+      })
+    }, bg = "white")
 
     # Hourly duration
     output$hourly_duration <- renderPlot({
-      res <- filtered_results()
-
-      if (length(res) == 0) {
-        ggplot2::ggplot() +
-          ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Run Analysis to see results",
-                           size = 5, hjust = 0.5, color = "#64748b") +
-          ggplot2::theme_void()
+      gg_app(isTRUE(shared$dark), {
+      if (length(filtered_results()) == 0) {
+        sed_run_first("Run the analysis to see results")
       } else {
-        all_bouts <- do.call(rbind, lapply(res, function(r) {
-          if (!is.null(r$fragmentation$bouts) && nrow(r$fragmentation$bouts) > 0) {
-            b <- r$fragmentation$bouts
-            b$hour <- as.integer(format(b$start_time, "%H"))
-            b
-          } else NULL
-        }))
-
-        if (is.null(all_bouts) || nrow(all_bouts) == 0) {
-          ggplot2::ggplot() +
-            ggplot2::annotate("text", x = 0.5, y = 0.5, label = "No bout data", size = 5) +
-            ggplot2::theme_void()
-        } else {
-          ggplot2::ggplot(all_bouts, ggplot2::aes(x = factor(hour, levels = 0:23), y = duration_min)) +
-            ggplot2::geom_boxplot(fill = "#236192", alpha = 0.6, outlier.alpha = 0.3) +
-            ggplot2::geom_hline(yintercept = 30, linetype = "dashed", color = "#f4b942") +
-            ggplot2::scale_x_discrete(breaks = as.character(seq(0, 23, 3)), drop = FALSE) +
-            ggplot2::labs(
-              title = "Hourly Bout Duration Distribution",
-              subtitle = "Boxplot of bout durations by hour (dashed = 30 min threshold)",
-              x = "Hour of Day", y = "Duration (minutes)"
-            ) +
-            canhrActi::theme_canhrActi() +
-            ggplot2::theme(
-              plot.title = ggplot2::element_text(face = "bold", color = "#236192"),
-              plot.subtitle = ggplot2::element_text(color = "#64748b"),
-              plot.background = ggplot2::element_rect(fill = "white", color = NA)
-            )
-        }
+        canhrActi::plot_hourly_bout_duration(
+          pooled_bouts(), threshold = input$prolonged_threshold %||% 30)
       }
-    })
+      })
+    }, bg = "white")
 
     # Transition matrix
     output$transition_matrix <- renderPlot({
-      res <- filtered_results()
-
-      if (length(res) == 0) {
-        ggplot2::ggplot() +
-          ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Run Analysis to see results",
-                           size = 5, hjust = 0.5, color = "#64748b") +
-          ggplot2::theme_void()
+      gg_app(isTRUE(shared$dark), {
+      if (length(filtered_results()) == 0) {
+        sed_run_first("Run the analysis to see results")
       } else {
-        # Same ASTP/SATP the Expert panel shows (SATP pooled in cohort mode).
-        cf_tm <- current_frag()
-        avg_astp <- cf_tm$ASTP
-        avg_satp <- cf_tm$SATP
-
-        trans_data <- data.frame(
-          from = c("Active", "Active", "Sedentary", "Sedentary"),
-          to = c("Stay Active", "Go Sedentary", "Break (Get Up)", "Stay Sedentary"),
-          prob = c(1 - avg_astp, avg_astp, avg_satp, 1 - avg_satp),
-          type = c("stay", "change", "change", "stay")
-        )
-        trans_data$label <- sprintf("%.1f%%", trans_data$prob * 100)
-        trans_data$from <- factor(trans_data$from, levels = c("Active", "Sedentary"))
-        trans_data$to <- factor(trans_data$to, levels = c("Stay Active", "Go Sedentary", "Break (Get Up)", "Stay Sedentary"))
-
-        ggplot2::ggplot(trans_data, ggplot2::aes(x = to, y = from, fill = prob)) +
-          ggplot2::geom_tile(color = "white", linewidth = 2) +
-          ggplot2::geom_text(ggplot2::aes(label = label), size = 6, fontface = "bold",
-                            color = ifelse(trans_data$prob > 0.5, "white", "#1a202c")) +
-          ggplot2::scale_fill_gradient2(low = "#e8f5e9", mid = "#42a5f5", high = "#0d47a1",
-                                       midpoint = 0.5, limits = c(0, 1),
-                                       name = "Probability") +
-          ggplot2::labs(
-            title = "State Transition Probabilities",
-            subtitle = sprintf("SATP = %.3f (breaks) | ASTP = %.3f (sitting down)", avg_satp, avg_astp),
-            x = "Transition To", y = "Current State"
-          ) +
-          canhrActi::theme_canhrActi() +
-          ggplot2::theme(
-            plot.title = ggplot2::element_text(face = "bold", color = "#236192", hjust = 0.5),
-            plot.subtitle = ggplot2::element_text(color = "#64748b", hjust = 0.5),
-            panel.grid = ggplot2::element_blank(),
-            axis.text.x = ggplot2::element_text(angle = 30, hjust = 1),
-            plot.background = ggplot2::element_rect(fill = "white", color = NA)
-          )
+        # ASTP/SATP from the fragmentation run (SATP pooled in cohort mode)
+        canhrActi::plot_transition_matrix(current_frag())
       }
-    })
-
-    # EXPERT METRICS OUTPUTS
-    output$exp_satp <- renderText({
-      cf <- current_frag()
-      if (is.null(cf) || is.na(cf$SATP)) "--" else sprintf("%.4f", cf$SATP)
-    })
-
-    output$exp_astp <- renderText({
-      cf <- current_frag()
-      if (is.null(cf) || is.na(cf$ASTP)) "--" else sprintf("%.4f", cf$ASTP)
-    })
-
-    output$exp_abi <- renderText({
-      cf <- current_frag()
-      if (is.null(cf) || is.na(cf$ABI)) "--" else sprintf("%.2f", cf$ABI)
-    })
-
-    output$exp_alpha <- renderText({
-      cf <- current_frag()
-      if (is.null(cf) || is.na(cf$alpha)) "--" else sprintf("%.2f", cf$alpha)
-    })
-
-    output$exp_gini <- renderText({
-      cf <- current_frag()
-      if (is.null(cf) || is.na(cf$gini)) "--" else sprintf("%.3f", cf$gini)
-    })
-
-    output$exp_dist_type <- renderText({
-      cf <- current_frag()
-      if (is.null(cf) || is.na(cf$dist_type)) "--"
-      else if (cf$dist_type == "power_law") "Power-Law"
-      else if (cf$dist_type == "exponential") "Exponential"
-      else cf$dist_type
-    })
-
-    output$exp_w25 <- renderText({
-      cf <- current_frag()
-      if (is.null(cf) || is.na(cf$W25)) "--" else paste0(round(cf$W25, 1), " min")
-    })
-
-    output$exp_w75 <- renderText({
-      cf <- current_frag()
-      if (is.null(cf) || is.na(cf$W75)) "--" else paste0(round(cf$W75, 1), " min")
-    })
-
-    output$exp_w90 <- renderText({
-      cf <- current_frag()
-      if (is.null(cf) || is.na(cf$W90)) "--" else paste0(round(cf$W90, 1), " min")
-    })
-
-    output$exp_total_bouts <- renderText({
-      cf <- current_frag()
-      if (is.null(cf) || is.na(cf$total_bouts)) "--" else format(cf$total_bouts, big.mark = ",")
-    })
-
-    output$exp_mean_bout <- renderText({
-      cf <- current_frag()
-      if (is.null(cf) || is.na(cf$mean_bout_duration)) "--"
-      else paste0(round(cf$mean_bout_duration, 1), " min")
-    })
-
-    output$exp_max_bout <- renderText({
-      cf <- current_frag()
-      if (is.null(cf) || is.na(cf$max_bout_duration)) "--"
-      else paste0(round(cf$max_bout_duration), " min")
-    })
-
-    output$exp_w50 <- renderText({
-      cf <- current_frag()
-      if (is.null(cf) || is.na(cf$W50)) "--" else paste0(round(cf$W50, 1), " min")
-    })
-
-    output$exp_weibull <- renderText({
-      cf <- current_frag()
-      v <- cf$weibull_shape
-      if (is.null(cf) || is.null(v) || is.na(v)) "--" else round(v, 2)
-    })
-
-    output$exp_sri <- renderText({
-      cf <- current_frag()
-      v <- cf$sedentary_regularity_index
-      if (is.null(cf) || is.null(v) || is.na(v)) "--" else round(v, 1)
-    })
-
-    output$exp_gof <- renderText({
-      cf <- current_frag()
-      v <- cf$alpha_gof_pvalue
-      if (is.null(cf) || is.null(v) || is.na(v)) "--" else sprintf("%.3f", v)
-    })
-
-    # SUMMARY TABLE
-    output$summary_table <- DT::renderDataTable({
-      res <- results()
-      if (length(res) == 0) {
-        return(DT::datatable(
-          data.frame(Message = "Click 'Run Analysis' to see results"),
-          rownames = FALSE,
-          options = list(dom = "t")
-        ))
-      }
-
-      df <- data.frame(
-        Subject = sapply(res, function(r) r$subject_id),
-        `Sed Hours` = sapply(res, function(r) {
-          val <- r$fragmentation$total_sedentary_min
-          if (is.null(val) || is.na(val)) NA_real_ else round(val / 60, 1)
-        }),
-        Bouts = sapply(res, function(r) {
-          val <- r$fragmentation$total_bouts
-          if (is.null(val)) NA_integer_ else val
-        }),
-        `Breaks/Hr` = sapply(res, function(r) {
-          val <- r$fragmentation$breaks_per_sed_hour
-          if (is.null(val) || is.na(val)) NA_real_ else round(val, 2)
-        }),
-        `W50 (min)` = sapply(res, function(r) {
-          val <- r$fragmentation$W50
-          if (is.null(val) || is.na(val)) NA_real_ else round(val, 1)
-        }),
-        Alpha = sapply(res, function(r) {
-          val <- r$fragmentation$alpha
-          if (is.null(val) || is.na(val)) NA_real_ else round(val, 2)
-        }),
-        Gini = sapply(res, function(r) {
-          val <- r$fragmentation$gini
-          if (is.null(val) || is.na(val)) NA_real_ else round(val, 3)
-        }),
-        SATP = sapply(res, function(r) {
-          val <- r$fragmentation$SATP
-          if (is.null(val) || is.na(val)) NA_real_ else round(val, 4)
-        }),
-        `Prolonged %` = sapply(res, function(r) {
-          val <- r$fragmentation$pct_time_30min_bouts
-          if (is.null(val) || is.na(val)) NA_real_ else round(val, 1)
-        }),
-        check.names = FALSE,
-        stringsAsFactors = FALSE
-      )
-
-      DT::datatable(
-        df,
-        options = list(
-          pageLength = 10,
-          scrollX = TRUE,
-          dom = "frtip",
-          columnDefs = list(
-            list(className = "dt-center", targets = "_all")
-          )
-        ),
-        rownames = FALSE
-      ) |>
-        DT::formatStyle(
-          "Prolonged %",
-          backgroundColor = DT::styleInterval(c(20, 40), c("#e8f5e9", "#fff8e1", "#ffebee"))
-        ) |>
-        DT::formatStyle(
-          "Breaks/Hr",
-          backgroundColor = DT::styleInterval(c(1.5, 3), c("#ffebee", "#fff8e1", "#e8f5e9"))
-        )
-    })
+      })
+    }, bg = "white")
 
     # CSV EXPORT
     # REPRODUCIBLE MULTI-SHEET XLSX WORKBOOK (supersedes the Summary + Bout CSVs)
     output$dl_workbook <- downloadHandler(
-      filename = function() paste0("sedentary_workbook_", format(Sys.Date(), "%Y%m%d"), ".xlsx"),
+      filename = function() {
+        paste0("sedentary_workbook_",
+               format(run_stamp() %||% Sys.time(), "%Y-%m-%d_%H%M%S"), ".xlsx")
+      },
       content = function(file) {
         res <- results()
         validate(need(length(res) > 0, "Run the analysis first."))
-        cp_label <- switch(input$cut_points %||% "freedson",
-                           freedson = "Sedentary <100 CPM (Freedson 1998)",
-                           canhr = "Sedentary <100 CPM (CANHR 2025)",
-                           paste0("Sedentary (", input$cut_points, ")"))
-        sedentary_write_workbook(file, res, shared, metric = cp_label)
+        sedentary_write_workbook(file, res, shared, metric = cut_label())
       }
     )
 
-    # INTER-BOUT INTERVAL ANALYSIS OUTPUT
-    output$ibi_analysis_output <- renderUI({
-      res <- filtered_results()
-      req(length(res) > 0)
-
-      all_ibis <- c()
-      min_bout <- input$min_bout_duration
-
-      for (fid in names(res)) {
-        r <- res[[fid]]
-        bouts <- r$fragmentation$bouts
-        if (is.null(bouts) || nrow(bouts) < 2) next
-
-        valid_bouts <- bouts[bouts$duration_min >= min_bout, ]
-        if (nrow(valid_bouts) < 2) next
-
-        for (i in 2:nrow(valid_bouts)) {
-          prev_end <- valid_bouts$end_time[i - 1]
-          curr_start <- valid_bouts$start_time[i]
-          ibi <- as.numeric(difftime(curr_start, prev_end, units = "mins"))
-          if (ibi > 0) all_ibis <- c(all_ibis, ibi)
-        }
-      }
-
-      if (length(all_ibis) == 0) {
-        return(div(class = "alert alert-warning", "Not enough data for inter-bout interval analysis"))
-      }
-
-      # Calculate statistics
-      n_breaks <- length(all_ibis)
-      mean_ibi <- round(mean(all_ibis), 1)
-      median_ibi <- round(median(all_ibis), 1)
-      sd_ibi <- round(sd(all_ibis), 1)
-
-      # Break classifications
-      micro <- sum(all_ibis < 2)
-      short <- sum(all_ibis >= 2 & all_ibis < 5)
-      medium <- sum(all_ibis >= 5 & all_ibis < 15)
-      long <- sum(all_ibis >= 15 & all_ibis < 30)
-      extended <- sum(all_ibis >= 30)
-
-      pct_short <- round(100 * (micro + short) / n_breaks, 1)
-      pct_substantial <- round(100 * (long + extended) / n_breaks, 1)
-
-      # Create UI
-      tagList(
-        fluidRow(
-          column(4,
-            div(class = "stat-box", style = "background: #e3f2fd; padding: 12px; border-radius: 6px; text-align: center;",
-              div(style = "font-size: 24px; font-weight: bold; color: #1565c0;", n_breaks),
-              div(style = "font-size: 12px; color: #64748b;", "Total Breaks")
-            )
-          ),
-          column(4,
-            div(class = "stat-box", style = "background: #e8f5e9; padding: 12px; border-radius: 6px; text-align: center;",
-              div(style = "font-size: 24px; font-weight: bold; color: #2e7d32;", paste0(median_ibi, " min")),
-              div(style = "font-size: 12px; color: #64748b;", "Median Break Duration")
-            )
-          ),
-          column(4,
-            div(class = "stat-box", style = "background: #fff3e0; padding: 12px; border-radius: 6px; text-align: center;",
-              div(style = "font-size: 24px; font-weight: bold; color: #e65100;", paste0(pct_substantial, "%")),
-              div(style = "font-size: 12px; color: #64748b;", "Substantial Breaks (>15 min)")
-            )
-          )
-        ),
-        div(style = "margin-top: 15px;",
-          h6("Break Classifications:", style = "margin-bottom: 10px; color: #475569;"),
-          tags$table(
-            class = "table table-sm table-bordered",
-            style = "font-size: 13px;",
-            tags$thead(
-              tags$tr(
-                tags$th("Category"), tags$th("Count"), tags$th("Percent")
-              )
-            ),
-            tags$tbody(
-              tags$tr(tags$td("Micro-break (<2 min)"), tags$td(micro), tags$td(paste0(round(100*micro/n_breaks, 1), "%"))),
-              tags$tr(tags$td("Short break (2-5 min)"), tags$td(short), tags$td(paste0(round(100*short/n_breaks, 1), "%"))),
-              tags$tr(tags$td("Medium break (5-15 min)"), tags$td(medium), tags$td(paste0(round(100*medium/n_breaks, 1), "%"))),
-              tags$tr(tags$td("Long break (15-30 min)"), tags$td(long), tags$td(paste0(round(100*long/n_breaks, 1), "%"))),
-              tags$tr(tags$td("Extended break (>30 min)"), tags$td(extended), tags$td(paste0(round(100*extended/n_breaks, 1), "%")))
-            )
-          )
-        ),
-        div(style = "margin-top: 10px; padding: 10px; background: #f1f5f9; border-radius: 6px; font-size: 12px;",
-          tags$strong("Interpretation: "),
-          sprintf("%.1f%% of breaks are brief (<5 min), indicating frequent postural shifts. ", pct_short),
-          sprintf("%.1f%% are substantial (>15 min), representing meaningful activity breaks.", pct_substantial),
-          if (pct_substantial < 10) " Consider encouraging longer, more active breaks." else ""
-        )
-      )
-    })
-
+    # The link sits in a closed menu, and a suspended downloadHandler never
+    # receives its href
+    outputOptions(output, "dl_workbook", suspendWhenHidden = FALSE)
   })
 }

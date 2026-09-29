@@ -18,7 +18,8 @@ plot_circadian_polar(
   IS_value = NULL,
   IV_value = NULL,
   show_reference = TRUE,
-  title = "Circadian Activity Pattern"
+  title = "Circadian Activity Pattern",
+  value_label = "Activity (counts/min)"
 )
 }
 \arguments{
@@ -49,6 +50,9 @@ plot_circadian_polar(
 \item{show_reference}{Logical. Show reference ranges? (default: TRUE)}
 
 \item{title}{Plot title}
+
+\item{value_label}{Character. Axis label naming the value and its unit
+(default: "Activity (counts/min)")}
 }
 \value{
 A ggplot2 object

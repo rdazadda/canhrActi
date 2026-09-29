@@ -7,7 +7,7 @@
 santos_lozano(counts_per_minute, age_group = c("younger", "older"))
 }
 \arguments{
-\item{counts_per_minute}{Numeric vector of CPM}
+\item{counts_per_minute}{Numeric vector of vector magnitude CPM}
 
 \item{age_group}{Character: "younger" (18-64) or "older" (65+)}
 }
@@ -16,34 +16,36 @@ Ordered factor with intensity levels
 }
 \description{
 Adult cut-points validated against indirect calorimetry in a Spanish population.
-Provides separate thresholds for younger and older adults.
+Provides separate thresholds for younger and older adults. They are GT3X vector
+magnitude cut points, so the input is vector magnitude counts per minute.
 }
 \details{
 Santos-Lozano (2013) cutpoints for younger adults (18-64):
 \itemize{
-\item Sedentary: 0-99 CPM
-\item Light: 100-3207 CPM
-\item Moderate: 3208-8564 CPM
-\item Vigorous: >= 8565 CPM
+\item Sedentary: 0-99 VM CPM
+\item Light: 100-3207 VM CPM
+\item Moderate: 3208-8564 VM CPM
+\item Vigorous: >= 8565 VM CPM
 }
 
 For older adults (65+):
 \itemize{
-\item Sedentary: 0-99 CPM
-\item Light: 100-2750 CPM
-\item Moderate: 2751-9358 CPM
-\item Vigorous: >= 9359 CPM
+\item Sedentary: 0-99 VM CPM
+\item Light: 100-2750 VM CPM
+\item Moderate: 2751-9358 VM CPM
+\item Vigorous: >= 9359 VM CPM
 }
+
+The paper sets the moderate and vigorous cuts; the sedentary cut of 100 is the
+package's.
 }
 \references{
-Santos-Lozano A, et al. (2013). Validation and determination
+Santos-Lozano A, et al. (2013). Actigraph GT3X: validation and determination
 of physical activity intensity cut points. Int J Sports Med, 34(11), 975-982.
 }
 \seealso{
-Other adult cut-points:
-\code{\link[=crouter]{crouter()}},
-\code{\link[=freedson]{freedson()}},
-\code{\link[=matthews]{matthews()}},
-\code{\link[=troiano]{troiano()}}
+Other triaxial cut-points:
+\code{\link[=freedson_vm3]{freedson_vm3()}},
+\code{\link[=sasaki_vm3]{sasaki_vm3()}}
 }
-\concept{adult cut-points}
+\concept{triaxial cut-points}

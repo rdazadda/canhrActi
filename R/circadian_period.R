@@ -17,6 +17,24 @@ NULL
 # of lomb::lsp(type = "period", normalize = "standard") so canhrActi does not
 # depend on lomb (and its plotly/data.table closure). Inputs are assumed finite
 # and length-matched; returns NULL on a degenerate grid/series.
+# The Baluev FAP and its inverse come first, factored out so a chart can draw
+# the threshold (the power at a given alpha). Shared with actiRhythm.
+.lomb_baluev_fap <- function(z, N, W) {
+  ggamma <- function(m) sqrt(2 / m) * exp(lgamma(m / 2) - lgamma((m - 1) / 2))
+  NH <- N - 1; NK <- N - 3
+  fsingle <- (1 - z)^(0.5 * NK)
+  tau_b <- ggamma(NH) * W * (1 - z)^(0.5 * (NK - 1)) * sqrt(0.5 * NH * z)
+  1 - exp(-tau_b) + fsingle * exp(-tau_b)
+}
+
+# The power level whose false-alarm probability equals alpha.
+.lomb_fap_power <- function(alpha, N, W) {
+  if (!is.finite(N) || N < 4 || !is.finite(W) || W <= 0) return(NA_real_)
+  f <- function(z) .lomb_baluev_fap(z, N, W) - alpha
+  if (f(1e-8) * f(1 - 1e-8) > 0) return(NA_real_)
+  tryCatch(stats::uniroot(f, c(1e-8, 1 - 1e-8))$root, error = function(e) NA_real_)
+}
+
 .lomb_scargle <- function(x, times, from, to, ofac = 4) {
   ofac <- max(1L, as.integer(floor(ofac)))
   o <- order(times)
@@ -43,7 +61,10 @@ NULL
   PN <- numeric(n.out)
   for (i in seq_len(n.out)) {
     wi <- w[i]
-    tau <- 0.5 * atan2(sum(sin(wi * t)), sum(cos(wi * t))) / wi
+    # Scargle (1982) eq. 3: tan(2*omega*tau) = sum(sin 2*omega*t) / sum(cos 2*omega*t).
+    # The 2 goes inside the sums; without it cos(w(t-tau)) and sin(w(t-tau)) are not
+    # orthogonal and the power is no longer the variance a two-term sinusoid explains.
+    tau <- 0.5 * atan2(sum(sin(2 * wi * t)), sum(cos(2 * wi * t))) / wi
     arg <- wi * (t - tau)
     cs <- cos(arg)
     sn <- sin(arg)
@@ -71,7 +92,9 @@ NULL
     peak.at = c(1 / peak.freq, peak.freq),
     p.value = p.value,
     n.out   = n.out,
-    n       = n
+    n       = n,
+    # spectral bandwidth, needed to invert the FAP
+    W       = W
   )
 }
 

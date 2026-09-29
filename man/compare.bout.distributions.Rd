@@ -4,7 +4,11 @@
 \alias{compare.bout.distributions}
 \title{Compare Power-Law vs Exponential Distribution Fit}
 \usage{
-compare.bout.distributions(bout_durations, bootstrap_gof = FALSE)
+compare.bout.distributions(
+  bout_durations,
+  bootstrap_gof = FALSE,
+  epoch_length = 60
+)
 }
 \arguments{
 \item{bout_durations}{Numeric vector of bout durations}
@@ -13,6 +17,9 @@ compare.bout.distributions(bout_durations, bootstrap_gof = FALSE)
 to decide whether the power-law is a plausible fit? (default FALSE, kept off
 for dashboard speed). When FALSE, plausibility is judged by the asymptotic KS
 approximation (anti-conservative); when TRUE, by the bootstrap p-value.}
+
+\item{epoch_length}{Epoch length in seconds (default 60); the durations come in
+steps of one epoch, which sets the continuity correction of the xmin fit.}
 }
 \value{
 List with model comparison results

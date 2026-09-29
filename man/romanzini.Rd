@@ -17,25 +17,22 @@ Cut-points for youth validated in Brazilian adolescents against indirect
 calorimetry during various activities.
 }
 \details{
-Romanzini (2014) cutpoints:
+Romanzini (2014) cutpoints for the vertical axis, published in counts per
+15 s and applied here to counts per minute (times four):
 \itemize{
-\item Sedentary: 0-180 CPM
-\item Light: 181-756 CPM
-\item Moderate: 757-1111 CPM
-\item Vigorous: >= 1112 CPM
+\item Sedentary: <= 46 counts/15 s (<= 184 CPM)
+\item Light: 47-606 counts/15 s (185-2427 CPM)
+\item Moderate: 607-817 counts/15 s (2428-3271 CPM)
+\item Vigorous: >= 818 counts/15 s (>= 3272 CPM)
 }
-
-Note: These thresholds are notably lower than other cut-points.
 }
 \references{
-Romanzini M, et al. (2014). Calibration of accelerometers
-in adolescents. Eur J Sport Sci, 14(1), 91-99.
+Romanzini M, et al. (2014). Calibration of ActiGraph GT3X, Actical and RT3
+accelerometers in adolescents. Eur J Sport Sci, 14(1), 91-99.
 }
 \seealso{
 Other children cut-points:
 \code{\link[=butte_preschool]{butte_preschool()}},
-\code{\link[=chandler]{chandler()}},
-\code{\link[=copeland]{copeland()}},
 \code{\link[=evenson]{evenson()}},
 \code{\link[=mattocks]{mattocks()}},
 \code{\link[=pate_preschool]{pate_preschool()}},

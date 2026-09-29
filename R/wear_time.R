@@ -70,16 +70,17 @@
 
   if (length(candidate_starts) == 0) return(wear.time)
 
-  # Choi/CANHR2025 spike rule: a spike at position `pos` is a valid part of a non-wear
-  # period only if flanked by min_window_len consecutive zeros on BOTH sides. Shared by the
-  # initial-window validation and the extension loop so both branches use the identical rule.
-  .spike_has_flanking_zeros <- function(pos) {
+  # Choi/CANHR2025 spike rule: a run of spikes from `pos` to `run_end` is a valid part of a
+  # non-wear period only if flanked by min_window_len consecutive zeros on BOTH sides,
+  # counted from the ends of the whole run (Choi 2011). Shared by the initial-window
+  # validation and the extension loop so both branches use the identical rule.
+  .spike_has_flanking_zeros <- function(pos, run_end = pos) {
     up_start <- max(1L, pos - min_window_len)
     up_end <- pos - 1L
     has_upstream <- up_end >= up_start && all(counts_per_minute[up_start:up_end] == 0)
 
-    down_start <- pos + 1L
-    down_end <- min(n.minutes, pos + min_window_len)
+    down_start <- run_end + 1L
+    down_end <- min(n.minutes, run_end + min_window_len)
     has_downstream <- down_start <= down_end && all(counts_per_minute[down_start:down_end] == 0)
 
     has_upstream && has_downstream
@@ -103,13 +104,12 @@
 
     # For Choi/CANHR2025: validate spikes with upstream/downstream
     if (validate_spikes && any(window_spikes)) {
-      spike_positions <- which(window_spikes)
+      run_ends <- window.start - 1L + cumsum(rle_spikes$lengths)
+      run_starts <- run_ends - rle_spikes$lengths + 1L
       valid_nonwear <- TRUE
 
-      for (sp_idx in spike_positions) {
-        actual_pos <- window.start + sp_idx - 1L
-
-        if (!.spike_has_flanking_zeros(actual_pos)) {
+      for (r in which(rle_spikes$values)) {
+        if (!.spike_has_flanking_zeros(run_starts[r], run_ends[r])) {
           valid_nonwear <- FALSE
           break
         }
@@ -139,17 +139,12 @@
         spike_len <- extend_pos - spike_start
 
         # For Choi/CANHR2025: the extended portion must obey the SAME upstream/downstream
-        # zero-window rule as the initial window, not just the consecutive-run cap. Every
-        # spike epoch in this run must be flanked by min_window_len zeros on both sides;
-        # otherwise the extension stops here (the spike marks real wear).
+        # zero-window rule as the initial window, not just the consecutive-run cap. The
+        # spike run must be flanked by min_window_len zeros on both sides; otherwise the
+        # extension stops here (the spike marks real wear).
         spikes_valid <- spike_len <= spike_tolerance
         if (spikes_valid && validate_spikes) {
-          for (sp_pos in spike_start:(extend_pos - 1L)) {
-            if (!.spike_has_flanking_zeros(sp_pos)) {
-              spikes_valid <- FALSE
-              break
-            }
-          }
+          spikes_valid <- .spike_has_flanking_zeros(spike_start, extend_pos - 1L)
         }
 
         if (spikes_valid) {
@@ -220,7 +215,8 @@ wear.troiano <- function(counts_per_minute,
 #' @param non_wear_window Integer. Window length in minutes for initial non-wear detection (default: 90)
 #' @param spike_tolerance Integer. Maximum consecutive minutes with activity allowed (default: 2)
 #' @param min_spike_length Integer. Minimum length of spike (default: 1, reserved for future use)
-#' @param spike_stoplevel Integer. Maximum count value for spike (default: 100)
+#' @param spike_stoplevel Numeric. Counts above this end a spike (default: Inf). Choi (2011)
+#'   and ActiLife set no stop level; 100 is Troiano's.
 #' @param min_window_len Integer. Required consecutive zeros before/after spike in minutes (default: 30)
 #' @param epoch_length Integer. Epoch length in seconds (default: 60). Window parameters
 #'   are automatically scaled to epochs based on this value.
@@ -233,7 +229,7 @@ wear.choi <- function(counts_per_minute,
                       non_wear_window = 90,
                       spike_tolerance = 2,
                       min_spike_length = 1,
-                      spike_stoplevel = 100,
+                      spike_stoplevel = Inf,
                       min_window_len = 30,
                       epoch_length = 60) {
 

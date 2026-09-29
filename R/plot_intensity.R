@@ -34,8 +34,9 @@ plot_intensity <- function(x, wear_only = TRUE, interactive = FALSE) {
 
   # Add time components
   epoch_data$hour <- as.numeric(format(epoch_data$timestamp, "%H")) +
-                     as.numeric(format(epoch_data$timestamp, "%M")) / 60
-  epoch_data$date_label <- format(epoch_data$date, "%b %d")
+                     as.numeric(format(epoch_data$timestamp, "%M")) / 60 +
+                     as.numeric(format(epoch_data$timestamp, "%S")) / 3600
+  epoch_data$date_label <- .format_english(epoch_data$date, "%b %d")
   epoch_data$day_num <- as.numeric(factor(epoch_data$date))
 
   # Ensure intensity is factor with correct levels
@@ -129,7 +130,7 @@ plot_intensity_distribution <- function(x, style = c("bar", "pie")) {
     p <- ggplot2::ggplot(intensity_summary,
                         ggplot2::aes(x = percentage, y = intensity, fill = intensity)) +
       ggplot2::geom_col(width = 0.7) +
-      ggplot2::geom_text(ggplot2::aes(label = sprintf("%.1f%% (%d min)",
+      ggplot2::geom_text(ggplot2::aes(label = sprintf("%.1f%% (%.0f min)",
                                                     percentage, minutes)),
                         hjust = -0.1, size = 4.5) +
       ggplot2::scale_fill_manual(
@@ -145,7 +146,7 @@ plot_intensity_distribution <- function(x, style = c("bar", "pie")) {
       ) +
       ggplot2::labs(
         title = "Time in Each Intensity Level",
-        subtitle = sprintf("Total wear time: %.1f hours | MVPA: %d minutes",
+        subtitle = sprintf("Total wear time: %.1f hours | MVPA: %.0f minutes",
                           x$overall_summary$total_wear_hours,
                           x$overall_summary$mvpa_minutes),
         x = "Percentage of Wear Time (%)",
@@ -189,6 +190,18 @@ plot_intensity_distribution <- function(x, style = c("bar", "pie")) {
 }
 
 
+# Epoch length of an analysis in seconds: the stored parameter, else the timestamp spacing
+.analysis_epoch_length <- function(x) {
+  epoch_length <- x$parameters$epoch_length
+  if (is.null(epoch_length) || is.na(epoch_length) || epoch_length <= 0) {
+    ts <- as.numeric(x$epoch_data$timestamp)
+    epoch_length <- if (length(ts) > 1) stats::median(diff(ts)) else NA
+    if (is.na(epoch_length) || epoch_length <= 0) epoch_length <- 60
+  }
+  epoch_length
+}
+
+
 #' Plot Wear Time Quality Check from canhrActi Analysis
 #'
 #' Visualizes minute-by-minute counts with wear/non-wear classification overlay.
@@ -229,13 +242,16 @@ plot_wear_time_check <- function(x, date = NULL) {
 
   day_data$wear_status <- ifelse(day_data$wear_time, "Wear", "Non-wear")
   day_data$hour <- as.numeric(format(day_data$timestamp, "%H")) +
-                   as.numeric(format(day_data$timestamp, "%M")) / 60
+                   as.numeric(format(day_data$timestamp, "%M")) / 60 +
+                   as.numeric(format(day_data$timestamp, "%S")) / 3600
+  hours_per_epoch <- .analysis_epoch_length(x) / 3600
+  y_top <- max(day_data$axis1) * 1.1
 
   p <- ggplot2::ggplot(day_data, ggplot2::aes(x = hour, y = axis1)) +
     ggplot2::geom_rect(
       data = day_data[!day_data$wear_time, ],
-      ggplot2::aes(xmin = hour - 1/60, xmax = hour + 1/60,
-                   ymin = 0, ymax = max(day_data$axis1) * 1.1),
+      ggplot2::aes(xmin = hour - hours_per_epoch, xmax = hour + hours_per_epoch),
+      ymin = 0, ymax = y_top,
       fill = "#FFE0E0", alpha = 0.5, inherit.aes = FALSE
     ) +
     ggplot2::geom_line(color = canhrActi_color("blue"), linewidth = 0.4) +
@@ -246,15 +262,15 @@ plot_wear_time_check <- function(x, date = NULL) {
       expand = c(0, 0)
     ) +
     ggplot2::scale_y_continuous(
-      limits = c(0, max(day_data$axis1) * 1.1),
+      limits = c(0, y_top),
       expand = c(0, 0)
     ) +
     ggplot2::labs(
       title = "Wear Time Quality Check",
       subtitle = sprintf("%s | Wear: %.1f hours | Non-wear: %.1f hours",
-                        format(date, "%B %d, %Y"),
-                        sum(day_data$wear_time) / 60,
-                        sum(!day_data$wear_time) / 60),
+                        .format_english(date, "%B %d, %Y"),
+                        sum(day_data$wear_time) * hours_per_epoch,
+                        sum(!day_data$wear_time) * hours_per_epoch),
       x = "Time of Day",
       y = "Activity Counts (axis1)",
       caption = sprintf("Wear time algorithm: %s | Red shading indicates detected non-wear periods",
@@ -315,9 +331,10 @@ plot_activity_profile <- function(x, date_range = NULL, wear_only = TRUE) {
   epoch_data$intensity <- factor(epoch_data$intensity, levels = intensity_levels)
   colors <- canhrActi_palette("intensity")
 
+  half_epoch <- .analysis_epoch_length(x) / 2
   p <- ggplot2::ggplot(epoch_data, ggplot2::aes(x = timestamp, y = axis1)) +
     ggplot2::geom_rect(
-      ggplot2::aes(xmin = timestamp - 30, xmax = timestamp + 30,
+      ggplot2::aes(xmin = timestamp - half_epoch, xmax = timestamp + half_epoch,
                    ymin = 0, ymax = axis1, fill = intensity),
       alpha = 0.3
     ) +
@@ -330,14 +347,14 @@ plot_activity_profile <- function(x, date_range = NULL, wear_only = TRUE) {
     ) +
     ggplot2::scale_x_datetime(
       date_breaks = "1 day",
-      date_labels = "%b %d"
+      labels = function(x) .format_english(x, "%b %d")
     ) +
     ggplot2::scale_y_continuous(
       expand = c(0, 0)
     ) +
     ggplot2::labs(
       title = "Activity Profile",
-      subtitle = sprintf("MVPA: %d min | Sedentary: %d min | Wear time: %.1f hours",
+      subtitle = sprintf("MVPA: %.0f min | Sedentary: %.0f min | Wear time: %.1f hours",
                         x$overall_summary$mvpa_minutes,
                         x$intensity_summary$minutes[x$intensity_summary$intensity == "sedentary"],
                         x$overall_summary$total_wear_hours),
@@ -360,8 +377,10 @@ plot_activity_profile <- function(x, date_range = NULL, wear_only = TRUE) {
 #' moderate-to-vigorous activity occurred.
 #'
 #' @param x A \code{canhrActi_analysis} object from \code{canhrActi()}
-#' @param min_bout_length Integer. Minimum bout duration in minutes (default: 10)
-#' @param drop_time_allowance Integer. Drop time allowance in minutes (default: 2)
+#' @param min_bout_length Minimum bout duration in minutes (default: 10), rounded
+#'   to whole epochs
+#' @param drop_time_allowance Drop time allowance in minutes (default: 2), rounded
+#'   to whole epochs
 #'
 #' @return A ggplot2 object
 #'
@@ -378,9 +397,14 @@ plot_mvpa_bouts <- function(x, min_bout_length = 10, drop_time_allowance = 2) {
     stop("Input must be a canhrActi_analysis object from canhrActi()")
   }
 
-  bouts <- detect.mvpa.bouts(x$epoch_data$intensity,
-                             min_bout_length = min_bout_length,
-                             drop_time_allowance = drop_time_allowance)
+  # detect.mvpa.bouts() counts epochs, so pass minutes as epochs and report minutes back.
+  # Non-wear epochs count as sedentary, as in the analysis summary.
+  em <- 60 / .analysis_epoch_length(x)
+  intensity <- as.character(x$epoch_data$intensity)
+  intensity[!(x$epoch_data$wear_time %in% TRUE)] <- "sedentary"
+  bouts <- detect.mvpa.bouts(intensity,
+                             min_bout_length = max(1, round(min_bout_length * em)),
+                             drop_time_allowance = max(0, round(drop_time_allowance * em)))
 
   if (nrow(bouts) == 0) {
     stop("No MVPA bouts detected with current parameters")
@@ -390,11 +414,11 @@ plot_mvpa_bouts <- function(x, min_bout_length = 10, drop_time_allowance = 2) {
     bout_number = bouts$bout_number,
     start_time = x$epoch_data$timestamp[bouts$start_index],
     end_time = x$epoch_data$timestamp[bouts$end_index],
-    bout_length = bouts$bout_length,
+    bout_length = bouts$bout_length / em,
     mvpa_percent = bouts$mvpa_percent
   )
 
-  bout_data$date <- as.Date(bout_data$start_time)
+  bout_data$date <- .clock_date(bout_data$start_time)
   bout_data$start_hour <- as.numeric(format(bout_data$start_time, "%H")) +
                          as.numeric(format(bout_data$start_time, "%M")) / 60
   bout_data$end_hour <- as.numeric(format(bout_data$end_time, "%H")) +
@@ -420,13 +444,13 @@ plot_mvpa_bouts <- function(x, min_bout_length = 10, drop_time_allowance = 2) {
     ) +
     ggplot2::labs(
       title = "MVPA Bout Timeline",
-      subtitle = sprintf("%d bouts detected | Total bouted MVPA: %d minutes | Mean duration: %.1f min",
+      subtitle = sprintf("%d bouts detected | Total bouted MVPA: %.0f minutes | Mean duration: %.1f min",
                         nrow(bouts),
-                        sum(bouts$mvpa_minutes),
-                        mean(bouts$bout_length)),
+                        sum(bouts$mvpa_minutes) / em,
+                        mean(bout_data$bout_length)),
       x = "Time of Day",
       y = "Date",
-      caption = sprintf("Minimum bout: %d min | Drop time allowance: %d min",
+      caption = sprintf("Minimum bout: %g min | Drop time allowance: %g min",
                        min_bout_length, drop_time_allowance)
     ) +
     theme_canhrActi()
@@ -479,8 +503,11 @@ plot_sleep <- function(x, night = 1, show_activity = TRUE, show_awakenings = TRU
 
   sleep_period <- x$sleep_periods[night, ]
 
-  in_bed <- as.POSIXct(sleep_period$in_bed_time)
-  out_bed <- as.POSIXct(sleep_period$out_bed_time)
+  # The period times are clock times of the epoch timestamps, so read them in that zone
+  tz <- attr(x$epoch_data$timestamp, "tzone")
+  if (is.null(tz)) tz <- ""
+  in_bed <- as.POSIXct(sleep_period$in_bed_time, tz = tz[1])
+  out_bed <- as.POSIXct(sleep_period$out_bed_time, tz = tz[1])
 
   if (is.null(x$epoch_data)) {
     stop("No epoch data available for plotting")
@@ -507,12 +534,13 @@ plot_sleep <- function(x, night = 1, show_activity = TRUE, show_awakenings = TRU
     period_data$activity_scaled <- 0
   }
 
+  half_epoch_min <- .analysis_epoch_length(x) / 120
   p <- ggplot2::ggplot(period_data, ggplot2::aes(x = minutes))
 
   if (show_activity) {
     p <- p +
       ggplot2::geom_rect(
-        ggplot2::aes(xmin = minutes - 0.5, xmax = minutes + 0.5,
+        ggplot2::aes(xmin = minutes - half_epoch_min, xmax = minutes + half_epoch_min,
                      ymin = 0, ymax = activity_scaled * 0.3, fill = "Activity"),
         alpha = 0.5
       )
@@ -521,7 +549,7 @@ plot_sleep <- function(x, night = 1, show_activity = TRUE, show_awakenings = TRU
   p <- p +
     ggplot2::geom_rect(
       data = period_data[period_data$sleep_wake == "S", ],
-      ggplot2::aes(xmin = minutes - 0.5, xmax = minutes + 0.5,
+      ggplot2::aes(xmin = minutes - half_epoch_min, xmax = minutes + half_epoch_min,
                    ymin = 0, ymax = 0.05, fill = "Sleep Period"),
       alpha = 0.8
     )
@@ -600,7 +628,7 @@ plot_sleep <- function(x, night = 1, show_activity = TRUE, show_awakenings = TRU
       title = "Sleep Actogram",
       subtitle = sprintf("Period %d: %s | Efficiency: %.1f%% | TST: %.1f hr | WASO: %d min | Awakenings: %d",
                         night,
-                        format(in_bed, "%b %d, %Y"),
+                        .format_english(in_bed, "%b %d, %Y"),
                         sleep_period$sleep_efficiency,
                         total_sleep_min / 60,
                         waso,
@@ -672,8 +700,8 @@ plot_daily_summary <- function(x) {
 
   daily_data <- aggregate(
     cbind(wear_time = as.numeric(wear_time),
-          mvpa = as.numeric(intensity %in% c("moderate", "vigorous", "very_vigorous")),
-          sedentary = as.numeric(intensity == "sedentary"),
+          mvpa = as.numeric(wear_time & intensity %in% c("moderate", "vigorous", "very_vigorous")),
+          sedentary = as.numeric(wear_time & intensity == "sedentary"),
           steps = steps) ~ date,
     data = epoch_data,
     FUN = sum
@@ -686,10 +714,13 @@ plot_daily_summary <- function(x) {
 
   daily_data$wear_hours <- daily_data$wear_time / 60
 
-  daily_data$date_label <- format(daily_data$date, "%b %d")
+  daily_data$date_label <- .format_english(daily_data$date, "%b %d")
+  # the rows are in date order; keep the bars in that order, not the labels' alphabetical one
+  day_axis <- ggplot2::scale_x_discrete(limits = unique(daily_data$date_label))
 
   p1 <- ggplot2::ggplot(daily_data, ggplot2::aes(x = date_label, y = wear_hours)) +
     ggplot2::geom_col(fill = canhrActi_color("blue"), width = 0.7) +
+    day_axis +
     ggplot2::geom_hline(yintercept = 10, linetype = "dashed",
                        color = "#999999", linewidth = 0.5) +
     ggplot2::scale_y_continuous(expand = c(0, 0), limits = c(0, 24)) +
@@ -706,6 +737,7 @@ plot_daily_summary <- function(x) {
 
   p2 <- ggplot2::ggplot(daily_data, ggplot2::aes(x = date_label, y = mvpa)) +
     ggplot2::geom_col(fill = canhrActi_color("moderate"), width = 0.7) +
+    day_axis +
     ggplot2::geom_hline(yintercept = 30, linetype = "dashed",
                        color = "#999999", linewidth = 0.5) +
     ggplot2::scale_y_continuous(expand = c(0, 0)) +
@@ -722,6 +754,7 @@ plot_daily_summary <- function(x) {
 
   p3 <- ggplot2::ggplot(daily_data, ggplot2::aes(x = date_label, y = sedentary)) +
     ggplot2::geom_col(fill = canhrActi_color("sedentary"), width = 0.7) +
+    day_axis +
     ggplot2::scale_y_continuous(expand = c(0, 0)) +
     ggplot2::labs(
       title = "Daily Sedentary Time",
@@ -736,6 +769,7 @@ plot_daily_summary <- function(x) {
 
   p4 <- ggplot2::ggplot(daily_data, ggplot2::aes(x = date_label, y = steps)) +
     ggplot2::geom_col(fill = canhrActi_color("green"), width = 0.7) +
+    day_axis +
     ggplot2::geom_hline(yintercept = 10000, linetype = "dashed",
                        color = "#999999", linewidth = 0.5) +
     ggplot2::scale_y_continuous(expand = c(0, 0)) +
@@ -756,13 +790,15 @@ plot_daily_summary <- function(x) {
     return(p1)
   }
 
+  # the means are over the valid days the subtitle counts
+  valid <- as.character(daily_data$date) %in% as.character(x$valid_days)
   p_combined <- p1 / p2 / p3 / p4 +
     patchwork::plot_annotation(
       title = "Daily Activity Summary",
       subtitle = sprintf("%d valid days | Mean MVPA: %.0f min/day | Mean steps: %.0f/day",
                         x$overall_summary$valid_days,
-                        mean(daily_data$mvpa),
-                        mean(daily_data$steps)),
+                        if (any(valid)) mean(daily_data$mvpa[valid]) else 0,
+                        if (any(valid)) mean(daily_data$steps[valid]) else 0),
       theme = theme_canhrActi()
     )
 

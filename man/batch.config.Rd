@@ -23,7 +23,8 @@ batch.config(
 \arguments{
 \item{wear}{Wear time algorithm: "choi", "troiano", "CANHR2025"}
 
-\item{intensity}{Intensity algorithm: "freedson1998", "CANHR"}
+\item{intensity}{Intensity algorithm: "freedson1998", "CANHR", "evenson", "puyau",
+"mattocks", "pate_preschool", "troiano", "sasaki_vm3", "copeland_older", "auto"}
 
 \item{min_wear}{Minimum wear hours (default: 10)}
 

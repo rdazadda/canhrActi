@@ -1,0 +1,229 @@
+canhrActi raw accelerometer pipeline: third-party notices
+
+canhrActi is copyright (c) 2025 CANHR, University of Alaska Fairbanks, all rights
+reserved (see the package LICENSE file). The raw accelerometer pipeline in
+canhrActi (the R/raw_*.R files and R/circadian_ggir.R) contains code ported
+from the open source package GGIR, the conversion of raw data to counts
+(R/gt3x_counts.R) restates steps of the open source package agcounts, and the
+pipeline calls three further open source packages at run time. This file
+records what was taken from where, under which licence, and what is owed in
+return.
+
+canhrActi is not GGIR. It is not endorsed by, affiliated with, or supported by
+the GGIR authors, the Medical Research Council UK, Accelting, or the French
+National Research Agency. The name GGIR is used in this package only to
+identify the origin of ported code and to describe which GGIR functions a
+canhrActi function reproduces. Nothing in canhrActi should be described or
+branded as GGIR, and questions about canhrActi's behaviour should go to the
+canhrActi maintainer, not to the GGIR project.
+
+-------------------------------------------------------------------------------
+1. GGIR (code ported, modified)
+-------------------------------------------------------------------------------
+
+Package:     GGIR, Raw Accelerometer Data Analysis
+Version:     3.3-9 (dated 2026-09-12), obtained from the source repository, for
+             most files; 3.3-6, the version installed and used for parity
+             testing, for the files marked (3.3-6) in the list below
+Repository:  https://github.com/wadpac/GGIR/
+Website:     https://wadpac.github.io/GGIR/
+Licence:     Apache License, Version 2.0
+             A copy of the licence text as shipped in the GGIR repository is
+             included with this package as inst/LICENSE.GGIR.
+
+Copyright holders (role cph in GGIR's DESCRIPTION):
+    Medical Research Council UK (cph, fnd)
+    Accelting (cph, fnd)
+    French National Research Agency (cph, fnd)
+
+Authors and contributors (Authors@R in GGIR's DESCRIPTION, version 3.3-9):
+    Vincent T van Hees (aut, cre)
+    Jairo H Migueles (aut)
+    Samuel T Afolabi (ctb)
+    Severine Sabia (ctb)
+    Matthew R Patterson (ctb)
+    Zhou Fang (ctb)
+    Joe Heywood (ctb)
+    Joan Capdevila Pujol (ctb)
+    Lena Kushleyeva (ctb)
+    Mathilde Chen (ctb)
+    Manasa Yerramalla (ctb)
+    Patrick Bos (ctb)
+    Taren Sanders (ctb)
+    Chenxuan Zhao (ctb)
+    Ian Meneghel Danilevicz (ctb)
+    Victor Barreto Mesquita (ctb)
+    Gaia Segantin (ctb)
+    Xiaoyu Zong (ctb)
+    Medical Research Council UK (cph, fnd)
+    Accelting (cph, fnd)
+    French National Research Agency (cph, fnd)
+
+GGIR ships no NOTICE file, so there is no NOTICE text to reproduce here.
+
+The following canhrActi files contain code ported from GGIR R/ sources, from
+3.3-9 unless marked (3.3-6). Each is a MODIFIED version of the original; each
+begins with a header that names the GGIR file it was ported from and
+summarises what was changed.
+
+Reading, calibration, non-wear and day summaries (GGIR parts 1 and 2):
+
+    R/raw_params.R                 GGIR R/load_params.R, check_params.R
+    R/raw_inspect.R                GGIR R/g.inspectfile.R, inspect_binFile_brand.R, g.dotorcomma.R,
+                                   g.extractheadervars.R, extractID.R, get_nw_clip_block_params.R
+    R/raw_read_block.R             GGIR R/g.readaccfile.R, updateBlocksize.R
+    R/raw_impute_timegaps.R        GGIR R/g.imputeTimegaps.R
+    R/raw_calibrate.R              GGIR R/g.calibrate.R
+    R/raw_metrics.R                GGIR R/g.applymetrics.R and the metric helper files it calls
+    R/raw_nonwear.R                GGIR R/detect_nonwear_clipping.R
+    R/raw_starttime.R              GGIR R/g.getstarttime.R, get_starttime_weekday_truncdata.R
+    R/raw_getmeta.R                GGIR R/g.getmeta.R
+    R/raw_weardec.R                GGIR R/g.weardec.R
+    R/raw_impute.R                 GGIR R/g.impute.R, g.analyse.R
+    R/raw_analyse_perday.R         GGIR R/g.analyse.perday.R (3.3-6)
+    R/raw_analyse_perfile.R        GGIR R/g.analyse.perfile.R, g.analyse.R (3.3-6)
+    R/raw_getmx.R                  GGIR R/g.getM5L5.R (3.3-6)
+    R/raw_quality.R                GGIR R/g.part1.R, g.part2.R, g.analyse.perday.R, g.impute.R
+                                   (the validity checks behind data_quality_report.csv)
+    R/raw_pipeline.R               GGIR R/g.part1.R
+    R/raw_constants.R              GGIR R/monitor_types.R
+
+Sleep (GGIR parts 3 and 4):
+
+    R/raw_sleep_detect.R           GGIR R/g.sib.det.R
+    R/raw_sleep_sib.R              GGIR R/HASIB.R
+    R/raw_sleep_guider.R           GGIR R/HASPT.R
+    R/raw_sleep_guider_correct.R   GGIR R/g.part3_correct_guider.R, g.part3_alignIndexVectors.R
+    R/raw_sleep_summary.R          GGIR R/g.sib.sum.R
+    R/raw_sleep_part3.R            GGIR R/g.part3.R
+    R/raw_sleep_nights.R           GGIR R/g.part4.R, g.create.sp.mat.R, is_this_a_dst_night.R
+    R/raw_sleep_sri.R              GGIR R/CalcSleepRegularityIndex.R
+    R/raw_sleeplog.R               GGIR R/g.loadlog.R, g.part4_extractid.R
+    R/raw_sleep_report.R           GGIR R/g.report.part4.R, tidyup_df.R, addSplitNames.R,
+                                   getSplitNames.R
+
+Time use (GGIR part 5):
+
+    R/raw_timeuse.R                GGIR R/g.part5.R
+    R/raw_timeuse_windows.R        GGIR R/g.part5.definedays.R, g.part5.wakesleepwindows.R and
+                                   the midnight and night-trimming blocks of g.part5.R
+    R/raw_timeuse_series.R         GGIR R/g.part5_initialise_ts.R, g.part5.addsib.R,
+                                   g.part5.handle_lux_extremes.R, is.ISO8601.R
+    R/raw_timeuse_segment.R        GGIR R/g.part5_analyseSegment.R, g.part5.lux_persegment.R
+    R/raw_timeuse_levels.R         GGIR R/g.getbout.R, identify_level.R
+    R/raw_timeuse_fragmentation.R  GGIR R/g.fragmentation.R, g.intensitygradient.R
+    R/raw_timeuse_rest.R           GGIR R/g.part5.analyseRest.R, markerButtonForRest.R
+    R/raw_timeuse_sibreport.R      GGIR R/g.sibreport.R
+    R/raw_timeuse_timeseries.R     GGIR R/g.part5.savetimeseries.R
+    R/raw_timeuse_report.R         GGIR R/g.report.part5.R
+    R/raw_timeuse_dictionary.R     GGIR R/g.report.part5_dictionary.R,
+                                   dev-functions/createInternalData.R
+
+Exports, figures and circadian:
+
+    R/raw_export.R                 GGIR R/g.part1.R to g.part5.R, g.part5.savetimeseries.R,
+                                   g.report.part5.R, g.report.part5_dictionary.R,
+                                   checkMilestoneFolders.R, correctOlderMilestoneData.R
+    R/raw_plots.R                  GGIR R/g.plot.R, visualReport.R, g.sib.plot.R, g.plot5.R
+    R/raw_sleep_plots.R            GGIR R/g.sib.plot.R and the visualisation_sleep block of
+                                   g.part4.R
+    R/raw_timeuse_plots.R          GGIR R/visualReport.R (the part-5 class ribbon),
+                                   g.intensitygradient.R
+    R/raw_ggir_panelplot.R         GGIR R/visualReport.R, blocks copied verbatim (3.3-6)
+    R/raw_ggir_sleepplot.R         GGIR R/g.part4.R, the drawing calls copied (3.3-6)
+    R/circadian_ggir.R             GGIR R/cosinor_IS_IV_Analyses.R, g.IVIS.R, blocks copied
+                                   verbatim (3.3-6)
+
+The header at the top of each of these files is the authoritative statement
+of which GGIR source it was ported from; the list above is a summary.
+
+Modifications, in general terms: file input and output, console printing and
+GGIR's params object were removed or replaced with explicit arguments and
+return values; functions and files were renamed to canhrActi conventions;
+a small number of canhrActi-only behaviours were added behind parameters that
+default to GGIR's behaviour. The arithmetic of the ported code was kept as it
+is in GGIR so that results are reproducible against GGIR output.
+
+-------------------------------------------------------------------------------
+2. GGIRread (called only, no code copied)
+-------------------------------------------------------------------------------
+
+Package:     GGIRread, Wearable Accelerometer Data File Readers
+Version:     1.0.8 as installed and tested; 1.0.10 as read in source
+Repository:  https://github.com/wadpac/GGIRread/
+Licence:     Apache License, Version 2.0 (the same text as inst/LICENSE.GGIR)
+
+Copyright holders: Medical Research Council UK (cph, fnd); Accelting (cph, fnd).
+
+Authors and contributors (Authors@R, version 1.0.10):
+    Vincent T van Hees (aut, cre)
+    Patrick Bos (aut)
+    Lena Kushleyeva (ctb)
+    Jing Hua Zhao (ctb)
+    Evgeny Mirkes (ctb)
+    Dan Jackson (ctb)
+    Jairo H Migueles (ctb)
+    John Muschelli (ctb)
+
+The Axivity .cwa reading code in GGIRread (AxivityNumUnpack, readAxivity) was
+originally written by Evgeny Mirkes (University of Leicester) and revised by
+Dan Jackson, as credited in the GGIRread source files.
+
+canhrActi uses GGIRread by calling its exported functions (readGENEActiv,
+readAxivity, readParmayMatrix, resample) through the installed package. No
+GGIRread R or C++ source has been copied into canhrActi.
+
+-------------------------------------------------------------------------------
+3. read.gt3x (called only, no code copied)
+-------------------------------------------------------------------------------
+
+Package:     read.gt3x, Parse ActiGraph GT3X/GT3X+ Accelerometer Data
+Version:     1.2.0 as installed and tested; 1.3.0 as read in source
+Repository:  https://github.com/THLfi/read.gt3x
+Licence:     European Union Public Licence (EUPL), version 1.1 or 1.2
+             (declared as "EUPL" in the package DESCRIPTION)
+
+Authors: Tuomo Nieminen (aut, cre), John Muschelli (aut);
+contributors Patrick Bos (ctb), Vincent van Hees (ctb).
+
+canhrActi uses read.gt3x by calling its exported functions (read.gt3x,
+parse_gt3x_info and related helpers) through the installed package. No
+read.gt3x R or C++ source has been copied into canhrActi. The EUPL is a
+copyleft licence, and canhrActi deliberately does not derive from read.gt3x
+code. The .gt3x reader in src/gt3x_stream.cpp was written from ActiGraph's
+published format description (https://github.com/actigraph/GT3X-File-Format)
+and only checked against read.gt3x output; it contains no read.gt3x code.
+
+-------------------------------------------------------------------------------
+4. actilifecounts (called only, no code copied)
+-------------------------------------------------------------------------------
+
+Package:     actilifecounts, Generate Activity Counts from Raw Accelerometer Data
+Version:     1.1.1 as installed
+Repository:  https://github.com/jhmigueles/actilifecounts
+Licence:     LGPL (>= 3), as declared in the package DESCRIPTION
+
+Author and maintainer: Jairo Hidalgo Migueles.
+
+canhrActi uses actilifecounts by calling its exported functions through the
+installed package. No actilifecounts source has been copied into canhrActi.
+
+-------------------------------------------------------------------------------
+5. agcounts (steps restated, modified)
+-------------------------------------------------------------------------------
+
+Package:     agcounts, Calculate 'ActiGraph' Counts from Accelerometer Data
+Version:     0.7.0
+Repository:  https://github.com/bhelsel/agcounts
+Licence:     MIT, Copyright (c) 2024 University of Kansas
+             A copy of the licence is included with this package as
+             inst/LICENSE.agcounts.
+
+Authors and contributors: Brian C. Helsel (aut, cre), Paul R. Hibbing (ctb),
+Robert N. Montgomery (ctb), Eric D. Vidoni (ctb), Jonathan Clutton (ctb),
+John Muschelli (ctb); University of Kansas (cph).
+
+R/gt3x_counts.R restates the agcounts steps .resample, .bpf_filter,
+.resample_10hz and .sum_counts so they can run block by block and carry their
+state from one block to the next. The header of that file names what was
+taken.

@@ -13,20 +13,18 @@ copeland_older(counts_per_minute)
 Ordered factor with intensity levels
 }
 \description{
-Cut-points specifically validated for healthy older adults (65+).
-Lower thresholds account for reduced movement efficiency with age.
+Cut-points validated for active, healthy older adults (mean age 70).
 }
 \details{
-Copeland (2009) cutpoints for older adults:
+Copeland and Esliger (2009) set one cut point, 1041 CPM for moderate to vigorous
+activity, and counted time under 50 CPM as sedentary:
 \itemize{
-\item Sedentary: 0-99 CPM
-\item Light: 100-1040 CPM
-\item Moderate: 1041-1800 CPM (lower than adults)
-\item Vigorous: >= 1801 CPM
+\item Sedentary: 0-49 CPM
+\item Light: 50-1040 CPM
+\item Moderate to vigorous: >= 1041 CPM, returned as "moderate"
 }
 
-Note: The moderate threshold is substantially lower than adult cut-points
-to account for age-related changes in movement patterns.
+The paper has no separate vigorous cut, so no epoch is "vigorous".
 }
 \references{
 Copeland JL, Esliger DW. (2009). Accelerometer assessment of physical

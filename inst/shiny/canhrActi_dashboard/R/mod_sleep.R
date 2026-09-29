@@ -1,248 +1,211 @@
-# Module: Sleep Analysis - Redesigned UI/UX
-# Consistent with Activity tab: chart-first layout, compact metrics, controls-panel structure
+# Module: Sleep
+# Rule bar, figures, one plot panel, then one table with a row per sleep period
+# (the Details export in full) and a noon to noon bar for each.
 
 mod_sleep_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
+    tags$div(
+      class = "sl-page",
+      uiOutput(ns("rule"), class = "sl-out"),
+      tags$div(id = ns("settings_panel"), class = "sl-settings", style = "display: none;",
+               sl_settings_panel(ns)),
+      tags$div(id = ns("sraw_settings"), class = "sl-settings", style = "display: none;",
+               slr_settings_panel(ns)),
+      uiOutput(ns("figures"), class = "sl-out"),
+      uiOutput(ns("plot_panel"), class = "sl-out sl-plot-out"),
+      uiOutput(ns("table_panel"), class = "sl-out sl-table-out"),
 
-    # Page Header
-    page_header(
-      icon_name = "moon",
-      title = "Sleep Analysis",
-      subtitle = "Sleep detection & quality",
-      status_output_id = ns("sleep_status_badge")
+      tags$div(id = ns("processing_indicator"), class = "sl-busy", style = "display: none;",
+               tags$span(class = "sl-spinner", `aria-hidden` = "true"),
+               tags$span(id = ns("processing_status"), "Scoring"))
     ),
+    tags$script(HTML(sl_page_script(ns(""))))
+  )
+}
 
-    # Compact Metrics Strip (matching Activity tab style)
-    div(class = "metrics-strip metrics-strip--transparent",
-      # File count badge
-      div(class = "file-info-badge metrics-strip-fixed",
-        textOutput(ns("metric_files_scored"), inline = TRUE), " files"
-      ),
+sl_algo_label <- function(k) {
+  switch(k %||% "cole.kripke", sadeh = "Sadeh (1994)", "Cole-Kripke (1992)")
+}
 
-      # Sleep Periods metric
-      div(class = "metric-card metric-card--inline",
-        div(class = "metric-value", textOutput(ns("metric_total_nights"), inline = TRUE)),
-        div(class = "metric-label", "Sleep Periods")
-      ),
+# Settings panel: every parameter the run reads, with its unit and a note.
+sl_settings_panel <- function(ns) {
+  field <- function(label, control, note, id = NULL) {
+    tags$div(class = "sl-field",
+      tags$div(class = "sl-field-k", label),
+      control,
+      tags$div(class = "sl-field-n", id = id, note))
+  }
+  num <- function(id, value, unit, ...) {
+    tags$div(class = "sl-num",
+      numericInput(ns(id), NULL, value = value, width = "100%", ...),
+      tags$span(class = "sl-unit", `aria-hidden` = "true", unit))
+  }
+  sel <- function(id, choices, selected) {
+    tags$div(class = "sl-select",
+      selectInput(ns(id), NULL, choices = choices, selected = selected,
+                  width = "100%", selectize = FALSE))
+  }
+  check <- function(id, label, value = FALSE) {
+    tags$div(class = "sl-check", checkboxInput(ns(id), label, value = value))
+  }
 
-      # Avg Duration metric
-      div(class = "metric-card metric-card--inline",
-        div(class = "metric-value", textOutput(ns("metric_avg_duration"), inline = TRUE)),
-        div(class = "metric-label", "Avg Duration")
-      ),
+  tags$div(
+    class = "sl-panel sl-settings-grid",
+    tags$div(
+      class = "sl-fields",
+      field("Sleep and wake",
+            sel("algorithm", c("Cole-Kripke (1992), adults" = "cole.kripke",
+                               "Sadeh (1994), youth" = "sadeh"), "cole.kripke"),
+            "scores every epoch asleep or awake"),
+      field("Period detection",
+            sel("detection_method", c("Tudor-Locke (2014)" = "tudor.locke"), "tudor.locke"),
+            "finds where a night starts and ends"),
+      field("A period lasts at least", num("min_sleep_period", 160, "min", min = 30, max = 480, step = 10),
+            "shorter runs are not a period"),
+      field("And at most", num("max_sleep_period", 1440, "min", min = 240, max = 1440, step = 60),
+            "1440 is a full day, so nothing is capped"),
 
-      # Avg Efficiency metric
-      div(class = "metric-card metric-card--inline",
-        div(class = "metric-value", textOutput(ns("metric_avg_efficiency"), inline = TRUE)),
-        div(class = "metric-label", "Avg Efficiency")
-      ),
-
-      # Avg WASO metric
-      div(class = "metric-card metric-card--inline",
-        div(class = "metric-value", textOutput(ns("metric_avg_waso"), inline = TRUE)),
-        div(class = "metric-label", "Avg WASO")
-      ),
-
-      # Quick actions (matching Activity tab)
-      div(class = "cluster cluster--gap-2 ml-auto metrics-strip-fixed",
-        actionButton(ns("run_btn"), span(icon("play"), "Run Analysis"),
-                     class = "btn-primary"),
-        actionButton(ns("clear_results"), span(icon("redo"), "Reset"),
-                     class = "btn-default")
-      )
+      field("Bedtime needs", num("bedtime_start", 5, "min", min = 1, max = 30, step = 1),
+            "inactive minutes to start a period"),
+      field("Waking needs", num("wake_time_end", 10, "min", min = 1, max = 60, step = 1),
+            "active minutes to end one"),
+      field("Movement floor", check("use_min_nonzero", "Require some movement", FALSE),
+            "off by default"),
+      field("At least", num("min_nonzero_epochs", 0, "epochs", min = 0, max = 100, step = 1),
+            "only while the floor is on", id = ns("note_nonzero"))
     ),
-
-    # Main Content: Two-column layout (matching Activity tab 3/9 split)
-    fluidRow(
-      # Left: Controls (narrow - width 3)
-      column(width = 3,
-
-        # Essential Controls (always visible)
-        div(class = "controls-panel",
-          div(class = "controls-header",
-            div(class = "controls-header-title",
-              icon("flask"), "Sleep Scoring"
-            )
-          ),
-          div(class = "mt-3",
-            # Algorithm selector
-            radioButtons(
-              ns("algorithm"),
-              "Algorithm:",
-              choices = c(
-                "Cole-Kripke (Adults)" = "cole.kripke",
-                "Sadeh (Youth)" = "sadeh"
-              ),
-              selected = "cole.kripke"
-            ),
-
-            # Algorithm info
-            uiOutput(ns("algorithm_info")),
-
-            # Wear time filter note
-            tags$small(class = "control-hint text-muted mb-3",
-              icon("info-circle"), " Requires wear time analysis for accuracy"
-            )
-          )
-        ),
-
-        # Advanced Options (collapsible - matching Activity tab)
-        div(class = "controls-panel",
-          tags$div(
-            `data-toggle` = "collapse",
-            `data-target` = paste0("#", ns("advanced_options")),
-            class = "controls-header controls-header--clickable",
-            div(class = "controls-header-title",
-              icon("cog"), "Advanced Options"
-            ),
-            div(class = "controls-toggle",
-              icon("chevron-down"), "expand"
-            )
-          ),
-          div(id = ns("advanced_options"), class = "collapse",
-            div(class = "controls-body",
-              # Sleep Period Detection section
-              div(class = "algo-group",
-                div(class = "algo-group-header",
-                  icon("bed"), "Period Detection"
-                ),
-
-                # Row 1: Minimum sleep period
-                tags$div(style = "display: flex; align-items: center; gap: 8px; margin: 8px 0;",
-                  tags$span(style = "width: 80px; text-align: right; color: #666;", "Min Period:"),
-                  div(style = "width: 70px;",
-                    numericInput(ns("min_sleep_period"), label = NULL, value = 160,
-                                 min = 30, max = 480, step = 10, width = "100%")
-                  ),
-                  tags$span(style = "color: #666; font-size: 13px;", "min")
-                ),
-
-                # Row 2: Bedtime definition
-                tags$div(style = "display: flex; align-items: center; gap: 8px; margin: 8px 0;",
-                  tags$span(style = "width: 80px; text-align: right; color: #666;", "Bedtime:"),
-                  div(style = "width: 70px;",
-                    numericInput(ns("bedtime_start"), label = NULL, value = 5,
-                                 min = 1, max = 30, step = 1, width = "100%")
-                  ),
-                  tags$span(style = "color: #666; font-size: 13px;", "min")
-                ),
-
-                # Row 3: Wake time definition
-                tags$div(style = "display: flex; align-items: center; gap: 8px; margin: 8px 0;",
-                  tags$span(style = "width: 80px; text-align: right; color: #666;", "Wake:"),
-                  div(style = "width: 70px;",
-                    numericInput(ns("wake_time_end"), label = NULL, value = 10,
-                                 min = 1, max = 60, step = 1, width = "100%")
-                  ),
-                  tags$span(style = "color: #666; font-size: 13px;", "min")
-                )
-              )
-            )
-          )
-        ),
-
-        # Hidden inputs for additional parameters
-        tags$div(class = "hidden",
-          numericInput(ns("max_sleep_period"), NULL, value = 1440),
-          numericInput(ns("min_nonzero_epochs"), NULL, value = 0),
-          checkboxInput(ns("use_min_nonzero"), NULL, value = FALSE),
-          selectInput(ns("detection_method"), NULL, choices = c("Tudor-Locke" = "tudor.locke"), selected = "tudor.locke")
-        ),
-
-        # Export Panel (matching Activity tab)
-        div(class = "controls-panel",
-          div(class = "controls-header-title mb-3",
-            icon("download"), "Export Data"
-          ),
-          div(class = "export-row",
-            downloadButton(ns("export_summary"), span(icon("file-csv"), " Summary"),
-              class = "btn-primary"),
-            downloadButton(ns("export_details"), span(icon("table"), " Details"),
-              class = "btn-info")
-          )
-        )
-      ),
-
-      # Right: Charts and Results (wide - width 9)
-      column(width = 9,
-
-        # HERO CHART: Sleep Visualization
-        div(class = "hero-chart-container",
-          div(class = "hero-chart-header",
-            div(class = "hero-chart-title",
-              icon("wave-square"), "Sleep Hypnogram"
-            ),
-            uiOutput(ns("file_selector_ui"))
-          ),
-          conditionalPanel(
-            condition = "output.has_sleep_results == false",
-            ns = ns,
-            chart_empty_state(
-              title = "No Sleep Data",
-              message = "Click 'Run Analysis' to detect sleep periods",
-              show_icon = FALSE
-            )
-          ),
-          conditionalPanel(
-            condition = "output.has_sleep_results == true",
-            ns = ns,
-            uiOutput(ns("hypnogram_chart_ui"))
-          )
-        ),
-
-        # Tabbed Results Section (matching Activity tab)
-        div(class = "hero-chart-container results-tabs",
-          tabsetPanel(
-            id = ns("results_tabs"),
-            type = "tabs",
-
-            # Night Summary Tab
-            tabPanel(
-              title = "Night Summary",
-              value = "nights",
-              div(class = "pt-4",
-                conditionalPanel(
-                  condition = "output.has_sleep_results == false",
-                  ns = ns,
-                  chart_empty_state(
-                    title = "Night Summary",
-                    message = "Run Analysis to see night-by-night metrics",
-                    show_icon = FALSE,
-                    extra_class = "chart-empty-state--spacious"
-                  )
-                ),
-                conditionalPanel(
-                  condition = "output.has_sleep_results == true",
-                  ns = ns,
-                  uiOutput(ns("night_cards"))
-                )
-              )
-            ),
-
-            # Sleep Metrics Tab
-            tabPanel(
-              title = "Sleep Metrics",
-              value = "summary",
-              div(class = "pt-4",
-                DT::dataTableOutput(ns("summary_table"))
-              )
-            ),
-
-            # Detailed Data Tab
-            tabPanel(
-              title = "Detailed Data",
-              value = "details",
-              div(class = "pt-4",
-                DT::dataTableOutput(ns("details_table"))
-              )
-            )
-          )
-        )
-      )
+    tags$div(
+      class = "sl-settings-foot",
+      tags$span(class = "sl-spacer"),
+      actionButton(ns("clear_results"), "Clear results", class = "sl-btn sl-btn--text is-destructive")
     )
   )
+}
+
+# Menus open and close on the page; only the choice is sent. Export starts both
+# downloads inside the click, through hidden iframes: a browser allows a download
+# only while the click still counts as a user action, about a second.
+sl_page_script <- function(ns_prefix) {
+  js <- "
+(function () {
+  var NS = '__NS__';
+  function setVal(name, value) { Shiny.setInputValue(NS + name, value, { priority: 'event' }); }
+  function closeMenus() {
+    document.querySelectorAll('.sl-page .sl-menu, .sl-page .sl-whomenu, .sl-page .sl-exportmenu, .sl-page .slr-exportmenu').forEach(function (m) {
+      m.style.display = 'none';
+    });
+    document.querySelectorAll('.sl-page .sl-pick, .sl-page .sl-who, .sl-page .sl-export-btn, .sl-page .slr-export-btn').forEach(function (b) {
+      b.classList.remove('is-open');
+    });
+  }
+  function toggleMenu(button, menu) {
+    var open = menu && menu.style.display !== 'none';
+    closeMenus();
+    if (menu && !open) { menu.style.display = 'block'; button.classList.add('is-open'); }
+  }
+
+  function fireAll(row) {
+    var ids = ['export_summary', 'export_details'];
+    var sent = 0;
+    ids.forEach(function (id) {
+      var a = document.getElementById(NS + id);
+      var href = a && a.getAttribute('href');
+      if (!href) return;
+      var f = document.createElement('iframe');
+      f.style.display = 'none';
+      f.src = href;
+      document.body.appendChild(f);
+      setTimeout(function () { if (f.parentNode) f.parentNode.removeChild(f); }, 120000);
+      sent++;
+    });
+    var label = row.querySelector('.sl-ei-label');
+    if (label) {
+      if (!label.dataset.rest) label.dataset.rest = label.textContent;
+      label.textContent = sent === ids.length
+        ? sent + ' files sent to your downloads folder'
+        : (sent === 0 ? 'Nothing to export yet' : sent + ' of ' + ids.length + ' sent; try again');
+      row.classList.toggle('is-done', sent === ids.length);
+      clearTimeout(row._t);
+      row._t = setTimeout(function () {
+        label.textContent = label.dataset.rest;
+        row.classList.remove('is-done');
+        closeMenus();
+      }, 2600);
+    }
+  }
+
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest || !e.target.closest('.sl-page')) { closeMenus(); return; }
+
+    var slt = e.target.closest('.sl-page [data-sltab]');
+    if (slt) { setVal('sltab_set', slt.dataset.sltab); return; }
+
+    var slp = e.target.closest('.sl-page [data-slpass]');
+    if (slp) { setVal('slpass_set', slp.dataset.slpass); return; }
+
+    var sls = e.target.closest('.sl-page .slr-gt th[data-slsort]');
+    if (sls) { setVal('slsort_set', sls.dataset.slsort); return; }
+
+    var sex = e.target.closest('.sl-page .slr-export-btn');
+    if (sex) { toggleMenu(sex, sex.parentNode.querySelector('.slr-exportmenu')); return; }
+    if (e.target.closest('.sl-page .slr-exportmenu')) { return; }
+
+    var pick = e.target.closest('.sl-page .sl-pick');
+    if (pick) { toggleMenu(pick, document.querySelector('.sl-page .sl-menu')); return; }
+
+    var who = e.target.closest('.sl-page .sl-who');
+    if (who) { toggleMenu(who, document.querySelector('.sl-page .sl-whomenu')); return; }
+
+    var wi = e.target.closest('.sl-page .sl-wi[data-who]');
+    if (wi) {
+      var fid = wi.dataset.who;
+      document.querySelectorAll('.sl-page .sl-row[data-fid]').forEach(function (r) {
+        r.classList.toggle('is-selected', fid !== 'all' && r.dataset.fid === fid);
+      });
+      closeMenus();
+      setVal('pick', fid);
+      return;
+    }
+
+    var ex = e.target.closest('.sl-page .sl-export-btn');
+    if (ex) { toggleMenu(ex, document.getElementById(NS + 'export_menu')); return; }
+
+    var all = e.target.closest('.sl-page .sl-ei-all');
+    if (all) { fireAll(all); return; }
+
+    if (e.target.closest('.sl-page .sl-exportmenu')) return;
+
+    var row = e.target.closest('.sl-page .sl-row[data-fid]');
+    if (row) {
+      var was = row.classList.contains('is-selected');
+      document.querySelectorAll('.sl-page .sl-row.is-selected').forEach(function (r) { r.classList.remove('is-selected'); });
+      if (!was) row.classList.add('is-selected');
+      setVal('pick', was ? 'all' : row.dataset.fid);
+      closeMenus();
+      return;
+    }
+
+    closeMenus();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { closeMenus(); return; }
+    if (!e.target.closest || !e.target.closest('.sl-page')) return;
+    var row = e.target.closest('.sl-row[data-fid]');
+    if (!row) return;
+    var rows = Array.prototype.slice.call(document.querySelectorAll('.sl-page .sl-row[data-fid]'));
+    var i = rows.indexOf(row);
+    var next = null;
+    if (e.key === 'ArrowDown') next = rows[Math.min(i + 1, rows.length - 1)];
+    else if (e.key === 'ArrowUp') next = rows[Math.max(i - 1, 0)];
+    else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); row.click(); return; }
+    if (next) { e.preventDefault(); next.focus(); next.click(); }
+  });
+})();
+"
+  sub("__NS__", ns_prefix, js, fixed = TRUE)
 }
 
 mod_sleep_server <- function(id, shared) {
@@ -250,91 +213,602 @@ mod_sleep_server <- function(id, shared) {
     ns <- session$ns
     # Module constants
     SLEEP_PLOT_CONSTANTS <- list(
-      NIGHT_OFFSET_HOURS = 6,      # Hours to offset for night detection
+      NIGHT_OFFSET_HOURS = 12,     # nights run noon to noon, as in plot_hypnogram()
       HEIGHT_PER_DAY = 80,         # Pixels per day in hypnogram
       MIN_PLOT_HEIGHT = 320,       # Minimum plot height
       MAX_PLOT_HEIGHT = 800        # Maximum plot height
     )
 
-    # sleep.tudor.locke returns sleep_time / wake_time as EPOCH COUNTS
-    # (sum of "S"/"W" epochs), not minutes. Convert epoch counts to minutes
-    # using the file's epoch length: minutes = epochs * epoch_length / 60.
-    # For 60s epochs the factor is 1 (no change); for 15s/30s it scales down.
-    epoch_minutes_factor <- function(epoch_length) {
-      if (is.null(epoch_length) || length(epoch_length) == 0 ||
-          is.na(epoch_length[1]) || !is.numeric(epoch_length[1]) || epoch_length[1] <= 0) {
-        return(1)
-      }
-      epoch_length[1] / 60
-    }
-    # Status badge for page header
-    output$sleep_status_badge <- renderUI({
-      res <- results()
-      if (length(res) == 0) {
-        status_badge("Not analyzed", "pending")
-      } else {
-        status_badge(paste(length(res), "files analyzed"), "success")
-      }
-    })
-
     results <- reactiveVal(list())
-    selected_file <- reactiveVal(NULL)
 
-    # Keep only wear-valid files, matching the tables/exports, so the metric
-    # strip's "All Participants" aggregates agree with them.
-    valid_sleep <- function(res) {
-      Filter(function(r) {
-        wt <- shared$results$wear_time[[r$file_id]]
-        is.null(wt) || !isFALSE(wt$meets_criteria)
-      }, res)
+    # Drop the results of recordings removed on Overview
+    observeEvent(names(shared$files), {
+      res <- results()
+      if (!length(res)) return()
+      keep <- intersect(names(res), names(shared$files))
+      if (length(keep) == length(res)) return()
+      results(res[keep])
+      shared$results$sleep <- res[keep]
+    }, ignoreNULL = FALSE)
+    selected_file <- reactiveVal(NULL)
+    run_stamp <- reactiveVal(NULL)
+
+    # BatchSleepExport<what>_<ISO date>_<time>.csv, one stamp for the whole set.
+    export_name <- function(what) {
+      paste0("BatchSleepExport", what, "_",
+             format(run_stamp() %||% Sys.time(), "%Y-%m-%d_%H%M%S"), ".csv")
     }
 
-    # Algorithm info based on selection
-    output$algorithm_info <- renderUI({
-      req(input$algorithm)
-      info <- if (input$algorithm == "cole.kripke") {
-        list(
-          text = "Recommended for adults (35-65 years). Uses activity counts from surrounding epochs.",
-          color = "#236192"
-        )
-      } else {
-        list(
-          text = "Better for children and adolescents (10-25 years). More sensitive to activity.",
-          color = "#6366f1"
-        )
+    # Page scope: a subject label, or "all" for the cohort. The chooser and a
+    # row click both set it.
+    page_pick <- reactiveVal("all")
+    observeEvent(input$pick, {
+      p <- input$pick %||% "all"
+      page_pick(p)
+      # The hypnogram draws one recording; on the cohort it shows the first
+      first <- {
+        res <- results()
+        if (length(res) == 0) NULL else as.character(res[[1]]$subject_id %||% res[[1]]$name)
       }
-
-      div(
-        class = "sleep-info-alert",
-        style = sprintf("background: %s10; border-left-color: %s;", info$color, info$color),
-        icon("info-circle", style = sprintf("color: %s;", info$color)),
-        info$text
-      )
+      selected_file(if (identical(p, "all")) first else p)
+      # The focus carries the file id behind the label
+      if (identical(p, "all")) focus_set(shared, "all")
+      else {
+        fid <- label_fid(p)
+        if (!is.null(fid)) focus_set(shared, fid)
+      }
     })
 
-    # File selector UI for hypnogram
-    output$file_selector_ui <- renderUI({
+    # A subject label to its file id, and back
+    label_of <- function(r) as.character(r$subject_id %||% r$name)
+    label_fid <- function(lbl) {
+      res <- results()
+      hit <- Filter(function(fid) identical(label_of(res[[fid]]), lbl), names(res))
+      if (length(hit)) hit[[1]] else NULL
+    }
+
+    observeEvent(input$toggle_advanced, {
+      shinyjs::toggle("settings_panel")
+    })
+
+    observeEvent(input$use_min_nonzero, {
+      on <- isTRUE(input$use_min_nonzero)
+      shinyjs::toggleState("min_nonzero_epochs", condition = on)
+      shinyjs::html("note_nonzero", if (on) "epochs above zero required" else "only while the floor is on")
+    }, ignoreInit = FALSE)
+
+    sel_subject <- reactive({
+      p <- page_pick()
+      if (is.null(p) || identical(p, "all")) NULL else p
+    })
+
+    # Subject labels, in result order
+    subjects_r <- reactive({
+      res <- results()
+      vapply(res, function(r) as.character(r$subject_id %||% r$name), character(1), USE.NAMES = FALSE)
+    })
+
+    # Shared by the table on screen and the exports
+    details_df <- reactive({
       res <- results()
       if (length(res) == 0) return(NULL)
+      tryCatch(sleep_details_df(res, shared), error = function(e) {
+        message("sleep_details_df failed: ", conditionMessage(e)); NULL
+      })
+    })
+    summary_df <- reactive({
+      res <- results()
+      if (length(res) == 0) return(NULL)
+      tryCatch(sleep_summary_df(res, shared), error = function(e) {
+        message("sleep_summary_df failed: ", conditionMessage(e)); NULL
+      })
+    })
 
-      file_choices <- sapply(res, function(r) r$subject_id %||% r$name)
-      names(file_choices) <- file_choices
+    # Parameters the run on screen was scored with, not the current inputs
+    run_params <- reactive({
+      r <- results()
+      if (length(r) == 0) NULL else r[[1]]$parameters
+    })
+    settings_moved <- reactive({
+      settings_moved_from(run_params(), input, list(
+        algorithm = "sleep_algorithm", min_sleep_period = "min_sleep_period",
+        bedtime_start = "bedtime_start", wake_time_end = "wake_time_end",
+        max_sleep_period = "max_sleep_period", min_nonzero_epochs = "min_nonzero_epochs"))
+    })
 
-      # Add "All Participants" option at the beginning
-      all_choices <- c("All Participants" = "all", file_choices)
+    # Raw interface. Every raw branch returns early, ahead of the counts code.
+    sraw_ids <- reactive(names(shared$raw %||% list()))
+    sraw_list <- reactive(shared$raw %||% list())
+    has_sraw <- reactive(length(sraw_ids()) > 0)
+    has_scounts <- reactive(length(shared$files) > 0)
+    sview <- reactive({
+      if (!has_sraw()) return("counts")
+      if (!has_scounts()) return("raw")
+      if (identical(local_sraw$view, "raw")) "raw" else "counts"
+    })
+    local_sraw <- reactiveValues(view = "raw", sel = NULL, tab = "nights",
+                                 pass = "cleaned", chart = "nights",
+                                 sort = NULL, dir = 1)
 
-      selectInput(
-        ns("selected_file"),
-        NULL,
-        choices = all_choices,
-        selected = "all",
-        width = "200px"
+    # Switching branch closes both settings panels
+    observeEvent(sview(), {
+      shinyjs::hide("settings_panel"); shinyjs::hide("sraw_settings")
+    }, ignoreInit = TRUE)
+
+    on_tab_shown(shared, "sleep", function() {
+      id <- focus_get(shared, among = names(shared$files))
+      r <- if (is.null(id)) NULL else results()[[id]]
+      if (!is.null(r)) {
+        page_pick(label_of(r))
+        selected_file(label_of(r))
+      }
+      rid <- focus_get(shared, among = sraw_ids())
+      if (!is.null(rid)) local_sraw$sel <- rid
+    })
+
+    # Nothing is computed until Run analysis is pressed
+    sraw_run <- reactiveVal(0L)
+    sraw_env <- new.env(parent = emptyenv())
+    sraw_env$nights <- list(); sraw_env$reports <- list()
+    sraw_env$p3 <- list(); sraw_env$p3_used <- list(); sraw_env$p5 <- list()
+    sraw_tick <- reactiveVal(0L)
+
+    # The raw settings: the panel, the run's copy of it, and an attached diary
+    sraw_diary <- reactiveVal(NULL)
+    sraw_params <- reactiveVal(NULL)
+    sraw_form <- reactive(slr_form_params(input, sraw_diary()))
+    sraw_moved <- reactive(sraw_run() > 0L && slr_settings_moved(sraw_params(), sraw_form()))
+
+    # Part 3 runs again only when the guider or the bout differs from what the
+    # stored recording ran with. Part 4 gets only the members that differ, so a
+    # default run is the stored one.
+    sraw_part4 <- function(r, id, s) {
+      p3 <- if (is.list(r$sleep)) r$sleep$settings$params else NULL
+      sraw_env$p3_used[[id]] <- NULL
+      if (is.list(p3)) {
+        want <- vapply(s[c("HASPT.algo", "timethreshold", "anglethreshold")], function(v) as.character(v)[1], "")
+        have <- vapply(list(p3$HASPT.algo, p3$timethreshold, p3$anglethreshold),
+                       function(v) paste(as.character(v), collapse = ","), "")
+        if (!identical(unname(want), have)) {
+          sig <- paste(c(ovr_name(r, id), want), collapse = "|")
+          hit <- sraw_env$p3[[id]]
+          if (is.null(hit) || !identical(hit$sig, sig)) {
+            hit <- list(sig = sig, sleep = canhrActi::raw.sleep.part3(r,
+              HASPT.algo = s$HASPT.algo, timethreshold = s$timethreshold,
+              anglethreshold = s$anglethreshold))
+            sraw_env$p3[[id]] <- hit
+          }
+          r$sleep <- hit$sleep
+          # the regularity chart reads the part 3 this run used
+          sraw_env$p3_used[[id]] <- hit$sleep
+          p3 <- r$sleep$settings$params
+        }
+      }
+      ov <- list()
+      if (!identical(as.character(s$includenightcrit), as.character(p3$includenightcrit %||% 16)))
+        ov$includenightcrit <- s$includenightcrit
+      if (!identical(s$sleepwindowType, as.character(p3$sleepwindowType %||% "SPT")[1]))
+        ov$sleepwindowType <- s$sleepwindowType
+      if (!is.null(s$diary)) ov$loglocation <- s$diary$path
+      # a call on the symbol, so a warning never deparses the whole recording
+      n <- eval(as.call(c(list(quote(canhrActi::raw.sleep.nights), quote(r)), ov)))
+      # the rule bar names the diary by the file the user picked
+      if (!is.null(s$diary)) {
+        a <- attr(n, "canhrActi"); a$sleeplog_name <- s$diary$name; attr(n, "canhrActi") <- a
+      }
+      n
+    }
+
+    sraw_switch <- function() {
+      if (!(has_scounts() && has_sraw())) return(NULL)
+      v <- sview()
+      seg <- function(key, label, n) {
+        tags$button(id = ns(paste0("sl_view_", key)), type = "button",
+                    class = paste("action-button ovr-seg-b", if (identical(v, key)) "is-on" else ""),
+                    label, tags$b(fmt_int(n)))
+      }
+      tags$div(class = "ovr-seg", role = "tablist",
+               seg("counts", "Counts", length(shared$files)),
+               seg("raw", "Raw", length(sraw_ids())))
+    }
+    observeEvent(input$sl_view_counts, local_sraw$view <- "counts")
+    observeEvent(input$sl_view_raw, local_sraw$view <- "raw")
+
+    observeEvent(sraw_ids(), {
+      sraw_env$p3 <- sraw_env$p3[intersect(names(sraw_env$p3), sraw_ids())]
+      sraw_env$p5 <- sraw_env$p5[intersect(names(sraw_env$p5), sraw_ids())]
+      if (!is.null(local_sraw$sel) && !local_sraw$sel %in% sraw_ids()) local_sraw$sel <- NULL
+      if (is.null(local_sraw$sel) && length(sraw_ids()) > 0) local_sraw$sel <- sraw_ids()[1]
+    })
+    sraw_cur <- reactive({
+      ids <- sraw_ids(); i <- if (is.null(local_sraw$sel)) 1L else match(local_sraw$sel, ids)
+      if (is.na(i)) i <- 1L
+      i
+    })
+
+    # GGIR part 4, one call per recording, cached. raw.sleep.nights() gives the
+    # night table and raw.sleep.report() GGIR's four frames.
+    sraw_nights <- reactive({
+      ids <- sraw_ids(); rs <- sraw_list()
+      sraw_tick()
+      if (sraw_run() == 0L || length(ids) == 0) return(list())
+      cache <- sraw_env$nights %||% list()
+      todo <- setdiff(ids, names(cache))
+      if (length(todo) > 0) {
+        s <- isolate(sraw_params()) %||% SLR_DEFAULTS
+        p3_moved <- !identical(s[c("HASPT.algo", "timethreshold", "anglethreshold")],
+                               SLR_DEFAULTS[c("HASPT.algo", "timethreshold", "anglethreshold")])
+        withProgress(message = if (p3_moved) "Running GGIR parts 3 and 4" else "Running GGIR part 4",
+                     value = 0, {
+          for (k in seq_along(todo)) {
+            id <- todo[k]
+            incProgress(1 / length(todo), detail = ovr_name(rs[[id]], id))
+            cache[[id]] <- tryCatch(sraw_part4(rs[[id]], id, s),
+                                    error = function(e) structure(list(), error = conditionMessage(e)))
+          }
+        })
+        sraw_env$nights <- cache
+        isolate(sraw_tick(sraw_tick() + 1L))
+      }
+      cache[ids]
+    })
+
+    # Part 5 for the columns the report merges; kept while its settings hold,
+    # and taken from the Activity page when that ran on the same settings
+    sraw_part5 <- function(r, id, n, s) {
+      pp <- slr_part5_params(s)
+      hit <- sraw_env$p5[[id]]
+      if (!is.null(hit) && identical(hit$pp, pp) && identical(hit$p3, sraw_env$p3_used[[id]])) return(hit$day)
+      tu <- isolate(shared$raw_timeuse %||% list())[[id]]
+      if (!slr_part5_same(tu, pp)) {
+        if (!is.null(sraw_env$p3_used[[id]])) r$sleep <- sraw_env$p3_used[[id]]
+        tu <- canhrActi::raw.timeuse(r, nights = n, params = pp)
+      }
+      day <- slr_part5_day(tu)
+      sraw_env$p5[[id]] <- list(pp = pp, p3 = sraw_env$p3_used[[id]], day = day)
+      day
+    }
+
+    sraw_reports <- reactive({
+      ids <- sraw_ids(); ns_ <- sraw_nights(); rs <- sraw_list()
+      if (sraw_run() == 0L || length(ids) == 0) return(list())
+      sraw_tick()
+      cache <- sraw_env$reports %||% list()
+      todo <- setdiff(ids, names(cache))
+      if (length(todo) > 0) {
+        s <- isolate(sraw_params()) %||% SLR_DEFAULTS
+        withProgress(message = "Running GGIR part 5", value = 0, {
+          for (k in seq_along(todo)) {
+            id <- todo[k]
+            n <- ns_[[id]]
+            incProgress(1 / length(todo), detail = ovr_name(rs[[id]], id))
+            cache[[id]] <- tryCatch({
+              if (!is.data.frame(n) || nrow(n) == 0) NULL
+              else {
+                # to GGIR a failed part 5 is a missing ms5 file
+                p5 <- tryCatch(sraw_part5(rs[[id]], id, n, s), error = function(e) NULL)
+                canhrActi::raw.sleep.report(n, part5 = p5)
+              }
+            }, error = function(e) NULL)
+          }
+        })
+        sraw_env$reports <- cache
+      }
+      cache[ids]
+    })
+
+    # Run analysis, its empty-state copy and Re-run do the same thing
+    sraw_go <- function() {
+      sraw_params(sraw_form())
+      sraw_env$nights <- list(); sraw_env$reports <- list(); sraw_env$p3_used <- list()
+      sraw_run(isolate(sraw_run()) + 1L)
+      sraw_tick(isolate(sraw_tick()) + 1L)
+      local_sraw$sort <- NULL; local_sraw$dir <- 1
+    }
+    observeEvent(input$sraw_run, sraw_go())
+    observeEvent(input$sraw_run_empty, sraw_go())
+    observeEvent(input$sraw_reanalyse, sraw_go())
+    observeEvent(input$sraw_change, shinyjs::toggle("sraw_settings"))
+    observeEvent(input$sraw_change_empty, shinyjs::toggle("sraw_settings"))
+
+    # A diary is kept once GGIR's reader accepts it
+    observeEvent(input$sraw_diary_file, {
+      f <- input$sraw_diary_file
+      if (is.null(f) || nrow(f) == 0) return()
+      chk <- tryCatch(suppressWarnings(canhrActi::raw.sleeplog(f$datapath[1])),
+                      error = function(e) e)
+      if (inherits(chk, "error")) {
+        shinyjs::html("sraw_diary_note", htmltools::htmlEscape(paste("Not read:", conditionMessage(chk))))
+        return()
+      }
+      sraw_diary(list(name = f$name[1], path = f$datapath[1]))
+    })
+    observeEvent(input$sraw_diary_clear, sraw_diary(NULL))
+    # Time in bed is a diary's window, so it waits for one
+    observe({
+      d <- sraw_diary()
+      shinyjs::toggle("sraw_diary_clear", condition = !is.null(d))
+      shinyjs::html("sraw_diary_note", if (is.null(d)) "GGIR's sleeplog csv" else htmltools::htmlEscape(d$name))
+      shinyjs::toggleState("sraw_window", condition = !is.null(d))
+      shinyjs::html("sraw_window_note", if (is.null(d)) "time in bed needs a diary" else "what the diary records")
+      if (is.null(d)) updateSelectInput(session, "sraw_window", selected = "SPT")
+    })
+    observeEvent(input$sraw_defaults, {
+      updateSelectInput(session, "sraw_haspt", selected = SLR_DEFAULTS$HASPT.algo)
+      updateNumericInput(session, "sraw_time", value = SLR_DEFAULTS$timethreshold)
+      updateNumericInput(session, "sraw_angle", value = SLR_DEFAULTS$anglethreshold)
+      updateNumericInput(session, "sraw_incl", value = SLR_DEFAULTS$includenightcrit)
+      updateSelectInput(session, "sraw_window", selected = SLR_DEFAULTS$sleepwindowType)
+    })
+
+    observeEvent(input$sltab_set, local_sraw$tab <- input$sltab_set, ignoreInit = TRUE)
+    observeEvent(input$slpass_set, local_sraw$pass <- input$slpass_set, ignoreInit = TRUE)
+    observeEvent(input$slchart_set, local_sraw$chart <- input$slchart_set, ignoreInit = TRUE)
+    observeEvent(input$slwho_set, {
+      v <- input$slwho_set
+      v <- if (identical(v, "all") || !v %in% sraw_ids()) sraw_ids()[1] else v
+      # the chooser reports its drawn value too; only a real pick moves the focus
+      if (!identical(v, local_sraw$sel)) {
+        local_sraw$sel <- v
+        focus_set(shared, v)
+      }
+    }, ignoreInit = TRUE)
+    observeEvent(input$slsort_set, {
+      k <- suppressWarnings(as.integer(input$slsort_set))
+      if (!is.na(k)) {
+        if (identical(local_sraw$sort, k)) local_sraw$dir <- -local_sraw$dir
+        else { local_sraw$sort <- k; local_sraw$dir <- 1 }
+      }
+    }, ignoreInit = TRUE)
+
+    # One report pass over all recordings, written as GGIR writes it
+    sraw_files <- function(dir) {
+      sraw_reports()
+      ids <- sraw_ids()
+      slr_write_report(sraw_nights()[ids], lapply(ids, function(id) sraw_env$p5[[id]]$day), dir)
+    }
+    sraw_dl <- function(which, fname) {
+      downloadHandler(
+        filename = function() fname,
+        content = function(file) {
+          d <- tempfile("part4_"); on.exit(unlink(d, recursive = TRUE), add = TRUE)
+          p <- sraw_files(d)[[which]]
+          validate(need(file.exists(p), "Part 4 wrote no rows."))
+          file.copy(p, file, overwrite = TRUE)
+        })
+    }
+    output$sraw_dl_nc <- sraw_dl("nightsummary_cleaned", "part4_nightsummary_sleep_cleaned.csv")
+    output$sraw_dl_nf <- sraw_dl("nightsummary_full",    "part4_nightsummary_sleep_full.csv")
+    output$sraw_dl_pc <- sraw_dl("personsummary_cleaned", "part4_summary_sleep_cleaned.csv")
+    output$sraw_dl_pf <- sraw_dl("personsummary_full",    "part4_summary_sleep_full.csv")
+    output$sraw_dl_all <- downloadHandler(
+      filename = function() "part4_sleep.zip",
+      content = function(file) {
+        d <- tempfile("part4_"); on.exit(unlink(d, recursive = TRUE), add = TRUE)
+        p <- sraw_files(d)
+        p <- p[file.exists(p)]
+        validate(need(length(p) > 0, "Part 4 wrote no rows."))
+        # zipr, as the Overview's zips: flat, and no zip.exe to find
+        zip::zipr(zipfile = file, files = p)
+      })
+    # the links sit in a closed menu, and a suspended download never gets its href
+    for (out in c("sraw_dl_nc", "sraw_dl_nf", "sraw_dl_pc", "sraw_dl_pf", "sraw_dl_all")) {
+      outputOptions(output, out, suspendWhenHidden = FALSE)
+    }
+
+    # GGIR's own figure: one row per night plus the legend
+    output$sraw_chart <- renderPlot({
+      ns_ <- sraw_nights(); i <- sraw_cur()
+      n <- ns_[[i]]
+      req(is.data.frame(n), nrow(n) > 0)
+      if (identical(local_sraw$chart, "regularity")) {
+        r <- sraw_list()[[sraw_ids()[i]]]
+        s3 <- sraw_env$p3_used[[sraw_ids()[i]]]
+        if (!is.null(s3)) r$sleep <- s3
+        print(canhrActi::plot_raw_sleep_regularity(r))
+      } else {
+        canhrActi::raw.ggir.sleepplot(n)
+      }
+    }, res = 108, height = function() {
+      if (identical(local_sraw$chart, "regularity")) return(320)
+      ns_ <- sraw_nights(); i <- sraw_cur()
+      nk <- tryCatch({
+        a <- attr(ns_[[i]], "canhrActi")
+        # the nights the figure keeps: cleaningcode under 1 with a diary, under 2 without
+        sum(suppressWarnings(as.numeric(a$guiders$cleaningcode)) < (if (isTRUE(a$dolog)) 1 else 2),
+            na.rm = TRUE)
+      }, error = function(e) 4)
+      # 40px per night, 96px for GGIR's top and bottom margins at this
+      # resolution, 46px for the legend above the top row. 6000px is a
+      # graphics device guard, reached past 146 nights.
+      max(200, min(6000, round(96 + 40 * max(nk, 1) + 46)))
+    })
+
+    output$rule <- renderUI({
+      if (identical(sview(), "raw")) {
+        if (length(sraw_ids()) == 0) return(sraw_switch())
+        ns_ <- sraw_nights(); reps <- sraw_reports()
+        n1 <- if (length(ns_) == 0) NULL else ns_[[sraw_cur()]]
+        r1 <- if (length(reps) == 0) NULL else reps[[sraw_cur()]]
+        ran <- sraw_run() > 0L
+        # Drawn before the run too, so the guider and diary can be set first
+        return(tagList(sraw_switch(),
+                       slr_rule(n1, r1, ns, ran = ran,
+                                form = if (ran) sraw_params() else sraw_form(),
+                                stale = sraw_moved())))
+      }
+      p <- run_params()
+      alg <- sl_algo_label(p$sleep_algorithm %||% input$algorithm)
+      epochs <- unique(vapply(shared$files, function(f) as.numeric(f$epoch_length %||% NA), numeric(1)))
+      epochs <- epochs[!is.na(epochs)]
+      epoch_txt <- if (length(epochs) == 1) paste0(fmt_int(epochs), " s epochs")
+                   else if (length(epochs) > 1) "mixed epochs" else NULL
+      ddf <- details_df()
+      n_periods <- if (is.null(ddf)) 0 else nrow(ddf)
+      n_files <- length(unique(if (is.null(ddf)) character(0) else ddf[["Subject Name"]]))
+
+      # Both branches draw the switch; without it here Counts has no way back
+      tagList(sraw_switch(), tags$div(
+        class = "sl-panel sl-rule",
+        tags$span(class = "sl-rule-k", "Scoring"),
+        tags$span(class = "sl-rule-v",
+          tags$b(alg), " · Tudor-Locke periods · ",
+          fmt_int(p$min_sleep_period %||% input$min_sleep_period %||% 160), " min minimum",
+          if (!is.null(epoch_txt)) paste0(" · ", epoch_txt) else NULL),
+        tags$span(class = "sl-rule-sep", `aria-hidden` = "true"),
+        tags$span(class = "sl-rule-k", "Periods"),
+        tags$span(class = "sl-rule-v",
+          if (n_periods == 0) "not scored yet"
+          else tagList(tags$b(fmt_int(n_periods)), " across ", fmt_int(n_files),
+                       if (n_files == 1) " recording" else " recordings")),
+        if (settings_moved()) stale_note("sl") else NULL,
+        tags$span(class = "sl-rule-actions",
+          actionButton(ns("toggle_advanced"), "Change", class = "sl-btn sl-btn--secondary"),
+          tags$span(class = "sl-export-wrap",
+            tags$span(class = paste("sl-btn sl-btn--secondary sl-export-btn",
+                                    if (n_periods == 0) "is-quiet" else ""),
+                      "Export", tags$span(class = "sl-car", `aria-hidden` = "true", HTML("&#9660;"))),
+            sl_export_menu(ns, n_periods > 0)),
+          actionButton(ns("run_btn"), if (length(results()) == 0) "Run analysis" else "Re-run",
+                       class = paste(run_button_class("sl", length(results()) > 0, settings_moved()),
+                                     "sl-run")))
+      ))
+    })
+
+    # Figures: the mean of each recording's own mean, over the chosen scope
+    output$figures <- renderUI({
+      if (identical(sview(), "raw")) {
+        reps <- sraw_reports()
+        if (length(reps) == 0) return(NULL)
+        return(slr_figures(reps, length(sraw_ids())))
+      }
+      sdf <- summary_df()
+      if (is.null(sdf) || nrow(sdf) == 0) return(NULL)
+      subj <- sel_subject()
+      rows <- if (is.null(subj)) sdf else sdf[sdf[["Subject Name"]] == subj, , drop = FALSE]
+      if (nrow(rows) == 0) rows <- sdf
+
+      meanOf <- function(k) {
+        v <- suppressWarnings(as.numeric(rows[[k]]))
+        v <- v[is.finite(v)]
+        if (length(v) == 0) NA_real_ else mean(v)
+      }
+      periods <- sum(suppressWarnings(as.numeric(rows[["Number of Sleep Periods"]])), na.rm = TRUE)
+      dur <- meanOf("Average Total Sleep Time")
+      eff <- meanOf("Average Efficiency")
+      waso <- meanOf("Average WASO")
+      dash <- "–"
+
+      tags$div(
+        class = "sl-panel sl-figs",
+        sl_fig(if (is.null(subj)) fmt_int(nrow(rows)) else subj, NULL,
+               if (is.null(subj)) "Recordings" else "Recording"),
+        sl_rule_div(),
+        sl_fig(fmt_int(periods), NULL, "Sleep periods"),
+        sl_rule_div(),
+        sl_fig(if (is.na(dur)) dash else fmt_dec(dur / 60, 1), "h", "Average duration"),
+        sl_rule_div(),
+        sl_fig(if (is.na(eff)) dash else fmt_dec(eff, 1), "%", "Average efficiency"),
+        sl_rule_div(),
+        sl_fig(if (is.na(waso)) dash else fmt_int(round(waso)), "min", "Average WASO")
       )
     })
 
-    # Track selected file
-    observeEvent(input$selected_file, {
-      selected_file(input$selected_file)
+    output$plot_panel <- renderUI({
+      if (identical(sview(), "raw")) {
+        ids <- sraw_ids(); rs <- sraw_list()
+        if (length(ids) == 0) return(NULL)
+        if (sraw_run() == 0L) return(slr_not_run(length(ids), ns))
+        n <- sraw_nights()[[sraw_cur()]]
+        if (!is.data.frame(n) || nrow(n) == 0) {
+          err <- attr(n, "error")
+          return(tags$div(class = "wt-panel acr-empty",
+            tags$div(class = "acr-empty-t", "No nights for this recording"),
+            tags$div(class = "acr-empty-s",
+              if (is.null(err)) "Part 4 found no night it could place a sleep window on."
+              else "Part 4 stopped with an error."),
+            if (!is.null(err)) tags$div(class = "acr-empty-m", err)))
+        }
+        return(slr_chart_panel(rs, ids, local_sraw$sel, local_sraw$chart, ns))
+      }
+      res <- results()
+      if (length(res) == 0) {
+        # The empty state; Run analysis is in the rule bar, as on the other counts pages
+        return(tags$div(class = "sl-panel sl-plotpanel",
+          tags$div(class = "sl-empty",
+            tags$div(class = "sl-empty-t", "No sleep results"),
+            tags$div(class = "sl-empty-m", "Run the analysis to detect sleep periods."))))
+      }
+      sel <- sel_subject()
+      subjects <- subjects_r()
+      first <- if (length(subjects)) subjects[1] else NULL
+      subj <- if (is.null(sel)) first else sel
+      ddf <- details_df()
+      nights_of <- function(s) if (is.null(ddf)) 0 else sum(ddf[["Subject Name"]] == s)
+
+      tags$div(class = "sl-panel sl-plotpanel",
+        tags$div(class = "sl-plotbar",
+          tags$span(class = "sl-pick", tabindex = "0",
+                    "Hypnogram", tags$span(class = "sl-car", `aria-hidden` = "true", HTML("&#9660;"))),
+          tags$div(class = "sl-menu", style = "display: none;",
+            tags$div(class = "sl-mi is-on",
+                     tags$span(class = "sl-tick", `aria-hidden` = "true", HTML("&#10003;")),
+                     "Hypnogram",
+                     tags$span(class = "sl-sc", if (is.null(subj)) "one recording" else subj))),
+
+          tags$span(class = "sl-who-wrap",
+            tags$span(class = "sl-who", tabindex = "0",
+                      if (is.null(sel)) paste("All", fmt_int(length(subjects)), "recordings") else subj,
+                      tags$span(class = "sl-car", `aria-hidden` = "true", HTML("&#9660;"))),
+            tags$div(class = "sl-whomenu", style = "display: none;",
+              tags$div(class = paste("sl-wi", if (is.null(sel)) "is-on" else ""), `data-who` = "all",
+                       tags$span(class = "sl-tick", `aria-hidden` = "true",
+                                 if (is.null(sel)) HTML("&#10003;") else ""),
+                       "All recordings",
+                       tags$span(class = "sl-sc", "falls back to the first")),
+              tags$div(class = "sl-wi-rule", `aria-hidden` = "true"),
+              lapply(subjects, function(s) {
+                tags$div(class = paste("sl-wi", if (identical(s, subj) && !is.null(sel)) "is-on" else ""),
+                         `data-who` = s,
+                         tags$span(class = "sl-tick", `aria-hidden` = "true",
+                                   if (identical(s, subj) && !is.null(sel)) HTML("&#10003;") else ""),
+                         s,
+                         tags$span(class = "sl-sc", paste(fmt_int(nights_of(s)), "nights")))
+              }))),
+
+          tags$span(class = "sl-scope",
+            if (is.null(sel))
+              paste0("showing ", subj %||% "the first recording",
+                     " · this plot draws one recording at a time")
+            else paste(fmt_int(nights_of(subj)), "nights · the selected recording"))),
+        tags$div(class = "sl-plotwrap", uiOutput(ns("hypnogram_chart_ui"))))
+    })
+
+    output$table_panel <- renderUI({
+      if (identical(sview(), "raw")) {
+        if (length(sraw_ids()) == 0 || sraw_run() == 0L) return(NULL)
+        reps <- sraw_reports()
+        rep <- if (length(reps) == 0) NULL else reps[[sraw_cur()]]
+        return(slr_table_panel(rep, local_sraw$tab, local_sraw$pass,
+                               local_sraw$sort, local_sraw$dir, ns))
+      }
+      ddf <- details_df()
+      if (is.null(ddf) || nrow(ddf) == 0) return(NULL)
+      subj <- sel_subject()
+      n <- if (is.null(subj)) nrow(ddf) else sum(ddf[["Subject Name"]] == subj)
+
+      tags$div(class = "sl-panel sl-tablepanel",
+        tags$div(class = "sl-table-head",
+          tags$span(class = "sl-table-title", "Sleep periods",
+            tags$span(class = "sl-table-sub",
+                      paste0(fmt_int(n), if (n == 1) " period · " else " periods · ",
+                             fmt_int(ncol(ddf)), " columns"))),
+          tags$span(class = "sl-key",
+            tags$span("Efficiency"),
+            tags$span(class = "sl-ramp",
+              tags$b(class = "s1"), tags$b(class = "s2"), tags$b(class = "s3"), tags$b(class = "s4")),
+            tags$span("80 to 100%"))),
+        sl_periods_grid(ddf, subj))
     })
 
     # Calculate number of unique days for dynamic height
@@ -362,11 +836,12 @@ mod_sleep_server <- function(id, shared) {
 
       if (is.null(r$timestamps)) return(4)
 
-      # Count unique nights (defined as 6 PM to 12 PM next day)
+      # Count the nights, noon to noon
       ts <- tryCatch(as.POSIXct(r$timestamps), error = function(e) NULL)
       if (is.null(ts)) return(4)
 
-      night_dates <- as.Date(ts - SLEEP_PLOT_CONSTANTS$NIGHT_OFFSET_HOURS * 3600)
+      # dated on the timestamps' own clock, as plot_hypnogram() dates its nights
+      night_dates <- as.Date(as.POSIXlt(ts - SLEEP_PLOT_CONSTANTS$NIGHT_OFFSET_HOURS * 3600))
       n_days <- length(unique(night_dates))
 
       max(n_days, 1)
@@ -383,152 +858,10 @@ mod_sleep_server <- function(id, shared) {
       plotOutput(ns("hypnogram_chart"), height = paste0(total_height, "px"))
     })
 
-    # Compact Metric Outputs
-    output$metric_files_scored <- renderText({
-      res <- results()
-      as.character(length(res))
-    })
-
-    output$metric_total_nights <- renderText({
-      res <- results()
-      sel <- input$selected_file
-      if (length(res) == 0 || is.null(sel)) return("--")
-
-      if (sel == "all") {
-        res <- valid_sleep(res)
-        total <- sum(sapply(res, function(r) {
-          np <- r$n_periods
-          if (is.null(np) || length(np) == 0) return(0)
-          as.numeric(np[1])
-        }), na.rm = TRUE)
-        as.character(total)
-      } else {
-        # Find selected participant
-        r <- NULL
-        for (result in res) {
-          result_id <- result$subject_id %||% result$name
-          if (!is.null(result_id) && result_id == sel) {
-            r <- result
-            break
-          }
-        }
-        if (is.null(r)) return("--")
-        np <- r$n_periods
-        if (is.null(np) || length(np) == 0) return("0")
-        as.character(as.numeric(np[1]))
-      }
-    })
-
-    output$metric_avg_duration <- renderText({
-      res <- results()
-      sel <- input$selected_file
-      if (length(res) == 0 || is.null(sel)) return("--")
-
-      if (sel == "all") {
-        res <- valid_sleep(res)
-        durs <- sapply(res, function(r) {
-          val <- r$avg_duration
-          if (is.null(val) || length(val) == 0 || !is.numeric(val)) return(NA)
-          as.numeric(val[1]) * epoch_minutes_factor(r$epoch_length)
-        })
-        avg <- mean(durs, na.rm = TRUE)
-        if (is.na(avg) || !is.finite(avg)) return("--")
-        sprintf("%.1fh", avg / 60)
-      } else {
-        # Find selected participant
-        r <- NULL
-        for (result in res) {
-          result_id <- result$subject_id %||% result$name
-          if (!is.null(result_id) && result_id == sel) {
-            r <- result
-            break
-          }
-        }
-        if (is.null(r)) return("--")
-        val <- r$avg_duration
-        if (is.null(val) || length(val) == 0 || !is.numeric(val)) return("--")
-        # avg_duration is in epoch counts; convert to minutes then hours
-        sprintf("%.1fh", (as.numeric(val[1]) * epoch_minutes_factor(r$epoch_length)) / 60)
-      }
-    })
-
-    output$metric_avg_efficiency <- renderText({
-      res <- results()
-      sel <- input$selected_file
-      if (length(res) == 0 || is.null(sel)) return("--")
-
-      if (sel == "all") {
-        res <- valid_sleep(res)
-        effs <- sapply(res, function(r) {
-          val <- r$avg_efficiency
-          if (is.null(val) || length(val) == 0 || !is.numeric(val)) return(NA)
-          as.numeric(val[1])
-        })
-        avg <- mean(effs, na.rm = TRUE)
-        if (is.na(avg) || !is.finite(avg)) return("--")
-        sprintf("%.0f%%", avg)
-      } else {
-        # Find selected participant
-        r <- NULL
-        for (result in res) {
-          result_id <- result$subject_id %||% result$name
-          if (!is.null(result_id) && result_id == sel) {
-            r <- result
-            break
-          }
-        }
-        if (is.null(r)) return("--")
-        val <- r$avg_efficiency
-        if (is.null(val) || length(val) == 0 || !is.numeric(val)) return("--")
-        sprintf("%.0f%%", as.numeric(val[1]))
-      }
-    })
-
-    # Average WASO metric
-    output$metric_avg_waso <- renderText({
-      res <- results()
-      sel <- input$selected_file
-      if (length(res) == 0 || is.null(sel)) return("--")
-
-      if (sel == "all") {
-        res <- valid_sleep(res)
-        wasos <- sapply(res, function(r) {
-          val <- r$avg_waso
-          if (is.null(val) || length(val) == 0 || !is.numeric(val)) return(NA)
-          as.numeric(val[1]) * epoch_minutes_factor(r$epoch_length)
-        })
-        avg <- mean(wasos, na.rm = TRUE)
-        if (is.na(avg) || !is.finite(avg)) return("--")
-        sprintf("%.0fm", avg)
-      } else {
-        # Find selected participant
-        r <- NULL
-        for (result in res) {
-          result_id <- result$subject_id %||% result$name
-          if (!is.null(result_id) && result_id == sel) {
-            r <- result
-            break
-          }
-        }
-        if (is.null(r)) return("--")
-        val <- r$avg_waso
-        if (is.null(val) || length(val) == 0 || !is.numeric(val)) return("--")
-        # avg_waso is in epoch counts; convert to minutes
-        sprintf("%.0fm", as.numeric(val[1]) * epoch_minutes_factor(r$epoch_length))
-      }
-    })
-
-    # Output for conditional panels (matching Activity tab pattern)
-    output$has_sleep_results <- reactive({
-      length(results()) > 0
-    })
-    outputOptions(output, "has_sleep_results", suspendWhenHidden = FALSE)
-
     # Clear results handler
     observeEvent(input$clear_results, {
       results(list())
       selected_file(NULL)
-      showNotification("Sleep results cleared", type = "message", duration = 2)
     })
 
     # Hypnogram/Hypnodensity Chart
@@ -589,8 +922,9 @@ mod_sleep_server <- function(id, shared) {
         counts_col <- "axis1"
       }
 
-      # Render hypnogram
-      tryCatch({
+      # Render hypnogram. gg_app() wraps only the last expression because the
+      # body above uses return().
+      gg_app(isTRUE(shared$dark), tryCatch({
         canhrActi::plot_hypnogram(
           data = data_for_plot,
           timestamp_col = "timestamp",
@@ -604,8 +938,8 @@ mod_sleep_server <- function(id, shared) {
         )
       }, error = function(e) {
         create_simple_hypnogram(r)
-      })
-    }, bg = "transparent")
+      }))
+    }, bg = "white")
 
     # Simple hypnogram fallback function
     create_simple_hypnogram <- function(r) {
@@ -629,7 +963,10 @@ mod_sleep_server <- function(id, shared) {
       # Time of day
       hours <- as.numeric(format(ts, "%H")) + as.numeric(format(ts, "%M")) / 60
 
-      par(mar = c(4, 4, 2, 2), bg = "transparent")
+      # Theme colours for base graphics
+      ink <- base_ink(isTRUE(shared$dark))
+      par(mar = c(4, 4, 2, 2), bg = "white", fg = ink$muted,
+          col.axis = ink$muted, col.lab = ink$ink, col.main = ink$ink)
       plot(hours, sleep_num, type = "n",
            xlim = c(0, 24), ylim = c(-0.1, 1.3),
            xlab = "Time of Day", ylab = "",
@@ -651,145 +988,12 @@ mod_sleep_server <- function(id, shared) {
       }
 
       # Add grid
-      abline(v = seq(0, 24, by = 4), col = "#e2e8f0", lty = 2)
-      abline(h = c(0, 1), col = "#e2e8f0", lty = 2)
+      abline(v = seq(0, 24, by = 4), col = ink$grid, lty = 2)
+      abline(h = c(0, 1), col = ink$grid, lty = 2)
     }
 
-    # Night Cards UI
-    output$night_cards <- renderUI({
-      res <- results()
-      if (length(res) == 0) {
-        return(empty_state(
-          title = "No Sleep Analysis",
-          message = "Run Analysis to view night-by-night summaries",
-          show_icon = FALSE
-        ))
-      }
-
-      # Collect all periods with file info
-      all_cards <- list()
-      for (r in res) {
-        if (is.null(r$periods) || nrow(r$periods) == 0) next
-
-        for (i in 1:nrow(r$periods)) {
-          period <- r$periods[i, ]
-
-          # Parse times
-          in_bed <- tryCatch(as.POSIXct(period$in_bed_time), error = function(e) NA)
-          out_bed <- tryCatch(as.POSIXct(period$out_bed_time), error = function(e) NA)
-
-          # Determine date
-          date_str <- if (!is.na(in_bed)) {
-            format(in_bed, "%a, %b %d")
-          } else {
-            paste("Night", i)
-          }
-
-          # Onset/offset times
-          onset_time <- tryCatch(format(as.POSIXct(period$onset), "%I:%M %p"), error = function(e) "--")
-          offset_time <- tryCatch({
-            # Calculate offset from onset + sleep_time + wake_time
-            format(out_bed, "%I:%M %p")
-          }, error = function(e) "--")
-
-          # Duration (sleep_time is an epoch count; convert epochs -> minutes -> hours)
-          sleep_min <- period$sleep_time * epoch_minutes_factor(r$epoch_length)
-          duration_hrs <- round(sleep_min / 60, 1)
-
-          # Efficiency
-          efficiency <- round(period$sleep_efficiency, 0)
-
-          # Health indicator based on efficiency
-          health_class <- if (efficiency >= 85) "good" else if (efficiency >= 70) "moderate" else "poor"
-
-          card_html <- div(
-            class = "night-card",
-            div(class = "night-date",
-              div(class = "text-sm", date_str),
-              div(class = "text-xs text-muted", r$subject_id %||% "")
-            ),
-            div(class = "night-metrics",
-              div(class = "night-metric",
-                div(class = "night-metric-value", sprintf("%.1fh", duration_hrs)),
-                div(class = "night-metric-label", "Duration")
-              ),
-              div(class = "night-metric",
-                div(class = "night-metric-value", sprintf("%d%%", efficiency)),
-                div(class = "night-metric-label", "Efficiency")
-              ),
-              div(class = "night-metric",
-                div(class = "night-metric-value", onset_time),
-                div(class = "night-metric-label", "Onset")
-              ),
-              div(class = "night-metric",
-                div(class = "night-metric-value", offset_time),
-                div(class = "night-metric-label", "Wake")
-              ),
-              div(class = "night-metric",
-                div(class = "night-metric-value", period$number_of_awakenings %||% "--"),
-                div(class = "night-metric-label", "Awakenings")
-              )
-            ),
-            div(class = paste("health-indicator", health_class))
-          )
-
-          all_cards[[length(all_cards) + 1]] <- card_html
-        }
-      }
-
-      if (length(all_cards) == 0) {
-        return(empty_state(
-          title = "No Sleep Periods",
-          message = "No sleep periods detected",
-          show_icon = FALSE,
-          small = TRUE,
-          extra_class = "empty-state--compact"
-        ))
-      }
-
-      do.call(tagList, all_cards)
-    })
-
-    # Helper: Format ETA
-    # Using format_eta from shared_components.R instead
-    # if (is.na(seconds) || seconds < 0) return("calculating...")
-    # if (seconds < 60) return(paste0(round(seconds), "s"))
-    # if (seconds < 3600) return(paste0(round(seconds / 60, 1), "m"))
-    # return(paste0(round(seconds / 3600, 1), "h"))
-    # }
-
-    # Helper: Format average time (circular mean)
-    format_average_time <- function(times) {
-      if (length(times) == 0) return("--")
-      if (!inherits(times, "POSIXt")) times <- as.POSIXct(times)
-
-      hours <- as.numeric(format(times, "%H"))
-      minutes <- as.numeric(format(times, "%M"))
-      minutes_since_midnight <- hours * 60 + minutes
-
-      angles_rad <- (minutes_since_midnight / 1440) * 2 * pi
-      sin_mean <- mean(sin(angles_rad), na.rm = TRUE)
-      cos_mean <- mean(cos(angles_rad), na.rm = TRUE)
-      mean_angle <- atan2(sin_mean, cos_mean)
-      if (mean_angle < 0) mean_angle <- mean_angle + 2 * pi
-
-      avg_minutes <- (mean_angle / (2 * pi)) * 1440
-      avg_hour <- floor(avg_minutes / 60) %% 24
-      avg_min <- round(avg_minutes %% 60)
-
-      if (avg_hour == 0) {
-        sprintf("12:%02d AM", avg_min)
-      } else if (avg_hour < 12) {
-        sprintf("%d:%02d AM", avg_hour, avg_min)
-      } else if (avg_hour == 12) {
-        sprintf("12:%02d PM", avg_min)
-      } else {
-        sprintf("%d:%02d PM", avg_hour - 12, avg_min)
-      }
-    }
-
-    # Run sleep analysis
-    observeEvent(input$run_btn, {
+    # Run sleep analysis, from the rule bar or the empty state
+    run_counts <- function() {
       req(shared$data_loaded, shared$file_count > 0)
 
       #  Check if wear time has been analyzed
@@ -950,8 +1154,9 @@ mod_sleep_server <- function(id, shared) {
           avg_waso <- if (n_periods > 0) mean(periods$wake_time, na.rm = TRUE) else NA
           avg_latency <- NA
           if (n_periods > 0 && "onset" %in% names(periods) && "in_bed_time" %in% names(periods)) {
-            onset_times <- as.POSIXct(periods$onset)
-            in_bed_times <- as.POSIXct(periods$in_bed_time)
+            # clock strings read in UTC, which has no DST gap to turn them into dates
+            onset_times <- as.POSIXct(periods$onset, tz = "UTC")
+            in_bed_times <- as.POSIXct(periods$in_bed_time, tz = "UTC")
             latencies <- as.numeric(difftime(onset_times, in_bed_times, units = "mins"))
             avg_latency <- mean(latencies, na.rm = TRUE)
           }
@@ -1010,14 +1215,13 @@ mod_sleep_server <- function(id, shared) {
 
       all_results <- Filter(Negate(is.null), all_results)
       results(all_results)
+      run_stamp(Sys.time())
       shared$results$sleep <- all_results
 
-      # Select the first result and keep the dropdown in sync so the metric strip
-      # and the plots reference the same file.
+      # Select the first result so the plots reference it.
       if (length(all_results) > 0) {
         first_id <- all_results[[1]]$subject_id %||% all_results[[1]]$name
         selected_file(first_id)
-        updateSelectInput(session, "selected_file", selected = first_id)
       }
 
       n_scored <- sum(sapply(all_results, function(r) {
@@ -1025,187 +1229,13 @@ mod_sleep_server <- function(id, shared) {
         if (is.null(np) || length(np) == 0) return(FALSE)
         as.numeric(np[1]) > 0
       }))
-      showNotification(paste("Sleep scoring complete!", n_scored, "of", length(all_results), "files have sleep periods."), type = "message")
-    })
-
-    # Summary table
-    output$summary_table <- DT::renderDataTable({
-      res <- results()
-      if (length(res) == 0) {
-        return(DT::datatable(
-          data.frame(Message = "Run 'Sleep Analysis' to see results"),
-          rownames = FALSE,
-          options = list(dom = 't')
-        ))
-      }
-
-      format_algorithm <- function(alg) {
-        if (is.null(alg) || length(alg) == 0) return("-")
-        alg <- as.character(alg[1])
-        if (alg == "cole.kripke") "Cole-Kripke"
-        else if (alg == "sadeh") "Sadeh"
-        else alg
-      }
-
-      rows <- lapply(res, function(r) {
-        if (is.null(r)) return(NULL)
-        # Skip files that fail wear-time validity criteria (NULL-equivalent of next)
-        wt <- shared$results$wear_time[[r$file_id]]
-        if (!is.null(wt) && isFALSE(wt$meets_criteria)) return(NULL)
-        n_periods <- r$n_periods
-        if (is.null(n_periods) || length(n_periods) == 0) n_periods <- 0
-        n_periods <- as.numeric(n_periods[1])
-
-        if (n_periods == 0 || is.null(r$periods) || (is.data.frame(r$periods) && nrow(r$periods) == 0)) {
-          return(data.frame(
-            Subject = r$subject_id %||% "Unknown",
-            Algorithm = format_algorithm(r$algorithm),
-            `Sleep Periods` = 0,
-            `Avg Efficiency (%)` = NA,
-            `Avg Duration (min)` = NA,
-            `Avg WASO (min)` = NA,
-            `Avg Awakenings` = NA,
-            check.names = FALSE,
-            stringsAsFactors = FALSE
-          ))
-        }
-
-        periods <- r$periods
-        # sleep_time / wake_time are epoch counts; convert to minutes
-        emf <- epoch_minutes_factor(r$epoch_length)
-
-        data.frame(
-          Subject = r$subject_id %||% "Unknown",
-          Algorithm = format_algorithm(r$algorithm),
-          `Sleep Periods` = n_periods,
-          `Avg Efficiency (%)` = round(mean(periods$sleep_efficiency, na.rm = TRUE), 1),
-          `Avg Duration (min)` = round(mean(periods$sleep_time, na.rm = TRUE) * emf, 0),
-          `Avg WASO (min)` = round(mean(periods$wake_time, na.rm = TRUE) * emf, 0),
-          `Avg Awakenings` = round(mean(periods$number_of_awakenings, na.rm = TRUE), 1),
-          check.names = FALSE,
-          stringsAsFactors = FALSE
-        )
-      })
-
-      rows <- Filter(Negate(is.null), rows)
-      if (length(rows) == 0) {
-        return(DT::datatable(data.frame(Message = "No sleep periods detected"), rownames = FALSE))
-      }
-      df <- do.call(rbind, rows)
-
-      DT::datatable(
-        df,
-        options = list(
-          pageLength = 15,
-          scrollX = TRUE,
-          dom = 'frtip',
-          columnDefs = list(
-            list(className = 'dt-center', targets = '_all')
-          )
-        ),
-        rownames = FALSE,
-        class = 'display compact stripe'
-      ) %>%
-        DT::formatStyle(
-          'Avg Efficiency (%)',
-          backgroundColor = DT::styleInterval(
-            c(70, 85),
-            c('#fed7d7', '#fefce8', '#c6f6d5')
-          )
-        )
-    })
-
-    # Details table
-    output$details_table <- DT::renderDataTable({
-      res <- results()
-      if (length(res) == 0) {
-        return(DT::datatable(
-          data.frame(Message = "Run 'Sleep Analysis' to see results"),
-          rownames = FALSE,
-          options = list(dom = 't')
-        ))
-      }
-
-      all_rows <- list()
-      for (r in res) {
-        if (is.null(r)) next
-        if (is.null(r$periods)) next
-        if (!is.data.frame(r$periods) || nrow(r$periods) == 0) next
-        # Skip files that fail wear-time validity criteria
-        wt <- shared$results$wear_time[[r$file_id]]
-        if (!is.null(wt) && isFALSE(wt$meets_criteria)) next
-
-        alg <- r$algorithm
-        if (is.null(alg) || length(alg) == 0) alg <- "unknown"
-        algorithm_display <- if (alg == "cole.kripke") "Cole-Kripke"
-                             else if (alg == "sadeh") "Sadeh"
-                             else as.character(alg)
-
-        # sleep_time / wake_time are epoch counts; convert to minutes
-        emf <- epoch_minutes_factor(r$epoch_length)
-
-        for (i in 1:nrow(r$periods)) {
-          period <- r$periods[i, ]
-
-          in_bed_posix <- as.POSIXct(period$in_bed_time)
-          out_bed_posix <- as.POSIXct(period$out_bed_time)
-          onset_posix <- as.POSIXct(period$onset)
-
-          latency <- as.numeric(difftime(onset_posix, in_bed_posix, units = "mins"))
-          sleep_frag <- period$movement_index + period$fragmentation_index
-
-          row_data <- data.frame(
-            Subject = r$subject_id,
-            Date = format(in_bed_posix, "%m/%d/%Y"),
-            `In Bed` = format(in_bed_posix, "%I:%M %p"),
-            `Out Bed` = format(out_bed_posix, "%I:%M %p"),
-            `Efficiency (%)` = round(period$sleep_efficiency, 1),
-            `TST (min)` = round(period$sleep_time * emf, 0),
-            `WASO (min)` = round(period$wake_time * emf, 0),
-            Awakenings = period$number_of_awakenings,
-            `Latency (min)` = round(latency, 0),
-            `Frag Index` = round(sleep_frag, 3),
-            check.names = FALSE,
-            stringsAsFactors = FALSE
-          )
-          all_rows[[length(all_rows) + 1]] <- row_data
-        }
-      }
-
-      if (length(all_rows) == 0) {
-        return(DT::datatable(data.frame(Message = "No sleep periods detected"), rownames = FALSE))
-      }
-
-      df <- do.call(rbind, all_rows)
-
-      DT::datatable(
-        df,
-        options = list(
-          pageLength = 15,
-          scrollX = TRUE,
-          dom = 'frtip',
-          columnDefs = list(
-            list(className = 'dt-center', targets = '_all')
-          )
-        ),
-        rownames = FALSE,
-        class = 'display compact stripe'
-      )
-    })
-
-    # Helper to format datetime for export
-    format_actilife_datetime <- function(dt) {
-      if (is.null(dt) || length(dt) == 0 || is.na(dt)) return("")
-      formatted <- format(as.POSIXct(dt), format = "%m/%d/%Y %I:%M:%S %p")
-      formatted <- gsub("^0", "", formatted)
-      formatted <- gsub("/0", "/", formatted)
-      formatted
     }
+    observeEvent(input$run_btn, run_counts())
 
     # Export Details CSV
     output$export_details <- downloadHandler(
       filename = function() {
-        paste0("BatchSleepExportDetails_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
+        export_name("Details")
       },
       content = function(file) {
         res <- results()
@@ -1214,72 +1244,11 @@ mod_sleep_server <- function(id, shared) {
           return()
         }
 
-        all_rows <- list()
-
-        for (r in res) {
-          if (is.null(r$periods) || nrow(r$periods) == 0) next
-          # Skip files that fail wear-time validity criteria
-          wt <- shared$results$wear_time[[r$file_id]]
-          if (!is.null(wt) && isFALSE(wt$meets_criteria)) next
-
-          f <- shared$files[[r$file_id]]
-          weight <- f$subject_info$weight_lbs %||% 0
-          age <- f$subject_info$age %||% 0
-          gender <- f$subject_info$sex %||% "Undefined"
-          if (gender == "M") gender <- "Male"
-          else if (gender == "F") gender <- "Female"
-          else if (gender == "") gender <- "Undefined"
-
-          algorithm_display <- if (r$algorithm == "cole.kripke") "Cole-Kripke"
-                               else if (r$algorithm == "sadeh") "Sadeh"
-                               else r$algorithm
-
-          # sleep_time / wake_time are epoch counts; convert to minutes
-          emf <- epoch_minutes_factor(r$epoch_length)
-
-          for (i in 1:nrow(r$periods)) {
-            period <- r$periods[i, ]
-            in_bed_posix <- as.POSIXct(period$in_bed_time)
-            onset_posix <- as.POSIXct(period$onset)
-            latency <- as.numeric(difftime(onset_posix, in_bed_posix, units = "mins"))
-            sleep_frag_index <- period$movement_index + period$fragmentation_index
-
-            row_data <- data.frame(
-              `Subject Name` = r$subject_id,
-              `File Name` = r$name,
-              `Serial Number` = r$serial_number %||% "",
-              `Epoch Length` = r$epoch_length,
-              Weight = weight,
-              Age = age,
-              Gender = gender,
-              `Sleep/Wake Algorithm` = algorithm_display,
-              `Sleep Period Detection Algorithm` = r$detection_method %||% "Tudor-Locke",
-              `In Bed Time` = format_actilife_datetime(period$in_bed_time),
-              `Out Bed Time` = format_actilife_datetime(period$out_bed_time),
-              Efficiency = round(period$sleep_efficiency, 3),
-              Onset = format_actilife_datetime(period$onset),
-              Latency = round(latency, 0),
-              `Total Sleep Time` = round(period$sleep_time * emf, 0),
-              WASO = round(period$wake_time * emf, 0),
-              `Number of Awakenings` = period$number_of_awakenings,
-              `Length of Awakenings in Minutes` = round(period$average_awakening, 2),
-              `Activity Counts` = round(period$total_counts, 0),
-              `Movement Index` = round(period$movement_index, 3),
-              `Fragmentation Index` = round(period$fragmentation_index, 3),
-              `Sleep Fragmentation Index` = round(sleep_frag_index, 3),
-              check.names = FALSE,
-              stringsAsFactors = FALSE
-            )
-            all_rows[[length(all_rows) + 1]] <- row_data
-          }
-        }
-
-        if (length(all_rows) == 0) {
+        df <- sleep_details_df(res, shared)
+        if (is.null(df)) {
           write.csv(data.frame(Message = "No sleep periods to export"), file, row.names = FALSE)
           return()
         }
-
-        df <- do.call(rbind, all_rows)
         write.csv(df, file, row.names = FALSE)
       }
     )
@@ -1287,7 +1256,7 @@ mod_sleep_server <- function(id, shared) {
     # Export Summary CSV
     output$export_summary <- downloadHandler(
       filename = function() {
-        paste0("BatchSleepExportSummary_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
+        export_name("Summary")
       },
       content = function(file) {
         res <- results()
@@ -1296,72 +1265,19 @@ mod_sleep_server <- function(id, shared) {
           return()
         }
 
-        all_rows <- list()
-
-        for (r in res) {
-          if (is.null(r$periods) || nrow(r$periods) == 0) next
-          # Skip files that fail wear-time validity criteria
-          wt <- shared$results$wear_time[[r$file_id]]
-          if (!is.null(wt) && isFALSE(wt$meets_criteria)) next
-
-          f <- shared$files[[r$file_id]]
-          weight <- f$subject_info$weight_lbs %||% 0
-          age <- f$subject_info$age %||% 0
-          gender <- f$subject_info$sex %||% "Undefined"
-          if (gender == "M") gender <- "Male"
-          else if (gender == "F") gender <- "Female"
-          else if (gender == "") gender <- "Undefined"
-
-          algorithm_display <- if (r$algorithm == "cole.kripke") "Cole-Kripke"
-                               else if (r$algorithm == "sadeh") "Sadeh"
-                               else r$algorithm
-          periods <- r$periods
-          # sleep_time / wake_time are epoch counts; convert to minutes
-          emf <- epoch_minutes_factor(r$epoch_length)
-
-          onset_times <- as.POSIXct(periods$onset)
-          in_bed_times <- as.POSIXct(periods$in_bed_time)
-          out_bed_times <- as.POSIXct(periods$out_bed_time)
-          latencies <- as.numeric(difftime(onset_times, in_bed_times, units = "mins"))
-
-          row_data <- data.frame(
-            `Subject Name` = r$subject_id,
-            `File Name` = r$name,
-            `Serial Number` = r$serial_number %||% "",
-            `Epoch Length` = r$epoch_length,
-            Weight = weight,
-            Age = age,
-            Gender = gender,
-            `Sleep/Wake Algorithm` = algorithm_display,
-            `Sleep Period Detection Algorithm` = r$detection_method %||% "Tudor-Locke",
-            `Number of Sleep Periods` = r$n_periods,
-            `Average In Bed Time` = format_average_time(in_bed_times),
-            `Average Out Bed Time` = format_average_time(out_bed_times),
-            `Average Efficiency` = round(mean(periods$sleep_efficiency, na.rm = TRUE), 3),
-            `Average Onset` = format_average_time(onset_times),
-            `Average Latency` = round(mean(latencies, na.rm = TRUE), 0),
-            `Average Total Sleep Time` = round(mean(periods$sleep_time, na.rm = TRUE) * emf, 0),
-            `Average WASO` = round(mean(periods$wake_time, na.rm = TRUE) * emf, 2),
-            `Average Number of Awakenings` = round(mean(periods$number_of_awakenings, na.rm = TRUE), 2),
-            `Average Length of Awakenings in Minutes` = round(mean(periods$average_awakening, na.rm = TRUE), 2),
-            `Average Activity Counts` = round(mean(periods$total_counts, na.rm = TRUE), 2),
-            `Average Movement Index` = round(mean(periods$movement_index, na.rm = TRUE), 3),
-            `Average Fragmentation Index` = round(mean(periods$fragmentation_index, na.rm = TRUE), 3),
-            `Average Sleep Fragmentation Index` = round(mean(periods$movement_index + periods$fragmentation_index, na.rm = TRUE), 3),
-            check.names = FALSE,
-            stringsAsFactors = FALSE
-          )
-          all_rows[[length(all_rows) + 1]] <- row_data
-        }
-
-        if (length(all_rows) == 0) {
+        df <- sleep_summary_df(res, shared)
+        if (is.null(df)) {
           write.csv(data.frame(Message = "No sleep periods to export"), file, row.names = FALSE)
           return()
         }
-
-        df <- do.call(rbind, all_rows)
         write.csv(df, file, row.names = FALSE)
       }
     )
+
+    # The links sit in a closed menu, and a suspended downloadHandler never
+    # receives its href.
+    for (out in c("export_summary", "export_details")) {
+      outputOptions(output, out, suspendWhenHidden = FALSE)
+    }
   })
 }

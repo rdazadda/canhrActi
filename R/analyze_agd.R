@@ -206,16 +206,25 @@ canhrActi <- function(agd_file_path,
                               calculate_circadian = TRUE,
                               exclude_sleep = TRUE) {
 
+  wear_time_algorithm <- match.arg(wear_time_algorithm)
+  intensity_algorithm <- match.arg(intensity_algorithm)
+  axis_to_analyze <- match.arg(axis_to_analyze)
+  mets_algorithm <- match.arg(mets_algorithm)
+
   if ((length(agd_file_path) == 1 && dir.exists(agd_file_path)) || length(agd_file_path) > 1) {
-    return(canhrActi.batch(agd_file_path, wear_time_algorithm, intensity_algorithm,
-                           min_wear_hours, axis_to_analyze,
-                           export = !output_summary,
+    return(canhrActi.batch(files = agd_file_path,
+                           wear_time_algorithm = wear_time_algorithm,
+                           intensity_algorithm = intensity_algorithm,
+                           min_wear_hours = min_wear_hours,
+                           axis_to_analyze = axis_to_analyze,
+                           export = FALSE,
                            calculate_mets = calculate_mets, mets_algorithm = mets_algorithm,
                            sleep_algorithm = sleep_algorithm,
                            participant_age = participant_age,
                            calculate_fragmentation = calculate_fragmentation,
                            calculate_circadian = calculate_circadian,
-                           exclude_sleep = exclude_sleep))
+                           exclude_sleep = exclude_sleep,
+                           verbose = output_summary))
   }
 
   return(.canhrActi.single.internal(agd_file_path, wear_time_algorithm, intensity_algorithm,
@@ -246,7 +255,8 @@ canhrActi <- function(agd_file_path,
                                    participant_age = NULL,
                                    calculate_fragmentation = TRUE,
                                    calculate_circadian = TRUE,
-                                   exclude_sleep = TRUE) {
+                                   exclude_sleep = TRUE,
+                                   verbose = output_summary) {
 
   wear_time_algorithm <- match.arg(wear_time_algorithm)
   intensity_algorithm <- match.arg(intensity_algorithm)
@@ -309,7 +319,7 @@ canhrActi <- function(agd_file_path,
   }
 
   # Read AGD file
-  agd.data <- read.agd(agd_file_path)
+  agd.data <- read.agd(agd_file_path, verbose = verbose)
 
   counts.data <- agd.counts(agd.data)
   subject_info <- extract.subject.info(agd.data)
@@ -421,9 +431,10 @@ canhrActi <- function(agd_file_path,
     mets_avg <- calculate.average.mets(mets, wear.time, counts.data$timestamp)
     ee_summary <- summarize.energy.expenditure(kcal_per_epoch, intensity, wear.time)
 
+    # energy over the worn epochs, as the daily totals and the average METs are
     mets_summary <- data.frame(
       average_mets = mets_avg$average_mets,
-      total_kcal = ee$total_kcal,
+      total_kcal = sum(kcal_per_epoch[wear.time], na.rm = TRUE),
       stringsAsFactors = FALSE
     )
   }
@@ -432,7 +443,7 @@ canhrActi <- function(agd_file_path,
   epoch.data <- data.frame(
     epoch = 1:nrow(counts.data),
     timestamp = counts.data$timestamp,
-    date = as.Date(counts.data$timestamp),
+    date = .clock_date(counts.data$timestamp),
     axis1 = counts.data$axis1,
     axis2 = counts.data$axis2,
     axis3 = counts.data$axis3,
@@ -443,6 +454,9 @@ canhrActi <- function(agd_file_path,
     is_valid_day = valid.days.results$valid_day_index,
     stringsAsFactors = FALSE
   )
+
+  # the device's light sensor, for the exports' lux columns
+  if ("lux" %in% names(counts.data)) epoch.data$lux <- counts.data$lux
 
   if (calculate_mets) {
     epoch.data$mets <- mets
@@ -515,6 +529,8 @@ canhrActi <- function(agd_file_path,
   wear.epochs <- epoch.data[epoch.data$wear_time, ]
 
   if (nrow(wear.epochs) > 0) {
+    # Class epochs and kcal are summed over the day's wear epochs; counts and METs are
+    # averaged. cbind() makes every column numeric, so sums and means are separate calls.
     if (calculate_mets) {
       daily.intensity <- aggregate(
         cbind(sedentary = intensity == "sedentary",
@@ -523,12 +539,12 @@ canhrActi <- function(agd_file_path,
               vigorous = intensity == "vigorous",
               very_vigorous = intensity == "very_vigorous",
               mvpa = intensity %in% c("moderate", "vigorous", "very_vigorous"),
-              counts_used = counts_used,
-              mets = mets,
               kcal = kcal) ~ date,
         data = wear.epochs,
-        FUN = function(x) if (is.logical(x)) sum(x) else mean(x)
+        FUN = sum
       )
+      daily.means <- aggregate(cbind(counts_used = counts_used, mets = mets) ~ date,
+                               data = wear.epochs, FUN = mean)
     } else {
       daily.intensity <- aggregate(
         cbind(sedentary = intensity == "sedentary",
@@ -536,14 +552,15 @@ canhrActi <- function(agd_file_path,
               moderate = intensity == "moderate",
               vigorous = intensity == "vigorous",
               very_vigorous = intensity == "very_vigorous",
-              mvpa = intensity %in% c("moderate", "vigorous", "very_vigorous"),
-              counts_used = counts_used) ~ date,
+              mvpa = intensity %in% c("moderate", "vigorous", "very_vigorous")) ~ date,
         data = wear.epochs,
-        FUN = function(x) if (is.logical(x)) sum(x) else mean(x)
+        FUN = sum
       )
+      daily.means <- aggregate(counts_used ~ date, data = wear.epochs, FUN = mean)
     }
+    daily.intensity <- merge(daily.intensity, daily.means, by = "date")
 
-    daily.stats <- merge(daily.stats, daily.intensity, by = "date", all.x = TRUE, sort = FALSE)
+    daily.stats <- merge(daily.stats, daily.intensity, by = "date", all.x = TRUE, sort = TRUE)
 
     # Convert epoch counts to minutes using epoch_length
     daily.stats$sedentary_min <- daily.stats$sedentary * minutes_per_epoch
@@ -552,7 +569,7 @@ canhrActi <- function(agd_file_path,
     daily.stats$vigorous_min <- daily.stats$vigorous * minutes_per_epoch
     daily.stats$very_vigorous_min <- daily.stats$very_vigorous * minutes_per_epoch
     daily.stats$mvpa_min <- daily.stats$mvpa * minutes_per_epoch
-    daily.stats$average_cpm <- daily.stats$counts_used
+    daily.stats$average_cpm <- daily.stats$counts_used / minutes_per_epoch
 
     # Remove intermediate columns
     daily.stats$sedentary <- NULL

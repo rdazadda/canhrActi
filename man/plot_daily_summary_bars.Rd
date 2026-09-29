@@ -30,7 +30,8 @@ plot_daily_summary_bars(
 
 \item{epoch_length}{Epoch length in seconds (optional)}
 
-\item{cutpoints}{Cut-point algorithm to use (default: "freedson")}
+\item{cutpoints}{Cut-point algorithm name, or a named numeric vector of
+sedentary, light and moderate thresholds (default: "freedson")}
 
 \item{daily_summary}{Optional. Pre-computed daily summary data frame (default: NULL)}
 
@@ -43,4 +44,9 @@ A ggplot2 object
 }
 \description{
 Creates a bar chart showing daily totals for key metrics.
+}
+\details{
+Epoch data with timestamps is summed by day. When it carries the
+\code{wear_time} column of canhrActi's epoch data, the intensity and wear
+minutes count worn epochs only.
 }

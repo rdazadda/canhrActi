@@ -35,8 +35,16 @@ NULL
     as.character(cutpoints)
   )
   cp <- get_cutpoint_thresholds(algo)
-  c(sedentary = cp$sedentary, light = cp$light,
+  # Matthews has a lifestyle band between light and moderate
+  c(sedentary = cp$sedentary, light = cp$light, lifestyle = cp$lifestyle,
     moderate = cp$moderate, vigorous = cp$vigorous)
+}
+
+
+
+# A date as given, or the calendar date of a date-time on its own clock
+.as_clock_date <- function(x, ...) {
+  if (inherits(x, "POSIXt")) .clock_date(x) else as.Date(x, ...)
 }
 
 
@@ -144,8 +152,12 @@ plot_daily_timeline <- function(data,
     data[[timestamp_col]] <- as.POSIXct(data[[timestamp_col]])
   }
 
+  if (nrow(data) == 0) {
+    stop("No data available for plotting")
+  }
+
   # Add date and time columns
-  data$date <- as.Date(data[[timestamp_col]])
+  data$date <- .clock_date(data[[timestamp_col]])
   data$time_of_day <- as.numeric(format(data[[timestamp_col]], "%H")) +
                       as.numeric(format(data[[timestamp_col]], "%M")) / 60
 
@@ -164,9 +176,9 @@ plot_daily_timeline <- function(data,
   n_days <- length(unique_dates)
 
   # Format date labels
-  data$date_label <- format(data$date, "%A\n%m/%d/%Y")
+  data$date_label <- .format_english(data$date, "%A\n%m/%d/%Y")
   data$date_label <- factor(data$date_label,
-                            levels = format(unique_dates, "%A\n%m/%d/%Y"))
+                            levels = .format_english(unique_dates, "%A\n%m/%d/%Y"))
 
   # Prepare data for plotting - reshape to long format for multiple axes
   plot_data_list <- list()
@@ -288,7 +300,8 @@ plot_daily_timeline <- function(data,
       breaks = seq(0, 24, 4),
       labels = c("12:00 AM", "4:00 AM", "8:00 AM", "12:00 PM", "4:00 PM", "8:00 PM", "12:00 AM"),
       limits = c(0, 24),
-      expand = c(0, 0)
+      expand = c(0, 0),
+      oob = scales::oob_keep
     ) +
     ggplot2::scale_y_continuous(
       limits = c(0, max_counts),
@@ -371,7 +384,7 @@ plot_inclinometer <- function(data,
 
   # Filter by date if specified
   if (!is.null(date_filter)) {
-    data <- data[as.Date(data[[timestamp_col]]) == as.Date(date_filter), ]
+    data <- data[.clock_date(data[[timestamp_col]]) == .as_clock_date(date_filter), ]
   }
 
   if (nrow(data) == 0) {
@@ -408,7 +421,7 @@ plot_inclinometer <- function(data,
 
     # Create labels
     posture_summary$label <- sprintf("%s\n%.0f%% (%s)",
-                                      tools::toTitleCase(posture_summary$posture),
+                                      tools::toTitleCase(as.character(posture_summary$posture)),
                                       posture_summary$percent,
                                       posture_summary$time_str)
 
@@ -442,7 +455,7 @@ plot_inclinometer <- function(data,
   if (show_hourly) {
     # Add hour column
     data$hour <- as.integer(format(data[[timestamp_col]], "%H"))
-    data$date <- as.Date(data[[timestamp_col]])
+    data$date <- .clock_date(data[[timestamp_col]])
 
     # Calculate proportion per hour per date
     hourly_summary <- aggregate(
@@ -461,7 +474,7 @@ plot_inclinometer <- function(data,
 
     # Format for display
     hourly_summary$hour_label <- sprintf("%02d:00", hourly_summary$hour)
-    hourly_summary$date_label <- format(hourly_summary$date, "%m/%d/%Y\n%I:%M %p")
+    hourly_summary$date_label <- .format_english(hourly_summary$date, "%m/%d/%Y\n%I:%M %p")
 
     # Order postures
     hourly_summary$posture <- factor(hourly_summary$posture,
@@ -470,16 +483,18 @@ plot_inclinometer <- function(data,
     # Create hourly plot for each date
     unique_dates <- unique(hourly_summary$date)
 
-    for (d in unique_dates) {
+    # as.list() keeps each date a Date; for() over the vector would make it a number
+    for (d in as.list(unique_dates)) {
       day_data <- hourly_summary[hourly_summary$date == d, ]
       date_str <- format(d, "%m/%d/%Y")
 
       hourly_plot <- ggplot2::ggplot(day_data,
                                       ggplot2::aes(x = factor(hour), y = minutes, fill = posture)) +
         ggplot2::geom_bar(stat = "identity", position = "stack", width = 0.8) +
+        # labels by name, so a day without every posture keeps the right ones
         ggplot2::scale_fill_manual(
           values = color_scheme,
-          labels = c("Off", "Lying", "Sitting", "Standing"),
+          labels = c(off = "Off", lying = "Lying", sitting = "Sitting", standing = "Standing"),
           name = "Posture"
         ) +
         ggplot2::scale_x_discrete(
@@ -660,11 +675,10 @@ plot_activity_heatmap <- function(data,
   }
 
   # Create date and hour columns
-  data$date <- as.Date(data[[timestamp_col]])
+  data$date <- .clock_date(data[[timestamp_col]])
   data$hour <- as.integer(format(data[[timestamp_col]], "%H"))
-  data$weekday <- weekdays(data$date, abbreviate = TRUE)
-  data$weekday <- factor(data$weekday,
-                         levels = c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"))
+  data$weekday <- factor(as.POSIXlt(data$date)$wday, levels = c(1:6, 0L),
+                         labels = c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"))
 
   # Aggregate by date and hour
   heatmap_data <- aggregate(
@@ -684,7 +698,7 @@ plot_activity_heatmap <- function(data,
 
   # Identify weekend dates
   unique_dates <- sort(unique(heatmap_data$date))
-  weekend_dates <- unique_dates[weekdays(unique_dates) %in% c("Saturday", "Sunday")]
+  weekend_dates <- unique_dates[as.POSIXlt(unique_dates)$wday %in% c(0L, 6L)]
 
   # Normalize if requested
   if (normalize) {
@@ -709,7 +723,8 @@ plot_activity_heatmap <- function(data,
 
   # Add weekend row highlighting
   if (show_weekends && length(weekend_dates) > 0) {
-    for (wd in weekend_dates) {
+    # as.list() keeps each date a Date; before R 4.3 as.Date() of a number needs an origin
+    for (wd in as.list(weekend_dates)) {
       p <- p + ggplot2::annotate(
         "rect",
         xmin = -0.5, xmax = 23.5,
@@ -741,9 +756,9 @@ plot_activity_heatmap <- function(data,
   # Add sleep period overlays if provided
   if (!is.null(sleep_periods) && nrow(sleep_periods) > 0) {
     for (i in seq_len(nrow(sleep_periods))) {
-      sleep_start <- as.POSIXct(sleep_periods$start[i])
-      sleep_end <- as.POSIXct(sleep_periods$end[i])
-      sleep_date <- as.Date(sleep_start)
+      sleep_start <- .clock_time(sleep_periods$start[i])
+      sleep_end <- .clock_time(sleep_periods$end[i])
+      sleep_date <- .clock_date(sleep_start)
 
       start_hour <- as.numeric(format(sleep_start, "%H")) +
                     as.numeric(format(sleep_start, "%M")) / 60
@@ -820,7 +835,7 @@ plot_activity_heatmap <- function(data,
       expand = c(0, 0)
     ) +
     ggplot2::scale_y_date(
-      date_labels = "%a %m/%d",
+      labels = function(x) .format_english(x, "%a %m/%d"),
       expand = c(0.01, 0.01)
     ) +
     ggplot2::labs(
@@ -906,7 +921,7 @@ plot_multi_metric <- function(data,
 
   # Filter by date if specified
   if (!is.null(date_filter)) {
-    data <- data[as.Date(data[[timestamp_col]]) == as.Date(date_filter), ]
+    data <- data[.clock_date(data[[timestamp_col]]) == .as_clock_date(date_filter), ]
   }
 
   if (nrow(data) == 0) {
@@ -952,6 +967,8 @@ plot_multi_metric <- function(data,
   # Color palette
   colors <- c("#1E90FF", "#DC143C", "#FFD700", "#32CD32",
               "#9370DB", "#FF4500", "#00CED1", "#FF69B4")
+  # past eight metrics, every metric takes a colour from the package palette
+  if (length(metrics) > length(colors)) colors <- canhrActi_colors(length(metrics))
   names(colors) <- names(metrics)[1:min(length(metrics), length(colors))]
 
   # Create plot
@@ -991,9 +1008,9 @@ plot_multi_metric <- function(data,
 
   # Date label for title
   date_str <- if (!is.null(date_filter)) {
-    format(as.Date(date_filter), "%A, %B %d, %Y")
+    .format_english(.as_clock_date(date_filter), "%A, %B %d, %Y")
   } else {
-    format(min(as.Date(data[[timestamp_col]])), "%A, %B %d, %Y")
+    .format_english(min(.clock_date(data[[timestamp_col]])), "%A, %B %d, %Y")
   }
 
   # Add faceting if requested
@@ -1029,12 +1046,18 @@ plot_multi_metric <- function(data,
 #' @param timestamp_col Name of timestamp column (default: "timestamp")
 #' @param axis1_col Name of axis1 counts column (default: "axis1")
 #' @param epoch_length Epoch length in seconds (optional)
-#' @param cutpoints Cut-point algorithm to use (default: "freedson")
+#' @param cutpoints Cut-point algorithm name, or a named numeric vector of
+#'   sedentary, light and moderate thresholds (default: "freedson")
 #' @param daily_summary Optional. Pre-computed daily summary data frame (default: NULL)
 #' @param title Character. Plot title (default: "Daily Activity Summary")
 #' @param subtitle Character. Optional plot subtitle (default: NULL)
 #'
 #' @return A ggplot2 object
+#'
+#' @details
+#' Epoch data with timestamps is summed by day. When it carries the
+#' \code{wear_time} column of canhrActi's epoch data, the intensity and wear
+#' minutes count worn epochs only.
 #'
 #' @export
 plot_daily_summary_bars <- function(data,
@@ -1087,14 +1110,16 @@ plot_daily_summary_bars <- function(data,
         }
       }
     }
-  } else if (!date_col %in% names(data) && timestamp_col %in% names(data)) {
+  } else if (timestamp_col %in% names(data) &&
+             (!date_col %in% names(data) || anyDuplicated(data[[date_col]]) > 0)) {
     # Auto-detect and summarize raw data if needed
     # Raw data with timestamps - need to summarize by date
-    data$date <- as.Date(data[[timestamp_col]])
+    # (a date column that repeats marks epoch data, not a daily summary)
+    data$date <- .clock_date(data[[timestamp_col]])
 
     # Get cut-point thresholds
     cp <- tryCatch({
-      get_cutpoint_thresholds(cutpoints)
+      as.list(.resolve_cutpoint_lines(cutpoints))
     }, error = function(e) {
       list(sedentary = 100, light = 1952, moderate = 5725, vigorous = 9498)
     })
@@ -1106,12 +1131,17 @@ plot_daily_summary_bars <- function(data,
         axis1_vals <- to_cpm(axis1_vals, epoch_length)
       }
 
+      # canhrActi's epoch data marks worn epochs; wear and intensity minutes count only those
+      worn <- if ("wear_time" %in% names(day_data)) day_data$wear_time %in% TRUE else rep(TRUE, nrow(day_data))
+
       # Calculate metrics
       total_steps <- if ("steps" %in% names(day_data)) sum(day_data$steps, na.rm = TRUE) else NA
-      sedentary_epochs <- sum(axis1_vals < cp$sedentary, na.rm = TRUE)
-      light_epochs <- sum(axis1_vals >= cp$sedentary & axis1_vals < cp$light, na.rm = TRUE)
-      moderate_epochs <- sum(axis1_vals >= cp$light & axis1_vals < cp$moderate, na.rm = TRUE)
-      vigorous_epochs <- sum(axis1_vals >= cp$moderate, na.rm = TRUE)
+      # A lifestyle band (Matthews) counts as light, as light_activity() counts it
+      light_top <- if (!is.null(cp$lifestyle)) cp$lifestyle else cp$light
+      sedentary_epochs <- sum(worn & axis1_vals < cp$sedentary, na.rm = TRUE)
+      light_epochs <- sum(worn & axis1_vals >= cp$sedentary & axis1_vals < light_top, na.rm = TRUE)
+      moderate_epochs <- sum(worn & axis1_vals >= light_top & axis1_vals < cp$moderate, na.rm = TRUE)
+      vigorous_epochs <- sum(worn & axis1_vals >= cp$moderate, na.rm = TRUE)
       mvpa_epochs <- moderate_epochs + vigorous_epochs
 
       data.frame(
@@ -1122,7 +1152,7 @@ plot_daily_summary_bars <- function(data,
         moderate_min = moderate_epochs * epoch_length / 60,
         vigorous_min = vigorous_epochs * epoch_length / 60,
         mvpa_min = mvpa_epochs * epoch_length / 60,
-        wear_min = nrow(day_data) * epoch_length / 60,
+        wear_min = sum(worn) * epoch_length / 60,
         stringsAsFactors = FALSE
       )
     })
@@ -1149,7 +1179,7 @@ plot_daily_summary_bars <- function(data,
     stop("No valid metrics found in data. Available columns: ", paste(names(data), collapse = ", "))
   }
 
-  plot_data$date <- as.Date(plot_data$date)
+  plot_data$date <- .as_clock_date(plot_data$date)
   plot_data$metric <- factor(plot_data$metric, levels = metrics)
 
   # Metric labels (support both epoch counts and minutes formats)
@@ -1180,7 +1210,7 @@ plot_daily_summary_bars <- function(data,
       labels = metric_labels[metrics],
       name = "Metric"
     ) +
-    ggplot2::scale_x_date(date_labels = "%a\n%m/%d") +
+    ggplot2::scale_x_date(labels = function(x) .format_english(x, "%a\n%m/%d")) +
     ggplot2::labs(
       title = title,
       subtitle = subtitle,
@@ -1211,6 +1241,10 @@ plot_daily_summary_bars <- function(data,
 #' @param intensity Optional. Pre-computed intensity vector (default: NULL)
 #' @param title Character. Plot title (default: "Activity Intensity Distribution by Hour")
 #' @param subtitle Character. Optional plot subtitle (default: NULL)
+#' @param thresholds Optional named numeric vector of intensity thresholds. NULL
+#'   looks the count cut points up by name
+#' @param unit Character. Unit of the values and thresholds (default: "CPM")
+#' @param cutpoint_label Character. Optional cut point name for the subtitle
 #'
 #' @return A ggplot2 object
 #'
@@ -1223,7 +1257,11 @@ plot_intensity_area <- function(data,
                                  stacked = TRUE,
                                  intensity = NULL,
                                  title = "Activity Intensity Distribution by Hour",
-                                 subtitle = NULL) {
+                                 subtitle = NULL,
+                                 # Explicit thresholds and unit; NULL keeps the count-only lookup
+                                 thresholds = NULL,
+                                 unit = "CPM",
+                                 cutpoint_label = NULL) {
 
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("Package 'ggplot2' is required")
@@ -1254,7 +1292,7 @@ plot_intensity_area <- function(data,
     if ("axis1" %in% names(data)) {
       # Use canonical cut-point thresholds (cut_points.R) so published
       # constants are applied uniformly instead of inline literals.
-      cp <- get_cutpoint_thresholds(cutpoints)
+      cp <- if (!is.null(thresholds)) as.list(thresholds) else get_cutpoint_thresholds(cutpoints)
       breaks <- c(0, cp$sedentary, cp$light, cp$moderate, cp$vigorous, Inf)
       axis1_vals <- data$axis1
       if (!is.null(epoch_length) && !is.na(epoch_length) && epoch_length > 0 && epoch_length != 60) {
@@ -1278,7 +1316,7 @@ plot_intensity_area <- function(data,
 
   # Add hour column
   data$hour <- as.integer(format(data[[timestamp_col]], "%H"))
-  data$date <- as.Date(data[[timestamp_col]])
+  data$date <- .clock_date(data[[timestamp_col]])
 
   # Aggregate by hour and intensity
   hourly <- aggregate(
@@ -1334,9 +1372,9 @@ plot_intensity_area <- function(data,
   }
 
   # Intensity labels with descriptions (sedentary boundary follows the cut-points)
-  cp_lab <- get_cutpoint_thresholds(cutpoints)
+  cp_lab <- if (!is.null(thresholds)) as.list(thresholds) else get_cutpoint_thresholds(cutpoints)
   intensity_labels <- c(
-    "sedentary" = sprintf("Sedentary (<%g CPM)", cp_lab$sedentary),
+    "sedentary" = sprintf("Sedentary (<%g %s)", cp_lab$sedentary, unit),
     "light" = "Light Activity",
     "moderate" = "Moderate (MVPA)",
     "vigorous" = "Vigorous (MVPA)",
@@ -1489,7 +1527,7 @@ plot_light_exposure <- function(data,
 
   # Filter by date if specified
   if (!is.null(date_filter)) {
-    data <- data[as.Date(data[[timestamp_col]]) == as.Date(date_filter), ]
+    data <- data[.clock_date(data[[timestamp_col]]) == .as_clock_date(date_filter), ]
   }
 
   if (nrow(data) == 0) {
@@ -1497,7 +1535,7 @@ plot_light_exposure <- function(data,
   }
 
   # Add time components
-  data$date <- as.Date(data[[timestamp_col]])
+  data$date <- .clock_date(data[[timestamp_col]])
   data$time_of_day <- as.numeric(format(data[[timestamp_col]], "%H")) +
                       as.numeric(format(data[[timestamp_col]], "%M")) / 60
   data$lux_value <- data[[lux_col]]
@@ -1505,13 +1543,14 @@ plot_light_exposure <- function(data,
   # Replace 0 or negative with small value for log scale
   if (log_scale) {
     data$lux_value[data$lux_value <= 0] <- 0.1
+    y_top <- max(data$lux_value, na.rm = TRUE) * 2
   }
 
   # Format date labels for faceting
   unique_dates <- sort(unique(data$date))
-  data$date_label <- format(data$date, "%A\n%m/%d/%Y")
+  data$date_label <- .format_english(data$date, "%A\n%m/%d/%Y")
   data$date_label <- factor(data$date_label,
-                            levels = format(unique_dates, "%A\n%m/%d/%Y"))
+                            levels = .format_english(unique_dates, "%A\n%m/%d/%Y"))
 
   # Light color gradient (dark purple to bright yellow)
   light_colors <- c(
@@ -1529,12 +1568,13 @@ plot_light_exposure <- function(data,
   p <- ggplot2::ggplot(data, ggplot2::aes(x = time_of_day, y = lux_value))
 
   # Add daylight shading (approximate 6 AM - 8 PM)
+  # (on the log scale from the axis floor, since log10(-Inf) is NaN)
   if (show_daylight) {
     p <- p +
       ggplot2::annotate(
         "rect",
         xmin = 6, xmax = 20,
-        ymin = -Inf, ymax = Inf,
+        ymin = if (log_scale) 0.1 else -Inf, ymax = Inf,
         fill = "#FFF8DC", alpha = 0.3
       )
   }
@@ -1560,8 +1600,12 @@ plot_light_exposure <- function(data,
                 "Outdoor bright (10000 lux)"),
       color = c("#9B59B6", "#3498DB", "#27AE60", "#F39C12")
     )
+    # the log axis ends at twice the brightest reading, so lines above it are left out
+    if (log_scale) {
+      thresholds <- thresholds[thresholds$level <= y_top, ]
+    }
 
-    for (i in 1:nrow(thresholds)) {
+    for (i in seq_len(nrow(thresholds))) {
       p <- p +
         ggplot2::geom_hline(
           yintercept = thresholds$level[i],
@@ -1573,7 +1617,7 @@ plot_light_exposure <- function(data,
     }
 
     # Add threshold legend
-    thresholds$x <- 24
+    thresholds$x <- rep(24, nrow(thresholds))
     p <- p +
       ggplot2::geom_text(
         data = thresholds,
@@ -1589,7 +1633,7 @@ plot_light_exposure <- function(data,
       ggplot2::scale_y_log10(
         breaks = c(0.1, 1, 10, 100, 1000, 10000, 100000),
         labels = c("0", "1", "10", "100", "1K", "10K", "100K"),
-        limits = c(0.1, max(data$lux_value, na.rm = TRUE) * 2)
+        limits = c(0.1, y_top)
       )
   }
 
@@ -1657,7 +1701,7 @@ plot_light_summary <- function(data,
   epoch_minutes <- median(time_diffs, na.rm = TRUE) / 60
 
   # Add date column
-  data$date <- as.Date(data[[timestamp_col]])
+  data$date <- .clock_date(data[[timestamp_col]])
   data$lux_value <- data[[lux_col]]
 
   # Calculate daily light metrics
@@ -1665,7 +1709,7 @@ plot_light_summary <- function(data,
     lux_value ~ date,
     data = data,
     FUN = function(x) {
-      list(
+      c(
         mean_lux = mean(x, na.rm = TRUE),
         max_lux = max(x, na.rm = TRUE),
         min_above_10 = sum(x >= 10, na.rm = TRUE) * epoch_minutes,
@@ -1676,10 +1720,10 @@ plot_light_summary <- function(data,
     }
   )
 
-  # Extract list columns
+  # Extract the matrix column, one row per day
   daily_light <- cbind(
     date = daily_light$date,
-    as.data.frame(do.call(rbind, daily_light$lux_value))
+    as.data.frame(daily_light$lux_value)
   )
 
   # Reshape for plotting
@@ -1714,7 +1758,7 @@ plot_light_summary <- function(data,
       values = threshold_colors,
       name = "Light\nThreshold"
     ) +
-    ggplot2::scale_x_date(date_labels = "%a\n%m/%d") +
+    ggplot2::scale_x_date(labels = function(x) .format_english(x, "%a\n%m/%d")) +
     ggplot2::scale_y_continuous(
       labels = function(x) sprintf("%d min", as.integer(x))
     ) +
@@ -1760,10 +1804,10 @@ plot_sleep_quality <- function(sleep_data,
     if (is.character(d)) {
       parsed <- tryCatch(as.POSIXct(d), error = function(e) NULL)
       if (!is.null(parsed)) {
-        sleep_data$date <- as.Date(parsed)
+        sleep_data$date <- .clock_date(parsed)
       }
     } else if (inherits(d, "POSIXct")) {
-      sleep_data$date <- as.Date(d)
+      sleep_data$date <- .clock_date(d)
     }
   }
 
@@ -1844,7 +1888,7 @@ plot_sleep_quality <- function(sleep_data,
 
   # Combine into single data frame
   plot_data <- do.call(rbind, metrics_list)
-  plot_data$date <- as.Date(plot_data$date, origin = "1970-01-01")
+  plot_data$date <- .as_clock_date(plot_data$date, origin = "1970-01-01")
 
   # Define colors for each metric
   metric_colors <- c(
@@ -1913,6 +1957,10 @@ plot_wear_time <- function(data,
     data$wear <- wear_vector
     wear_col <- "wear"
   }
+  # canhrActi()'s epoch data names the column wear_time
+  if (!wear_col %in% names(data) && identical(wear_col, "wear") && "wear_time" %in% names(data)) {
+    wear_col <- "wear_time"
+  }
 
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("Package 'ggplot2' is required")
@@ -1924,7 +1972,7 @@ plot_wear_time <- function(data,
   }
 
   # Add time components
-  data$date <- as.Date(data[[timestamp_col]])
+  data$date <- .clock_date(data[[timestamp_col]])
   data$time_of_day <- as.numeric(format(data[[timestamp_col]], "%H")) +
                       as.numeric(format(data[[timestamp_col]], "%M")) / 60
 
@@ -1933,9 +1981,9 @@ plot_wear_time <- function(data,
 
   # Format for faceting
   unique_dates <- sort(unique(data$date))
-  data$date_label <- format(data$date, "%A\n%m/%d/%Y")
+  data$date_label <- .format_english(data$date, "%A\n%m/%d/%Y")
   data$date_label <- factor(data$date_label,
-                            levels = format(unique_dates, "%A\n%m/%d/%Y"))
+                            levels = .format_english(unique_dates, "%A\n%m/%d/%Y"))
 
   plots <- list()
 
@@ -1955,7 +2003,8 @@ plot_wear_time <- function(data,
       breaks = seq(0, 24, 4),
       labels = c("12 AM", "4 AM", "8 AM", "12 PM", "4 PM", "8 PM", "12 AM"),
       limits = c(0, 24),
-      expand = c(0, 0)
+      expand = c(0, 0),
+      oob = scales::oob_keep
     ) +
     ggplot2::labs(
       title = "Wear Time Pattern",
@@ -2004,7 +2053,7 @@ plot_wear_time <- function(data,
         labels = c("FALSE" = "Invalid (<10 hr)", "TRUE" = "Valid (\u226510 hr)"),
         name = "Validity"
       ) +
-      ggplot2::scale_x_date(date_labels = "%a\n%m/%d") +
+      ggplot2::scale_x_date(labels = function(x) .format_english(x, "%a\n%m/%d")) +
       ggplot2::scale_y_continuous(limits = c(0, 24)) +
       ggplot2::labs(
         title = "Daily Wear Time",
@@ -2085,7 +2134,7 @@ plot_steps <- function(data,
   }
 
   # Add time components
-  data$date <- as.Date(data[[timestamp_col]])
+  data$date <- .clock_date(data[[timestamp_col]])
   data$time_of_day <- as.numeric(format(data[[timestamp_col]], "%H")) +
                       as.numeric(format(data[[timestamp_col]], "%M")) / 60
   data$steps_value <- data[[steps_col]]
@@ -2111,7 +2160,7 @@ plot_steps <- function(data,
       labels = c("FALSE" = "Below goal", "TRUE" = "Goal met"),
       name = ""
     ) +
-    ggplot2::scale_x_date(date_labels = "%a\n%m/%d") +
+    ggplot2::scale_x_date(labels = function(x) .format_english(x, "%a\n%m/%d")) +
     ggplot2::scale_y_continuous(labels = scales::comma_format()) +
     ggplot2::labs(
       title = "Daily Step Count",
@@ -2136,9 +2185,9 @@ plot_steps <- function(data,
 
     # Format for faceting
     unique_dates <- sort(unique(data$date))
-    data$date_label <- format(data$date, "%A %m/%d")
+    data$date_label <- .format_english(data$date, "%A %m/%d")
     data$date_label <- factor(data$date_label,
-                              levels = format(unique_dates, "%A %m/%d"))
+                              levels = .format_english(unique_dates, "%A %m/%d"))
 
     cumulative_plot <- ggplot2::ggplot(
       data,
@@ -2173,9 +2222,9 @@ plot_steps <- function(data,
   # 3. Step rate (steps per minute) throughout day
   # Format for faceting
   unique_dates <- sort(unique(data$date))
-  data$date_label <- format(data$date, "%A %m/%d")
+  data$date_label <- .format_english(data$date, "%A %m/%d")
   data$date_label <- factor(data$date_label,
-                            levels = format(unique_dates, "%A %m/%d"))
+                            levels = .format_english(unique_dates, "%A %m/%d"))
 
   rate_plot <- ggplot2::ggplot(
     data,
@@ -2239,7 +2288,7 @@ plot_heart_rate <- function(data,
   }
 
   # Add time components
-  data$date <- as.Date(data[[timestamp_col]])
+  data$date <- .clock_date(data[[timestamp_col]])
   data$time_of_day <- as.numeric(format(data[[timestamp_col]], "%H")) +
                       as.numeric(format(data[[timestamp_col]], "%M")) / 60
   data$hr_value <- data[[hr_col]]
@@ -2259,9 +2308,9 @@ plot_heart_rate <- function(data,
 
   # Format for faceting
   unique_dates <- sort(unique(data$date))
-  data$date_label <- format(data$date, "%A\n%m/%d/%Y")
+  data$date_label <- .format_english(data$date, "%A\n%m/%d/%Y")
   data$date_label <- factor(data$date_label,
-                            levels = format(unique_dates, "%A\n%m/%d/%Y"))
+                            levels = .format_english(unique_dates, "%A\n%m/%d/%Y"))
 
   # 1. HR timeline with zones
   hr_plot <- ggplot2::ggplot(data, ggplot2::aes(x = time_of_day, y = hr_value))
@@ -2385,9 +2434,9 @@ plot_heart_rate <- function(data,
 #'   \item Cut-point overlay options
 #'   \item Inclinometer/posture visualization
 #'   \item Light exposure plots
-#'   \item Sleep period overlay
-#'   \item Wear time visualization
-#'   \item Export options for all plots
+#'   \item Daily summary bars and table
+#'   \item Export of the current plot, or of all plots as a zip file (needs the
+#'     zip package)
 #' }
 #'
 #' @export
@@ -2461,9 +2510,7 @@ launch_visualization_dashboard <- function(data = NULL, launch = TRUE) {
 
         # Overlays
         shiny::h4("Overlays"),
-        shiny::checkboxInput("show_sleep", "Show Sleep Periods", FALSE),
         shiny::checkboxInput("show_inclinometer", "Show Posture", FALSE),
-        shiny::checkboxInput("show_nonwear", "Highlight Non-wear", FALSE),
 
         shiny::hr(),
 
@@ -2545,12 +2592,7 @@ launch_visualization_dashboard <- function(data = NULL, launch = TRUE) {
           # Sleep tab
           shiny::tabPanel(
             "Sleep Analysis",
-            shiny::plotOutput("sleep_overlay", height = "500px"),
-            shiny::hr(),
-            shiny::fluidRow(
-              shiny::column(6, shiny::plotOutput("sleep_efficiency", height = "300px")),
-              shiny::column(6, shiny::plotOutput("sleep_timing", height = "300px"))
-            )
+            shiny::plotOutput("sleep_overlay", height = "500px")
           ),
 
           # Summary tab
@@ -2573,7 +2615,7 @@ launch_visualization_dashboard <- function(data = NULL, launch = TRUE) {
 
     # Load uploaded data
     shiny::observeEvent(input$data_file, {
-      req(input$data_file)
+      shiny::req(input$data_file)
       file_path <- input$data_file$datapath
       ext <- tools::file_ext(input$data_file$name)
 
@@ -2587,7 +2629,7 @@ launch_visualization_dashboard <- function(data = NULL, launch = TRUE) {
 
       # Update date range
       if ("timestamp" %in% names(new_data)) {
-        dates <- as.Date(new_data$timestamp)
+        dates <- .clock_date(new_data$timestamp)
         shiny::updateDateRangeInput(session, "date_range",
                                      start = min(dates), end = max(dates))
       }
@@ -2595,15 +2637,15 @@ launch_visualization_dashboard <- function(data = NULL, launch = TRUE) {
 
     # Filtered data
     filtered_data <- shiny::reactive({
-      req(app_data())
+      shiny::req(app_data())
       d <- app_data()
 
       if ("timestamp" %in% names(d)) {
         if (!inherits(d$timestamp, "POSIXct")) {
           d$timestamp <- as.POSIXct(d$timestamp)
         }
-        d <- d[as.Date(d$timestamp) >= input$date_range[1] &
-               as.Date(d$timestamp) <= input$date_range[2], ]
+        d <- d[.clock_date(d$timestamp) >= input$date_range[1] &
+               .clock_date(d$timestamp) <= input$date_range[2], ]
       }
 
       d
@@ -2622,9 +2664,9 @@ launch_visualization_dashboard <- function(data = NULL, launch = TRUE) {
       )
     })
 
-    # Timeline plot
-    output$timeline_plot <- shiny::renderPlot({
-      req(filtered_data())
+    # Each plot is built once, for its tab and for Download Current Plot
+    timeline_p <- shiny::reactive({
+      shiny::req(filtered_data())
 
       plot_daily_timeline(
         filtered_data(),
@@ -2636,75 +2678,105 @@ launch_visualization_dashboard <- function(data = NULL, launch = TRUE) {
         max_counts = input$y_max
       )
     })
+    output$timeline_plot <- shiny::renderPlot(timeline_p())
 
     # Inclinometer plots
-    output$incl_pie <- shiny::renderPlot({
-      req(filtered_data(), "inclinometer" %in% names(filtered_data()))
+    incl_pie_p <- shiny::reactive({
+      shiny::req(filtered_data(), "inclinometer" %in% names(filtered_data()))
       plots <- plot_inclinometer(filtered_data(), show_pie = TRUE, show_hourly = FALSE)
-      if (is.list(plots)) plots$pie else plots
+      # a single plot comes back bare, and before ggplot2 4.0 a plot is itself a list
+      if (inherits(plots, "ggplot")) plots else plots$pie
     })
+    output$incl_pie <- shiny::renderPlot(incl_pie_p())
 
-    output$incl_hourly <- shiny::renderPlot({
-      req(filtered_data(), "inclinometer" %in% names(filtered_data()))
+    incl_hourly_p <- shiny::reactive({
+      shiny::req(filtered_data(), "inclinometer" %in% names(filtered_data()))
       plots <- plot_inclinometer(filtered_data(), show_pie = FALSE, show_hourly = TRUE)
-      if (is.list(plots)) plots[[1]] else plots
+      if (inherits(plots, "ggplot")) plots else plots[[1]]
     })
+    output$incl_hourly <- shiny::renderPlot(incl_hourly_p())
 
     # Light exposure plots
-    output$light_plot <- shiny::renderPlot({
-      req(filtered_data(), "lux" %in% names(filtered_data()))
+    light_p <- shiny::reactive({
+      shiny::req(filtered_data(), "lux" %in% names(filtered_data()))
       plot_light_exposure(filtered_data())
     })
+    output$light_plot <- shiny::renderPlot(light_p())
 
-    output$light_summary <- shiny::renderPlot({
-      req(filtered_data(), "lux" %in% names(filtered_data()))
+    light_summary_p <- shiny::reactive({
+      shiny::req(filtered_data(), "lux" %in% names(filtered_data()))
       plot_light_summary(filtered_data())
     })
+    output$light_summary <- shiny::renderPlot(light_summary_p())
 
     # Steps plots
-    output$steps_daily <- shiny::renderPlot({
-      req(filtered_data(), "steps" %in% names(filtered_data()))
-      plots <- plot_steps(filtered_data(), daily_goal = input$step_goal)
-      plots$daily
+    steps_p <- shiny::reactive({
+      shiny::req(filtered_data(), "steps" %in% names(filtered_data()))
+      plot_steps(filtered_data(), daily_goal = input$step_goal)
     })
-
-    output$steps_cumulative <- shiny::renderPlot({
-      req(filtered_data(), "steps" %in% names(filtered_data()))
-      plots <- plot_steps(filtered_data(), daily_goal = input$step_goal)
-      plots$cumulative
-    })
+    output$steps_daily <- shiny::renderPlot(steps_p()$daily)
+    output$steps_cumulative <- shiny::renderPlot(steps_p()$cumulative)
 
     # Heart rate plots
-    output$hr_plot <- shiny::renderPlot({
-      req(filtered_data(), "hr" %in% names(filtered_data()))
-      plots <- plot_heart_rate(filtered_data(), age = input$age)
-      plots$timeline
+    hr_p <- shiny::reactive({
+      shiny::req(filtered_data(), "hr" %in% names(filtered_data()))
+      plot_heart_rate(filtered_data(), age = input$age)
     })
+    output$hr_plot <- shiny::renderPlot(hr_p()$timeline)
+    output$hr_zones <- shiny::renderPlot(if ("zones" %in% names(hr_p())) hr_p()$zones else NULL)
 
-    output$hr_zones <- shiny::renderPlot({
-      req(filtered_data(), "hr" %in% names(filtered_data()))
-      plots <- plot_heart_rate(filtered_data(), age = input$age)
-      if ("zones" %in% names(plots)) plots$zones else NULL
-    })
-
-    output$hr_correlation <- shiny::renderPlot({
-      req(filtered_data(), "hr" %in% names(filtered_data()))
+    hr_correlation_p <- shiny::reactive({
+      shiny::req(filtered_data(), "hr" %in% names(filtered_data()))
       plots <- plot_heart_rate(filtered_data(), age = input$age, counts_col = "axis1")
       if ("correlation" %in% names(plots)) plots$correlation else NULL
     })
+    output$hr_correlation <- shiny::renderPlot(hr_correlation_p())
 
     # Heatmap
-    output$heatmap_plot <- shiny::renderPlot({
-      req(filtered_data())
+    heatmap_p <- shiny::reactive({
+      shiny::req(filtered_data())
       plot_activity_heatmap(filtered_data(), counts_col = input$heatmap_metric)
     })
+    output$heatmap_plot <- shiny::renderPlot(heatmap_p())
 
-    # Sleep plots (placeholder - would need sleep data)
-    output$sleep_overlay <- shiny::renderPlot({
-      req(filtered_data())
-      # Placeholder - would need actual sleep period data
-      plot_daily_timeline(filtered_data(), show_axes = "axis1")
+    # Hypnogram of a scored sleep column, as the package's epoch data carry one
+    sleep_p <- shiny::reactive({
+      shiny::req(filtered_data())
+      d <- filtered_data()
+      sleep_col <- intersect(c("sleep_state", "sleep_wake", "sleep"), names(d))[1]
+      shiny::validate(shiny::need("timestamp" %in% names(d) && !is.na(sleep_col),
+                                  "This tab needs a timestamp and a sleep_state, sleep_wake or sleep column"))
+      epoch <- round(stats::median(diff(as.numeric(d$timestamp)), na.rm = TRUE))
+      plot_hypnogram(d, sleep_col = sleep_col, counts_col = if ("axis1" %in% names(d)) "axis1",
+                     epoch_seconds = if (is.finite(epoch) && epoch > 0) epoch else 60)
     })
+    output$sleep_overlay <- shiny::renderPlot(sleep_p())
+
+    # Daily summary on the cut points of the timeline lines
+    summary_plot <- shiny::reactive({
+      shiny::req(filtered_data())
+      d <- filtered_data()
+      metrics <- c(if ("steps" %in% names(d)) "steps", "mvpa_min", "sedentary_min")
+      plot_daily_summary_bars(d, metrics = metrics, cutpoints = get_cutpoints())
+    })
+
+    output$summary_bars <- shiny::renderPlot({
+      summary_plot()
+    })
+
+    # The numbers behind the bars, one row per day
+    output$summary_table <- shiny::renderTable({
+      d <- summary_plot()$data
+      days <- sort(unique(d$date))
+      labels <- c(steps = "Steps", mvpa_min = "MVPA (min)", sedentary_min = "Sedentary (min)")
+      tab <- data.frame(Date = .format_english(days, "%a %m/%d/%Y"))
+      for (m in levels(d$metric)) {
+        rows <- d[d$metric == m, ]
+        values <- round(rows$value[match(days, rows$date)], 1)
+        tab[[labels[[m]]]] <- format(values, big.mark = ",", trim = TRUE, drop0trailing = TRUE)
+      }
+      tab
+    }, align = "r")
 
     # Download handlers
     output$download_plot <- shiny::downloadHandler(
@@ -2712,15 +2784,40 @@ launch_visualization_dashboard <- function(data = NULL, launch = TRUE) {
         paste0("canhrActi_plot_", Sys.Date(), ".png")
       },
       content = function(file) {
-        # Get current tab and save appropriate plot
-        current_tab <- input$main_tabs
-        p <- switch(current_tab,
-          "Activity Timeline" = plot_daily_timeline(filtered_data(), show_axes = input$metrics),
-          "Activity Heatmap" = plot_activity_heatmap(filtered_data()),
-          plot_daily_timeline(filtered_data())  # default
+        # the open tab's plots as they are shown, stacked when there are several
+        plots <- switch(input$main_tabs,
+          "Activity Timeline" = list(timeline_p()),
+          "Inclinometer/Posture" = list(incl_pie_p(), incl_hourly_p()),
+          "Light Exposure" = list(light_p(), light_summary_p()),
+          "Steps" = list(steps_p()$daily, steps_p()$cumulative),
+          "Heart Rate" = list(hr_p()$timeline, hr_p()$zones, hr_correlation_p()),
+          "Activity Heatmap" = list(heatmap_p()),
+          "Sleep Analysis" = list(sleep_p()),
+          list(summary_plot())
         )
-        ggplot2::ggsave(file, p, width = 12, height = 8, dpi = 300)
+        plots <- Filter(Negate(is.null), plots)
+        # without patchwork only the tab's first plot is saved
+        stacked <- length(plots) > 1 && requireNamespace("patchwork", quietly = TRUE)
+        p <- if (stacked) patchwork::wrap_plots(plots, ncol = 1) else plots[[1]]
+        ggplot2::ggsave(file, p, width = 12, height = if (stacked) 5 * length(plots) else 8, dpi = 300)
       }
+    )
+
+    # Every plot the columns allow, in one zip file
+    output$download_all <- shiny::downloadHandler(
+      filename = function() {
+        paste0("canhrActi_plots_", Sys.Date(), ".zip")
+      },
+      content = function(file) {
+        if (!requireNamespace("zip", quietly = TRUE)) {
+          stop("Package 'zip' is required to download all plots")
+        }
+        out_dir <- tempfile("canhrActi_plots_")
+        on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
+        saved <- export_all_plots(filtered_data(), output_dir = out_dir)
+        zip::zipr(zipfile = file, files = unlist(saved, use.names = FALSE))
+      },
+      contentType = "application/zip"
     )
   }
 
@@ -2771,7 +2868,7 @@ plot_day_comparison <- function(data,
   }
 
   # Add time components
-  data$date <- as.Date(data[[timestamp_col]])
+  data$date <- .clock_date(data[[timestamp_col]])
   data$time_of_day <- as.numeric(format(data[[timestamp_col]], "%H")) +
                       as.numeric(format(data[[timestamp_col]], "%M")) / 60
   data$activity <- data[[counts_col]]
@@ -2782,8 +2879,8 @@ plot_day_comparison <- function(data,
   }
 
   # Filter to selected dates
-  data <- data[data$date %in% as.Date(dates), ]
-  data$date_label <- format(data$date, "%a %m/%d")
+  data <- data[data$date %in% .as_clock_date(dates), ]
+  data$date_label <- .format_english(data$date, "%a %m/%d")
   data$date_label <- factor(data$date_label)
 
   # Color palette for days
@@ -2875,9 +2972,9 @@ plot_weekend_weekday <- function(data,
   }
 
   # Add time components
-  data$date <- as.Date(data[[timestamp_col]])
+  data$date <- .clock_date(data[[timestamp_col]])
   data$hour <- as.integer(format(data[[timestamp_col]], "%H"))
-  data$weekday <- weekdays(data$date)
+  data$weekday <- .format_english(data$date, "%A")
   # Locale-independent weekend test (wday: 0 = Sunday, 6 = Saturday) so weekend
   # detection works regardless of the system LC_TIME locale.
   data$day_type <- ifelse(as.POSIXlt(data$date)$wday %in% c(0L, 6L), "Weekend", "Weekday")
@@ -3145,6 +3242,10 @@ plot_weekend_weekday(data)
 #' @param colorblind_safe Logical. Use colorblind-friendly colors? (default: FALSE)
 #' @param title Character. Plot title (default: "Activity Intensity Distribution")
 #' @param subtitle Character. Optional plot subtitle (default: NULL)
+#' @param thresholds Optional named numeric vector of intensity thresholds. NULL
+#'   looks the count cut points up by name
+#' @param unit Character. Unit of the values and thresholds (default: "CPM")
+#' @param cutpoint_label Character. Optional cut point name for the subtitle
 #'
 #' @return A ggplot2 object
 #'
@@ -3185,7 +3286,12 @@ plot_intensity_pie <- function(data,
                                 show_thresholds = TRUE,
                                 colorblind_safe = FALSE,
                                 title = "Activity Intensity Distribution",
-                                subtitle = NULL) {
+                                subtitle = NULL,
+                                # Explicit thresholds and unit (raw mg cut points
+                                # have no lookup key); NULL keeps the count lookup
+                                thresholds = NULL,
+                                unit = "CPM",
+                                cutpoint_label = NULL) {
 
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("Package 'ggplot2' is required")
@@ -3194,6 +3300,10 @@ plot_intensity_pie <- function(data,
   # Ensure timestamp is POSIXct
   if (!inherits(data[[timestamp_col]], "POSIXct")) {
     data[[timestamp_col]] <- as.POSIXct(data[[timestamp_col]])
+  }
+
+  if (nrow(data) == 0) {
+    stop("No data available for plotting")
   }
 
   # Auto-detect epoch length
@@ -3206,10 +3316,18 @@ plot_intensity_pie <- function(data,
   # Get cut-point values for thresholds display.
   # Route through the canonical accessor (cut_points.R) so published
   # constants are used uniformly instead of divergent inline literals.
-  if (is.character(cutpoints)) {
+  # Explicit thresholds win: get_cutpoint_thresholds() is count-only and falls
+  # through to Freedson for an unknown key.
+  if (!is.null(thresholds)) {
+    cp <- c(0, thresholds[["sedentary"]], thresholds[["light"]],
+            thresholds[["moderate"]], thresholds[["vigorous"]], Inf)
+    cp[!is.finite(cp)] <- Inf
+    cp_name <- cutpoint_label %||% if (is.character(cutpoints)) cutpoints else "Custom"
+  } else if (is.character(cutpoints)) {
     cp_thr <- get_cutpoint_thresholds(cutpoints)
-    cp <- c(0, cp_thr$sedentary, cp_thr$light, cp_thr$moderate, cp_thr$vigorous, Inf)
-    cp_name <- switch(cutpoints,
+    # A lifestyle band (Matthews) counts as light, as light_activity() counts it
+    cp <- c(0, cp_thr$sedentary, cp_thr$lifestyle %||% cp_thr$light, cp_thr$moderate, cp_thr$vigorous, Inf)
+    cp_name <- cutpoint_label %||% switch(cutpoints,
       "freedson" = "Freedson Adult (1998)",
       "evenson" = "Evenson Children (2008)",
       "troiano" = "Troiano (2008)",
@@ -3470,8 +3588,22 @@ plot_intensity_pie <- function(data,
   if (is.null(subtitle)) {
     if (show_thresholds) {
       # Show cut-point thresholds in subtitle
-      subtitle <- sprintf("Cut-points: %s | Sed <%d | Light %d-%d | Mod %d-%d | Vig %d-%d | VVig >=%d CPM",
-                          cp_name, cp[2], cp[2], cp[3]-1, cp[3], cp[4]-1, cp[4], cp[5]-1, cp[5])
+      # %g rather than %d: a missing edge is Inf and an mg boundary need not
+      # be whole. Count bands are closed integers (upper edge - 1); mg bands
+      # are continuous and print half-open.
+      band_names <- c("Sed", "Light", "Mod", "Vig", "VVig")
+      one <- if (identical(unit, "CPM")) 1 else 0
+      parts <- character(0)
+      # band i runs from cp[i] to cp[i + 1]; sedentary is everything below cp[2]
+      for (i in seq_len(5)) {
+        if (i == 1L) { parts <- c(parts, sprintf("Sed <%g", cp[2])); next }
+        lo <- cp[i]; hi <- cp[i + 1L]
+        if (!is.finite(lo)) break                       # band does not exist
+        parts <- c(parts, if (is.finite(hi)) sprintf("%s %g-%g", band_names[i], lo, hi - one)
+                          else sprintf("%s %g+", band_names[i], lo))
+      }
+      subtitle <- sprintf("Cut-points: %s | %s %s", cp_name,
+                          paste(parts, collapse = " | "), unit)
     } else {
       subtitle <- sprintf("Total: %.1f hours | Cut-points: %s",
                           sum(intensity_summary$hours), cp_name)
@@ -3851,6 +3983,10 @@ plot_intensity_area_from_hourly <- function(hourly_data,
 #' @return A ggplot2 object
 #'
 #' @details
+#' Each panel is one night, noon to noon, dated by its evening. With
+#' \code{sleep_periods}, a night that holds more than one period is labelled by
+#' its longest.
+#'
 #' This enhanced hypnogram includes:
 #' \itemize{
 #'   \item TST (Total Sleep Time) annotation
@@ -3897,6 +4033,10 @@ plot_hypnogram <- function(data,
   # Validate timestamp column exists
   if (!timestamp_col %in% names(data)) {
     stop("Timestamp column '", timestamp_col, "' not found in data")
+  }
+
+  if (nrow(data) == 0) {
+    stop("No data available for plotting")
   }
 
   # Robust timestamp conversion - handle various input types
@@ -3970,12 +4110,14 @@ plot_hypnogram <- function(data,
   data <- data[!is.na(data$sleep_numeric), ]
 
   # Add time components using validated POSIXct
-  data$date <- as.Date(data$ts_posix)
+  data$date <- .clock_date(data$ts_posix)
   data$time_of_day <- as.numeric(format(data$ts_posix, "%H")) +
                       as.numeric(format(data$ts_posix, "%M")) / 60
 
-  # Get unique nights (defined as 6 PM to 12 PM next day)
-  data$night_date <- as.Date(data$ts_posix - 6 * 3600)
+  # A night runs noon to noon and takes the date of its evening; night_x is the
+  # hour since that noon, so a night is never split across two panels
+  data$night_date <- .clock_date(data$ts_posix - 12 * 3600)
+  data$night_x <- (data$time_of_day - 12) %% 24
   unique_nights <- sort(unique(data$night_date))
 
   # Ensure we have valid dates before formatting
@@ -4011,12 +4153,12 @@ plot_hypnogram <- function(data,
   }
 
   # Format for faceting
-  data$night_label <- format(data$night_date, "%a %m/%d")
+  data$night_label <- .format_english(data$night_date, "%a %m/%d")
   data$night_label <- factor(data$night_label,
-                             levels = format(unique_nights, "%a %m/%d"))
+                             levels = .format_english(unique_nights, "%a %m/%d"))
 
   data <- data[order(data$night_date, data$ts_posix), ]
-  data$segment_id <- ave(data$time_of_day, data$night_label, FUN = function(x) {
+  data$segment_id <- ave(data$night_x, data$night_label, FUN = function(x) {
     cumsum(c(FALSE, diff(x) < -12))
   })
   data$wake_band <- ifelse(data$sleep_numeric == 1, 1, 0)
@@ -4079,17 +4221,19 @@ plot_hypnogram <- function(data,
       if (!is.null(sleep_periods) && nrow(sleep_periods) > 0 &&
           all(c("in_bed_time", "sleep_time", "wake_time", "sleep_efficiency",
                 "number_of_awakenings") %in% names(sleep_periods))) {
-        pib <- suppressWarnings(as.POSIXct(sleep_periods$in_bed_time))
-        pidx <- which(as.Date(pib - 6 * 3600) == night)
+        pib <- suppressWarnings(.clock_time(sleep_periods$in_bed_time))
+        pidx <- which(.clock_date(pib - 12 * 3600) == night)
         if (length(pidx) >= 1) {
-          p <- sleep_periods[pidx[1], ]
+          # a night with a nap as well is labelled by its longest period
+          pidx <- pidx[max(1L, which.max(as.numeric(sleep_periods$sleep_time[pidx])))]
+          p <- sleep_periods[pidx, ]
           tst_min <- as.numeric(p$sleep_time)
           waso_min <- as.numeric(p$wake_time)
           efficiency <- as.numeric(p$sleep_efficiency)
           awakening_count <- as.numeric(p$number_of_awakenings)
           tst_hours <- floor(tst_min / 60); tst_remainder <- round(tst_min %% 60)
           if ("onset" %in% names(p)) {
-            sol_min <- as.numeric(difftime(as.POSIXct(p$onset), pib[pidx[1]], units = "mins"))
+            sol_min <- as.numeric(difftime(.clock_time(p$onset), pib[pidx[1]], units = "mins"))
           }
         }
       }
@@ -4101,7 +4245,7 @@ plot_hypnogram <- function(data,
 
       metrics_data <- rbind(metrics_data, data.frame(
         night_date = night,
-        night_label = format(night, "%a %m/%d"),
+        night_label = .format_english(night, "%a %m/%d"),
         tst_min = tst_min,
         waso_min = waso_min,
         sol_min = sol_min,
@@ -4116,7 +4260,7 @@ plot_hypnogram <- function(data,
   }
 
   # Create hypnogram plot
-  p <- ggplot2::ggplot(data, ggplot2::aes(x = time_of_day))
+  p <- ggplot2::ggplot(data, ggplot2::aes(x = night_x))
 
   # Add activity background if available
   if (show_activity && has_activity) {
@@ -4148,7 +4292,7 @@ plot_hypnogram <- function(data,
       p <- p +
         ggplot2::geom_point(
           data = awakenings,
-          ggplot2::aes(x = time_of_day, y = 1),
+          ggplot2::aes(x = night_x, y = 1),
           color = "#E74C3C", size = awakening_size, shape = 17
         )
     }
@@ -4157,13 +4301,13 @@ plot_hypnogram <- function(data,
   # Add sleep onset/offset markers
   if (nrow(metrics_data) > 0) {
     onset_data <- data.frame(
-      time_of_day = metrics_data$sleep_onset_time,
-      night_label = factor(metrics_data$night_label, levels = format(unique_nights, "%a %m/%d")),
+      time_of_day = (metrics_data$sleep_onset_time - 12) %% 24,
+      night_label = factor(metrics_data$night_label, levels = .format_english(unique_nights, "%a %m/%d")),
       label = "Onset"
     )
     offset_data <- data.frame(
-      time_of_day = metrics_data$sleep_offset_time,
-      night_label = factor(metrics_data$night_label, levels = format(unique_nights, "%a %m/%d")),
+      time_of_day = (metrics_data$sleep_offset_time - 12) %% 24,
+      night_label = factor(metrics_data$night_label, levels = .format_english(unique_nights, "%a %m/%d")),
       label = "Offset"
     )
 
@@ -4199,7 +4343,7 @@ plot_hypnogram <- function(data,
     ) +
     ggplot2::scale_x_continuous(
       breaks = seq(0, 24, 3),
-      labels = sprintf("%02d:00", seq(0, 24, 3) %% 24),
+      labels = sprintf("%02d:00", (seq(0, 24, 3) + 12) %% 24),
       limits = c(0, 24)
     )
 
@@ -4236,7 +4380,7 @@ plot_hypnogram <- function(data,
   # Add metrics labels
   if (show_metrics && nrow(metrics_data) > 0) {
     metrics_data$night_label <- factor(metrics_data$night_label,
-                                        levels = format(unique_nights, "%a %m/%d"))
+                                        levels = .format_english(unique_nights, "%a %m/%d"))
     p <- p +
       ggplot2::geom_label(
         data = metrics_data,
@@ -4273,6 +4417,8 @@ plot_hypnogram <- function(data,
 #' @param IV_value Optional. Pre-computed intradaily variability value
 #' @param show_reference Logical. Show reference ranges? (default: TRUE)
 #' @param title Plot title
+#' @param value_label Character. Axis label naming the value and its unit
+#'   (default: "Activity (counts/min)")
 #'
 #' @return A ggplot2 object
 #'
@@ -4321,7 +4467,8 @@ plot_circadian_polar <- function(data,
                                   IS_value = NULL,
                                   IV_value = NULL,
                                   show_reference = TRUE,
-                                  title = "Circadian Activity Pattern") {
+                                  title = "Circadian Activity Pattern",
+                                  value_label = "Activity (counts/min)") {
 
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("Package 'ggplot2' is required")
@@ -4470,8 +4617,9 @@ plot_circadian_polar <- function(data,
 
   # Create hourly stats for plotting
   if (by_day_type) {
-    data$weekday <- weekdays(data[[timestamp_col]])
-    data$day_type <- ifelse(data$weekday %in% c("Saturday", "Sunday"), "Weekend", "Weekday")
+    data$weekday <- .format_english(data[[timestamp_col]], "%A")
+    # Weekend by day number (0 Sunday, 6 Saturday)
+    data$day_type <- ifelse(as.POSIXlt(data[[timestamp_col]])$wday %in% c(0L, 6L), "Weekend", "Weekday")
 
     hourly_stats <- aggregate(
       activity ~ hour + day_type,
@@ -4687,7 +4835,7 @@ plot_circadian_polar <- function(data,
       title = title,
       subtitle = if (length(subtitle_parts) > 0) subtitle_text else NULL,
       x = "",
-      y = "Activity (counts/min)",
+      y = value_label,
       caption = caption_text
     ) +
     theme_canhrActi() +
@@ -4719,6 +4867,8 @@ plot_circadian_polar <- function(data,
 #' @param iv_value Optional. Pre-computed IV value (default: NULL, will be calculated)
 #' @param title Character. Plot title (default: "Interdaily Stability / Intradaily Variability")
 #' @param subtitle Character. Optional plot subtitle (default: NULL)
+#' @param value_label Character. Axis label naming the value and its unit
+#'   (default: "Activity (counts/min)")
 #'
 #' @return A ggplot2 object showing hourly profiles and IS/IV values
 #'
@@ -4729,7 +4879,8 @@ plot_is_iv <- function(data,
                         is_value = NULL,
                         iv_value = NULL,
                         title = "Interdaily Stability / Intradaily Variability",
-                        subtitle = NULL) {
+                        subtitle = NULL,
+                        value_label = "Activity (counts/min)") {
 
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("Package 'ggplot2' is required")
@@ -4754,7 +4905,7 @@ plot_is_iv <- function(data,
   }
 
   # Add time components
-  data$date <- as.Date(data[[timestamp_col]])
+  data$date <- .clock_date(data[[timestamp_col]])
   data$hour <- as.integer(format(data[[timestamp_col]], "%H"))
   data$activity <- as.numeric(data[[counts_col]])
   data$activity[is.na(data$activity)] <- 0
@@ -4823,8 +4974,10 @@ plot_is_iv <- function(data,
   is_interp <- if (is.na(IS)) "" else if (IS >= 0.6) "Strong" else if (IS >= 0.4) "Moderate" else "Weak"
   iv_interp <- if (is.na(IV)) "" else if (IV <= 0.8) "Stable" else if (IV <= 1.2) "Moderate" else "Fragmented"
 
+  # One decimal for small means (mg, typically 10-40); whole numbers for counts
+  mean_fmt <- if (is.finite(grand_mean) && abs(grand_mean) < 100) "%.1f" else "%.0f"
   annotation_text <- sprintf(
-    "IS = %.2f (%s)\nIV = %.2f (%s)\nMean = %.0f",
+    paste0("IS = %.2f (%s)\nIV = %.2f (%s)\nMean = ", mean_fmt),
     IS, is_interp, IV, iv_interp, grand_mean
   )
 
@@ -4852,7 +5005,7 @@ plot_is_iv <- function(data,
       title = title,
       subtitle = subtitle,
       x = "Hour of Day",
-      y = "Activity (counts/min)"
+      y = value_label
     ) +
     theme_canhrActi() +
     ggplot2::theme(
@@ -4893,7 +5046,10 @@ plot_survival_curves <- function(bout_durations,
     stop("Package 'ggplot2' is required")
   }
 
-  bout_durations <- bout_durations[!is.na(bout_durations) & bout_durations > 0]
+  # a dropped bout takes its group with it, so the groups stay aligned
+  keep <- !is.na(bout_durations) & bout_durations > 0
+  bout_durations <- bout_durations[keep]
+  if (!is.null(groups)) groups <- groups[keep]
 
   if (length(bout_durations) < 10) {
     stop("At least 10 valid bouts required for survival analysis")
@@ -4912,10 +5068,12 @@ plot_survival_curves <- function(bout_durations,
     n_at_risk <- sapply(times, function(t) sum(durations >= t))
     n_events <- sapply(times, function(t) sum(durations == t))
 
-    var_log_s <- cumsum(n_events / (n_at_risk * (n_at_risk - n_events + 0.001)))
+    # Greenwood's log interval, as survival::survfit gives it; the band closes where the curve reaches 0
+    left <- n_at_risk - n_events
+    var_log_s <- cumsum(ifelse(left > 0, n_events / (n_at_risk * left), 0))
     se <- sqrt(var_log_s)
-    ci_lower <- pmax(0, survival * exp(-1.96 * se / (survival + 0.001)))
-    ci_upper <- pmin(1, survival * exp(1.96 * se / (survival + 0.001)))
+    ci_lower <- pmax(0, survival * exp(-1.96 * se))
+    ci_upper <- pmin(1, survival * exp(1.96 * se))
 
     data.frame(time = times, survival = survival, ci_lower = ci_lower, ci_upper = ci_upper)
   }
@@ -4934,7 +5092,10 @@ plot_survival_curves <- function(bout_durations,
       d
     }))
     if (is.null(color_palette)) {
-      color_palette <- setNames(c("#1565C0", "#2E7D32", "#F57C00", "#C62828")[1:length(groups_to_plot)], groups_to_plot)
+      # four house colours; more groups than that all take the package palette
+      cols <- c("#1565C0", "#2E7D32", "#F57C00", "#C62828")
+      if (length(groups_to_plot) > length(cols)) cols <- canhrActi_colors(length(groups_to_plot))
+      color_palette <- setNames(cols[seq_along(groups_to_plot)], groups_to_plot)
     }
   }
 
@@ -5015,7 +5176,7 @@ plot_vm_heatmap <- function(data,
     stop("Either vm_col or all three axis columns must be provided")
   }
 
-  data$date <- as.Date(data[[timestamp_col]])
+  data$date <- .clock_date(data[[timestamp_col]])
   data$hour <- as.numeric(format(data[[timestamp_col]], "%H"))
   data$minute <- as.numeric(format(data[[timestamp_col]], "%M"))
 
@@ -5028,8 +5189,10 @@ plot_vm_heatmap <- function(data,
 
   vm_95 <- quantile(agg_data$vm, 0.95, na.rm = TRUE)
 
-  p <- ggplot2::ggplot(agg_data, ggplot2::aes(x = time_bin, y = date_factor, fill = vm)) +
-    ggplot2::geom_tile(color = NA) +
+  # Each tile spans its bin: centred half a bin after the bin start, one bin wide
+  agg_data$time_mid <- agg_data$time_bin + agg_minutes / 120
+  p <- ggplot2::ggplot(agg_data, ggplot2::aes(x = time_mid, y = date_factor, fill = vm)) +
+    ggplot2::geom_tile(color = NA, width = agg_minutes / 60) +
     ggplot2::scale_fill_gradientn(
       colors = c("#ECEFF1", "#81D4FA", "#4CAF50", "#FFC107", "#FF5722", "#B71C1C"),
       limits = c(0, vm_95), name = "VM\n(counts)",
@@ -5040,11 +5203,11 @@ plot_vm_heatmap <- function(data,
       labels = c("00:00", "04:00", "08:00", "12:00", "16:00", "20:00", "00:00"),
       limits = c(0, 24), expand = c(0, 0)
     ) +
-    ggplot2::scale_y_discrete(labels = function(x) format(as.Date(x), "%a %m/%d")) +
+    ggplot2::scale_y_discrete(labels = function(x) .format_english(as.Date(x), "%a %m/%d")) +
     ggplot2::labs(title = title,
                   subtitle = sprintf("Aggregation: %s | %s to %s", aggregation,
-                                     format(min(unique_dates), "%b %d"),
-                                     format(max(unique_dates), "%b %d, %Y")),
+                                     .format_english(min(unique_dates), "%b %d"),
+                                     .format_english(max(unique_dates), "%b %d, %Y")),
                   x = "Time of Day", y = NULL) +
     theme_canhrActi() +
     ggplot2::theme(

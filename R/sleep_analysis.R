@@ -300,15 +300,15 @@ sleep.sadeh <- function(counts, epoch_length = 60) {
 #' option is an additional, non-Tudor-Locke heuristic pass (disabled by default).
 #' When enabled, a period is removed if it matches ANY of the following criteria:
 #' \enumerate{
-#'   \item sleep_time > 720 min, sleep_efficiency > 99\%, and 0 awakenings;
+#'   \item sleep_time > 720 min, sleep_efficiency > 99%, and 0 awakenings;
 #'   \item sleep_time > 120 min and mean activity < 5 counts/min;
-#'   \item sleep_time > 180 min, sleep_efficiency >= 99.5\%, and 0 awakenings;
-#'   \item 30 < sleep_time < 180 min, sleep_efficiency > 98\%, and 0 awakenings;
+#'   \item sleep_time > 180 min, sleep_efficiency >= 99.5%, and 0 awakenings;
+#'   \item 30 < sleep_time < 180 min, sleep_efficiency > 98%, and 0 awakenings;
 #'   \item total_counts < 50 and sleep_time > 60 min;
-#'   \item activity CV < 0.5, sleep_efficiency > 95\%, < 2 awakenings, and
+#'   \item activity CV < 0.5, sleep_efficiency > 95%, < 2 awakenings, and
 #'         60 < sleep_time < 300 min;
 #'   \item in-bed start between 09:00-17:00, sleep_time < 180 min, and
-#'         sleep_efficiency > 90\% (daytime short consolidated period).
+#'         sleep_efficiency > 90% (daytime short consolidated period).
 #' }
 #' Because several of these can discard real sleep, prefer leaving
 #' \code{filter_suspicious = FALSE} and inspecting periods directly.
@@ -545,7 +545,8 @@ sleep.tudor.locke <- function(sleep.state,
                    result$sleep_time < 300
 
     suspicious7 <- tryCatch({
-      in_bed_hours <- as.numeric(format(as.POSIXct(result$in_bed_time), "%H"))
+      # read in UTC, which has no DST gap to turn the clock strings into dates
+      in_bed_hours <- as.numeric(format(as.POSIXct(result$in_bed_time, tz = "UTC"), "%H"))
       daytime_start <- in_bed_hours >= 9 & in_bed_hours <= 17
       short_duration <- result$sleep_time < 180
       high_efficiency <- result$sleep_efficiency > 90
@@ -653,14 +654,16 @@ sleep.tudor.locke <- function(sleep.state,
 #' Provides detailed sleep fragmentation metrics beyond basic awakening counts,
 #' including temporal patterns and bout duration analysis.
 #'
-#' @param sleep_state Character vector of sleep states ("S" or "W")
+#' @param sleep_state Character vector of sleep states ("S" or "W"). NA marks an
+#'   epoch that was not scored, such as non-wear, and is neither sleep nor wake.
 #' @param timestamps POSIXt vector of timestamps corresponding to sleep_state
-#' @param epoch_length Epoch length in seconds (default: 60). Used to convert the
-#'   epoch count to hours when computing the per-hour transition rate.
+#' @param epoch_length Epoch length in seconds (default: 60). Used to convert
+#'   epoch counts to time for the per-hour transition rate and the 10 minute
+#'   short sleep bout threshold.
 #'
 #' @return List containing:
 #'   - basic_metrics: Standard fragmentation metrics
-#'   - bout_analysis: Sleep and wake bout duration statistics
+#'   - bout_analysis: Sleep and wake bout duration statistics, in epochs
 #'   - temporal_pattern: Hourly fragmentation profile
 #'   - sleep_fragmentation_index: Composite fragmentation score
 #'
@@ -670,6 +673,10 @@ sleep.tudor.locke <- function(sleep.state,
 #' 2. Transition frequency per hour
 #' 3. Temporal pattern showing which hours have most fragmentation
 #' 4. Sleep Fragmentation Index (SFI) combining multiple metrics
+#'
+#' NA epochs split bouts, a change of state across them is not counted as a
+#' transition (as in GGIR's g.fragmentation), and the rates, proportions and
+#' sleep efficiency are taken over the scored epochs only.
 #'
 #' Note: the Sleep Fragmentation Index returned here is a custom composite metric
 #' (a weighted blend of transition rate, short-sleep-bout proportion, and wake
@@ -692,6 +699,13 @@ sleep.fragmentation.enhanced <- function(sleep_state, timestamps, epoch_length =
   }
 
   n <- length(sleep_state)
+  # Epochs not scored (NA, such as non-wear) are neither sleep nor wake; rle() gives
+  # each one a run of its own, so it ends a bout and no transition is counted across it
+  scored <- !is.na(sleep_state)
+  n_scored <- sum(scored)
+  if (n_scored == 0) {
+    return(.empty.fragmentation.result())
+  }
 
   # Run-length encoding for bout detection
   rle_result <- rle(sleep_state)
@@ -700,13 +714,13 @@ sleep.fragmentation.enhanced <- function(sleep_state, timestamps, epoch_length =
   n_bouts <- length(bout_lengths)
 
   # Separate sleep and wake bouts
-  sleep_bouts <- bout_lengths[bout_values == "S"]
-  wake_bouts <- bout_lengths[bout_values == "W"]
+  sleep_bouts <- bout_lengths[bout_values %in% "S"]
+  wake_bouts <- bout_lengths[bout_values %in% "W"]
 
   # Basic metrics
-  n_awakenings <- sum(bout_values == "W" & c(FALSE, bout_values[-n_bouts] == "S"))
-  total_sleep <- sum(sleep_state == "S")
-  total_wake <- sum(sleep_state == "W")
+  n_awakenings <- sum(bout_values %in% "W" & c(FALSE, bout_values[-n_bouts] %in% "S"))
+  total_sleep <- sum(sleep_state %in% "S")
+  total_wake <- sum(sleep_state %in% "W")
 
   # Bout duration statistics
   sleep_bout_stats <- list(
@@ -731,7 +745,7 @@ sleep.fragmentation.enhanced <- function(sleep_state, timestamps, epoch_length =
   temporal_pattern <- tryCatch({
     hours <- as.numeric(format(as.POSIXct(timestamps), "%H"))
     transitions <- c(FALSE, sleep_state[-1] != sleep_state[-n])
-    hourly_transitions <- tapply(transitions, hours, sum, na.rm = TRUE)
+    hourly_transitions <- tapply(transitions[scored], hours[scored], sum, na.rm = TRUE)
 
     data.frame(
       hour = as.numeric(names(hourly_transitions)),
@@ -744,19 +758,19 @@ sleep.fragmentation.enhanced <- function(sleep_state, timestamps, epoch_length =
 
   # Sleep Fragmentation Index (SFI)
   # Combines: transition rate + short sleep bout proportion + wake proportion
-  total_transitions <- sum(bout_values[-1] != bout_values[-n_bouts])
-  # Transitions per hour, scaled by epoch length (n epochs * epoch_length / 3600 s)
-  period_hours <- n * epoch_length / 3600
+  total_transitions <- sum(bout_values[-1] != bout_values[-n_bouts], na.rm = TRUE)
+  # Transitions per scored hour (scored epochs * epoch_length / 3600 s)
+  period_hours <- n_scored * epoch_length / 3600
   transition_rate <- if (period_hours > 0) total_transitions / period_hours else NA_real_
 
   short_sleep_threshold <- 10  # Minutes
   short_sleep_proportion <- if (length(sleep_bouts) > 0) {
-    sum(sleep_bouts < short_sleep_threshold) / length(sleep_bouts)
+    sum(sleep_bouts * epoch_length / 60 < short_sleep_threshold) / length(sleep_bouts)
   } else {
     NA_real_
   }
 
-  wake_proportion <- total_wake / n
+  wake_proportion <- total_wake / n_scored
 
   # Composite index (higher = more fragmented)
   sfi <- NA_real_
@@ -771,7 +785,7 @@ sleep.fragmentation.enhanced <- function(sleep_state, timestamps, epoch_length =
       total_sleep_epochs = total_sleep,
       total_wake_epochs = total_wake,
       total_transitions = total_transitions,
-      sleep_efficiency = round(100 * total_sleep / n, 2)
+      sleep_efficiency = round(100 * total_sleep / n_scored, 2)
     ),
     bout_analysis = list(
       sleep_bouts = sleep_bout_stats,

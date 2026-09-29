@@ -338,7 +338,7 @@ cosinor.antilogistic <- function(counts, timestamps, period = 24) {
 #'
 #' @details
 #' Under the cosinor model \eqn{Y(t) = M + \beta_1 cos(\omega t) +
-#' \beta_2 sin(\omega t)}, the \eqn{100(1-\alpha)\%} joint confidence region for
+#' \beta_2 sin(\omega t)}, the \eqn{100(1-\alpha)%} joint confidence region for
 #' \eqn{(\beta_1, \beta_2)} is the set of points \eqn{b} satisfying
 #' \deqn{(b - \hat b)^\top \Sigma^{-1} (b - \hat b) \le 2 F_{2, df, 1-\alpha}}
 #' where \eqn{\Sigma} is the covariance of the estimated coefficients and

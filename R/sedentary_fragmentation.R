@@ -335,7 +335,7 @@ sedentary.fragmentation <- function(intensity,
   #
   if (robust_alpha && n_bouts >= 10) {
     alpha_result <- .calculate.alpha.robust(durations, bootstrap_n = 100,
-                                            bootstrap_gof = bootstrap_gof)
+                                            bootstrap_gof = bootstrap_gof, step = epoch_min)
   } else {
     alpha_result <- list(
       alpha = .calculate.alpha.simple(durations, xmin = 1),
@@ -369,7 +369,8 @@ sedentary.fragmentation <- function(intensity,
   #
   dist_comparison <- NULL
   if (compare_distributions && n_bouts >= 10) {
-    dist_comparison <- compare.bout.distributions(durations, bootstrap_gof = bootstrap_gof)
+    dist_comparison <- compare.bout.distributions(durations, bootstrap_gof = bootstrap_gof,
+                                                  epoch_length = epoch_length)
   }
 
   # 
@@ -431,7 +432,7 @@ sedentary.fragmentation <- function(intensity,
                                                sleep_mask = sleep_mask)
 
   # 
-  n_days <- length(unique(as.Date(timestamps)))
+  n_days <- length(unique(.clock_date(timestamps)))
 
   result <- list(
     # Summary
@@ -512,7 +513,8 @@ sedentary.fragmentation <- function(intensity,
 
     # Metadata
     analysis_method = "canhrActi_v2_fragmentation",
-    min_break_length_used = min_break_length
+    min_break_length_used = min_break_length,
+    epoch_length = epoch_length
   )
 
   class(result) <- c("canhrActi_fragmentation", "list")
@@ -850,7 +852,7 @@ bout.distribution.metrics <- function(durations, epoch_length = 60,
 
   epoch_min <- epoch_length / 60
   alpha_fit <- if (n >= 10) {
-    .calculate.alpha.robust(durations, bootstrap_n = 100, bootstrap_gof = bootstrap_gof)
+    .calculate.alpha.robust(durations, bootstrap_n = 100, bootstrap_gof = bootstrap_gof, step = epoch_min)
   } else {
     list(alpha = .calculate.alpha.simple(durations, xmin = 1),
          alpha_ci = c(NA_real_, NA_real_))
@@ -930,7 +932,7 @@ usual.bout.duration <- function(bout_durations) {
 #' Calculate Multiple Usual Bout Percentiles
 #'
 #' Time-weighted percentiles of the bout-duration distribution. WX is the bout
-#' duration at which X\% of total sedentary time has accumulated when bouts are
+#' duration at which X% of total sedentary time has accumulated when bouts are
 #' considered from SHORTEST to LONGEST. Defined this way the percentiles are
 #' monotonically INCREASING (W25 <= W50 <= W75 <= W90), so larger W corresponds
 #' to a longer-bout cutoff, matching the "25th/75th/90th weighted percentile"
@@ -1032,6 +1034,8 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
 #'   meet or exceed the empirical KS statistic.
 #' @param gof_bootstrap_n Number of synthetic datasets for the GoF bootstrap when
 #'   \code{bootstrap_gof = TRUE} (default 200).
+#' @param step Spacing of the durations in minutes, one epoch (default 1). The
+#'   discrete-data correction takes half of it off xmin.
 #'
 #' @return List with alpha, xmin, KS statistic, confidence intervals, and either a
 #'   Clauset GoF p-value (\code{gof_pvalue}) or an asymptotic KS approximation
@@ -1058,7 +1062,7 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
 #'
 #' @keywords internal
 .calculate.alpha.robust <- function(durations, xmin_candidates = NULL, bootstrap_n = 100,
-                                    bootstrap_gof = FALSE, gof_bootstrap_n = 200) {
+                                    bootstrap_gof = FALSE, gof_bootstrap_n = 200, step = 1) {
 
   durations <- durations[!is.na(durations) & durations > 0]
   n_total <- length(durations)
@@ -1097,10 +1101,9 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
 
     if (n < 5) return(list(xmin = xm, alpha = NA_real_, ks = Inf, n = n))
 
-    # MLE for alpha (Hill estimator) with continuous correction
-    # Using (xmin - 0.5) for discrete data per Clauset et al. (2009)
-    # This matches the C++ implementation for consistency
-    xm_corrected <- max(0.5, xm - 0.5)
+    # MLE for alpha (Hill estimator) with the discrete-data correction of Clauset
+    # et al. (2009): xmin less half a step, the step being one epoch
+    xm_corrected <- max(step / 2, xm - step / 2)
     log_sum <- sum(log(x / xm_corrected))
     if (log_sum <= 0) return(list(xmin = xm, alpha = NA_real_, ks = Inf, n = n))
 
@@ -1155,7 +1158,7 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
         # bootstrap_n = 0 prevents infinite recursion; xmin is re-selected here.
         boot_fit <- .calculate.alpha.robust(boot_sample,
                                              xmin_candidates = xmin_candidates,
-                                             bootstrap_n = 0)
+                                             bootstrap_n = 0, step = step)
         if (is.null(boot_fit$alpha)) NA_real_ else boot_fit$alpha
       })
     }, error = function(e) rep(NA_real_, bootstrap_n))
@@ -1188,7 +1191,8 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
       xmin         = best$xmin,
       empirical_ks = best$ks,
       gof_bootstrap_n = gof_bootstrap_n,
-      xmin_candidates = xmin_candidates
+      xmin_candidates = xmin_candidates,
+      step = step
     )
   }
 
@@ -1224,8 +1228,9 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
 #' @param empirical_ks Empirical KS statistic at the fitted xmin/alpha
 #' @param gof_bootstrap_n Number of synthetic datasets (default 200)
 #' @param xmin_candidates xmin grid reused when re-fitting each synthetic dataset
+#' @param step Spacing of the durations in minutes, one epoch (default 1)
 #'
-#' @return Numeric p-value in [0, 1], or NA if it cannot be computed
+#' @return Numeric p-value between 0 and 1, or NA if it cannot be computed
 #'
 #' @references
 #' Clauset A, Shalizi CR, Newman MEJ. (2009). Power-law distributions in
@@ -1233,7 +1238,7 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
 #'
 #' @keywords internal
 .powerlaw.gof.bootstrap <- function(durations, xmin, empirical_ks,
-                                    gof_bootstrap_n = 200, xmin_candidates = NULL) {
+                                    gof_bootstrap_n = 200, xmin_candidates = NULL, step = 1) {
 
   durations <- durations[!is.na(durations) & durations > 0]
   n_total <- length(durations)
@@ -1249,7 +1254,7 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
 
   # Estimate the tail exponent at the fitted xmin (continuous correction, as in
   # the main estimator) to use as the generative model for the synthetic tail.
-  xmin_corrected <- max(0.5, xmin - 0.5)
+  xmin_corrected <- max(step / 2, xmin - step / 2)
   log_sum <- sum(log(tail_vals / xmin_corrected))
   if (!is.finite(log_sum) || log_sum <= 0) return(NA_real_)
   alpha_fit <- 1 + n_tail / log_sum
@@ -1283,7 +1288,7 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
 
     # Re-estimate xmin + alpha on the synthetic dataset and take its KS stat.
     fit <- .calculate.alpha.robust(syn, xmin_candidates = xmin_candidates,
-                                   bootstrap_n = 0, bootstrap_gof = FALSE)
+                                   bootstrap_n = 0, bootstrap_gof = FALSE, step = step)
     if (is.null(fit$ks_stat) || is.na(fit$ks_stat)) NA_real_ else fit$ks_stat
   })
 
@@ -1381,6 +1386,8 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
 #'   to decide whether the power-law is a plausible fit? (default FALSE, kept off
 #'   for dashboard speed). When FALSE, plausibility is judged by the asymptotic KS
 #'   approximation (anti-conservative); when TRUE, by the bootstrap p-value.
+#' @param epoch_length Epoch length in seconds (default 60); the durations come in
+#'   steps of one epoch, which sets the continuity correction of the xmin fit.
 #'
 #' @return List with model comparison results
 #'
@@ -1392,7 +1399,7 @@ prolonged.sedentary <- function(bout_durations, thresholds = c(20, 30, 60)) {
 #' Clauset A, et al. (2009). SIAM Review, 51(4):661-703.
 #'
 #' @export
-compare.bout.distributions <- function(bout_durations, bootstrap_gof = FALSE) {
+compare.bout.distributions <- function(bout_durations, bootstrap_gof = FALSE, epoch_length = 60) {
 
   x_all <- bout_durations[!is.na(bout_durations) & bout_durations > 0]
   n_all <- length(x_all)
@@ -1413,7 +1420,7 @@ compare.bout.distributions <- function(bout_durations, bootstrap_gof = FALSE) {
   # Use the SAME xmin/tail selected for the alpha estimate (Clauset et al. 2009),
   # not min(x). Both candidate models are then compared on this common tail.
   alpha_fit <- .calculate.alpha.robust(x_all, bootstrap_n = 0,
-                                       bootstrap_gof = bootstrap_gof)
+                                       bootstrap_gof = bootstrap_gof, step = epoch_length / 60)
   xmin <- if (!is.na(alpha_fit$xmin)) alpha_fit$xmin else min(x_all)
 
   x <- x_all[x_all >= xmin]
@@ -1606,7 +1613,7 @@ bout.survival.analysis <- function(bout_durations) {
 .calculate.daily.fragmentation <- function(intensity, timestamps, wear_time, epoch_length,
                                            min_break_length = 5, sleep_mask = NULL) {
 
-  dates <- as.Date(timestamps)
+  dates <- .clock_date(timestamps)
   unique_dates <- unique(dates)
 
   # Normalise the sleep mask once (same rule as detect.sedentary.bouts).
@@ -2234,7 +2241,7 @@ hourly.fragmentation.pattern <- function(intensity, timestamps, wear_time = NULL
 #' @keywords internal
 .create.empty.fragmentation.result <- function(total_sedentary_min, total_wear_min, timestamps) {
 
-  n_days <- length(unique(as.Date(timestamps)))
+  n_days <- length(unique(.clock_date(timestamps)))
 
   result <- list(
     total_sedentary_min = total_sedentary_min,
@@ -2539,8 +2546,8 @@ plot.canhrActi_fragmentation <- function(x, type = "distribution",
                           color = secondary_color, alpha = 0.7) +
       ggplot2::geom_vline(xintercept = median_surv, linetype = "dashed",
                           color = secondary_color, alpha = 0.7) +
-      ggplot2::geom_point(ggplot2::aes(x = median_surv, y = 0.5),
-                          color = secondary_color, size = 4) +
+      ggplot2::annotate("point", x = median_surv, y = 0.5,
+                        color = secondary_color, size = 4) +
       ggplot2::annotate("label", x = median_surv, y = 0.5,
                         label = sprintf("W50 = %.1f min", median_surv),
                         hjust = -0.1, vjust = 0.5, size = 3.5,
@@ -2608,8 +2615,8 @@ plot.canhrActi_fragmentation <- function(x, type = "distribution",
                           color = secondary_color, alpha = 0.7) +
       ggplot2::geom_vline(xintercept = w50_x, linetype = "dotted",
                           color = secondary_color, alpha = 0.7) +
-      ggplot2::geom_point(ggplot2::aes(x = w50_x, y = 50),
-                          color = secondary_color, size = 4) +
+      ggplot2::annotate("point", x = w50_x, y = 50,
+                        color = secondary_color, size = 4) +
       ggplot2::annotate("label", x = w50_x, y = 50,
                         label = sprintf("%.0f%% of bouts\naccount for 50%%\nof sedentary time", w50_x),
                         hjust = if (w50_x < 50) -0.1 else 1.1, vjust = 0.5,
@@ -2659,22 +2666,20 @@ plot.canhrActi_fragmentation <- function(x, type = "distribution",
                               color = "white", linewidth = 0.3)
 
     # Add power-law fit if alpha is available and show_powerlaw is TRUE
-    if (show_powerlaw && !is.null(x$alpha) && x$alpha > 1) {
-      # Generate power-law curve
-      x_range <- seq(1, max(x$bouts$duration_min, na.rm = TRUE), length.out = 100)
-      # Power-law: P(x) ~ x^(-alpha)
-      # Normalized for visualization
+    if (show_powerlaw && isTRUE(x$alpha > 1)) {
+      # The fit covers the tail from its xmin: drawn from there and scaled by the share of
+      # bouts in that tail, it sits on the histogram's density scale (Clauset et al. 2009)
       alpha <- x$alpha
-      x_min <- min(x$bouts$duration_min[x$bouts$duration_min > 0], na.rm = TRUE)
+      durations <- x$bouts$duration_min[x$bouts$duration_min > 0]
+      x_min <- if (isTRUE(x$alpha_xmin > 0)) x$alpha_xmin else min(durations)
+      x_range <- seq(x_min, max(durations), length.out = 100)
+      tail_share <- mean(durations >= x_min)
 
       # Power-law probability density
-      powerlaw_y <- (alpha - 1) / x_min * (x_range / x_min)^(-alpha)
-
-      # Scale to match histogram density
-      scale_factor <- max(x$bouts$duration_min) / 100  # Approximate scaling
+      powerlaw_y <- tail_share * (alpha - 1) / x_min * (x_range / x_min)^(-alpha)
       powerlaw_df <- data.frame(
         x = x_range,
-        y = powerlaw_y * scale_factor
+        y = powerlaw_y
       )
 
       p <- p +
@@ -2699,7 +2704,7 @@ plot.canhrActi_fragmentation <- function(x, type = "distribution",
                         fontface = "bold")
 
     # Add alpha interpretation
-    if (show_metrics && !is.null(x$alpha)) {
+    if (show_metrics && isTRUE(!is.na(x$alpha))) {
       p <- p +
         ggplot2::annotate("label", x = Inf, y = Inf, hjust = 1.1, vjust = 1.1,
                           label = sprintf("Alpha: %.2f\n%s", x$alpha, interpret_alpha(x$alpha)),
@@ -2884,17 +2889,19 @@ plot_distribution_comparison <- function(frag, show_fits = TRUE, log_scale = TRU
   # Get distribution comparison
   dist_fit <- frag$distribution_fit
   if (is.null(dist_fit)) {
-    dist_fit <- compare.bout.distributions(durations)
+    dist_fit <- compare.bout.distributions(durations, epoch_length = frag$epoch_length %||% 60)
   }
 
-  # Generate theoretical curves
-  x_range <- seq(min(durations), max(durations), length.out = 200)
-  xmin <- min(durations)
+  # Generate theoretical curves over the tail both fits were made on, from the fitted
+  # xmin and scaled by the share of bouts in that tail (Clauset et al. 2009)
+  xmin <- if (!is.null(dist_fit$xmin) && !is.na(dist_fit$xmin)) dist_fit$xmin else min(durations)
+  x_range <- seq(xmin, max(durations), length.out = 200)
+  tail_share <- mean(durations >= xmin)
 
   # Power-law survival function: S(x) = (xmin/x)^(alpha-1)
   alpha <- dist_fit$power_law_alpha
   if (!is.na(alpha) && alpha > 1) {
-    pl_survival <- (xmin / x_range)^(alpha - 1)
+    pl_survival <- tail_share * (xmin / x_range)^(alpha - 1)
     pl_data <- data.frame(
       duration = x_range,
       survival = pl_survival,
@@ -2907,7 +2914,7 @@ plot_distribution_comparison <- function(frag, show_fits = TRUE, log_scale = TRU
   # Exponential survival function: S(x) = exp(-lambda * (x - xmin))
   lambda <- dist_fit$exponential_lambda
   if (!is.na(lambda) && lambda > 0) {
-    exp_survival <- exp(-lambda * (x_range - xmin))
+    exp_survival <- tail_share * exp(-lambda * (x_range - xmin))
     exp_data <- data.frame(
       duration = x_range,
       survival = exp_survival,
@@ -3020,7 +3027,7 @@ plot_hourly_heatmap <- function(frag, metric = "bout_count") {
 
   bouts <- frag$bouts
   bouts$hour <- as.integer(format(bouts$start_time, "%H"))
-  bouts$date <- as.Date(bouts$start_time)
+  bouts$date <- .clock_date(bouts$start_time)
 
   # Aggregate by hour and date
   hourly_daily <- aggregate(
@@ -3029,12 +3036,12 @@ plot_hourly_heatmap <- function(frag, metric = "bout_count") {
     FUN = function(x) c(length(x), sum(x))
   )
 
-  # Flatten the aggregation
+  # Flatten the aggregation: each column is a matrix of (count, sum)
   hourly_data <- data.frame(
     hour = hourly_daily$hour,
     date = hourly_daily$date,
-    bout_count = sapply(hourly_daily$bout_count, function(x) x[1]),
-    total_duration = sapply(hourly_daily$total_duration, function(x) x[2])
+    bout_count = hourly_daily$bout_count[, 1],
+    total_duration = hourly_daily$total_duration[, 2]
   )
   hourly_data$fragmentation <- hourly_data$bout_count / pmax(hourly_data$total_duration, 1)
 
@@ -3058,6 +3065,8 @@ plot_hourly_heatmap <- function(frag, metric = "bout_count") {
     ggplot2::scale_fill_gradient(low = "white", high = "#E74C3C", name = legend_title) +
     ggplot2::scale_x_continuous(breaks = seq(0, 23, by = 3),
                                 labels = sprintf("%02d:00", seq(0, 23, by = 3))) +
+    # pretty() names the date breaks in the time locale
+    ggplot2::scale_y_date(breaks = function(x) .in_c_time(scales::breaks_pretty()(x))) +
     ggplot2::labs(
       title = "Hourly Sedentary Pattern Heatmap",
       subtitle = subtitle,

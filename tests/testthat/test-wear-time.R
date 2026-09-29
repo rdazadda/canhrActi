@@ -38,17 +38,15 @@ test_that("choi detects non-wear with 90-minute window", {
 })
 
 test_that("choi validates spikes with upstream/downstream windows", {
-  counts <- c(rep(500, 30), rep(0, 40), c(50), rep(0, 40), rep(500, 30))
+  counts <- c(rep(500, 30), rep(0, 45), c(50), rep(0, 45), rep(500, 30))
   result <- wear.choi(counts, non_wear_window = 90, min_window_len = 30)
-  expect_equal(length(result), length(counts))
-  expect_type(result, "logical")
+  expect_identical(which(!result), 31:121)
 })
 
 test_that("choi rejects spike without valid upstream/downstream", {
-  counts <- c(rep(500, 30), rep(0, 20), c(50), rep(0, 20), rep(500, 30))
+  counts <- c(rep(500, 30), rep(0, 95), c(50), rep(0, 20), rep(500, 30))
   result <- wear.choi(counts, non_wear_window = 90, min_window_len = 30)
-  expect_equal(length(result), length(counts))
-  expect_type(result, "logical")
+  expect_identical(which(!result), 31:125)
 })
 
 test_that("choi handles edge cases at start", {
@@ -72,15 +70,13 @@ test_that("CANHR2025 uses 120-minute window", {
 test_that("CANHR2025 allows 3-minute spike tolerance", {
   counts <- c(rep(0, 60), rep(50, 3), rep(0, 60))
   result <- wear.CANHR2025(counts, spike_tolerance = 3)
-  expect_equal(length(result), 123)
-  expect_type(result, "logical")
+  expect_identical(result, rep(FALSE, 123))
 })
 
 test_that("CANHR2025 uses 45-minute validation windows", {
-  counts <- c(rep(0, 50), c(50), rep(0, 50))
-  result <- wear.CANHR2025(counts, min_window_len = 45)
-  expect_equal(length(result), 101)
-  expect_type(result, "logical")
+  counts <- function(after) c(rep(0, 120), 50, rep(0, after), rep(500, 10))
+  expect_identical(which(!wear.CANHR2025(counts(45), min_window_len = 45)), 1:166)
+  expect_identical(which(!wear.CANHR2025(counts(44), min_window_len = 45)), 1:120)
 })
 
 test_that("wear time functions handle empty input", {
@@ -149,4 +145,38 @@ test_that("wear time accepts epoch_length parameter", {
   expect_no_error(wear.troiano(counts, epoch_length = 30))
   expect_no_error(wear.choi(counts, epoch_length = 30))
   expect_no_error(wear.CANHR2025(counts, epoch_length = 30))
+})
+
+test_that("choi keeps a spike run when the whole run has 30 zero minutes on each side", {
+  # Choi 2011: up to 2 minutes of counts, with no counts 30 minutes up- and downstream of them
+  counts <- c(rep(500, 30), rep(0, 60), 50, 50, rep(0, 60), rep(500, 30))
+  expect_identical(which(!wear.choi(counts)), 31:152)
+  # downstream is counted from the end of the run
+  counts <- c(rep(500, 30), rep(0, 90), 50, 50, rep(0, 29), rep(500, 30))
+  expect_identical(which(!wear.choi(counts)), 31:120)
+  # a run over the tolerance is wear
+  counts <- c(rep(500, 30), rep(0, 90), 50, 50, 50, rep(0, 90), rep(500, 30))
+  expect_identical(which(!wear.choi(counts)), c(31:120, 124:213))
+})
+
+test_that("CANHR2025 keeps a 3-minute spike run with 45 zero minutes on each side", {
+  counts <- c(rep(500, 30), rep(0, 80), 50, 50, 50, rep(0, 80), rep(500, 30))
+  expect_identical(which(!wear.CANHR2025(counts)), 31:193)
+})
+
+test_that("choi keeps a one-minute spike at 30-second epochs", {
+  counts <- c(rep(500, 60), rep(0, 120), 50, 50, rep(0, 120), rep(500, 60))
+  expect_identical(which(!wear.choi(counts, epoch_length = 30)), 61:302)
+})
+
+test_that("choi keeps the 2-minute spike runs that ActiLife's own Choi kept in the sample", {
+  # ActiLife 6.15 wrote its Choi wear time into the file (wtvBouts): non-wear from
+  # 2025-10-10 01:26 to 04:23, through two 2-minute spike runs on axis 1, at 03:00
+  # and 03:44. ActiLife applies no spike stop level.
+  cnt <- agd.counts(read.agd(example_agd(1), verbose = FALSE))
+  ts <- cnt$timestamp
+  day <- ts >= as.POSIXct("2025-10-10 00:00", tz = "UTC") & ts < as.POSIXct("2025-10-10 22:03", tz = "UTC")
+  bout <- ts >= as.POSIXct("2025-10-10 01:26", tz = "UTC") & ts < as.POSIXct("2025-10-10 04:23", tz = "UTC")
+  wear <- wear.choi(cnt$axis1, spike_stoplevel = Inf)
+  expect_identical(wear[day], !bout[day])
 })

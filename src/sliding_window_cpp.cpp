@@ -15,67 +15,9 @@
 #include <algorithm>
 #include <numeric>
 
-// [[Rcpp::plugins(cpp17)]]
-
 using namespace Rcpp;
 
 // L5/M10 Calculations (Least Active 5h / Most Active 10h)
-
-// O(n) sliding window mean using cumulative sum
-// [[Rcpp::export]]
-Rcpp::List sliding_window_mean_cpp(NumericVector x, int window_size) {
-    int n = x.size();
-    int n_windows = n - window_size + 1;
-
-    if (n_windows <= 0) {
-        return Rcpp::List::create(
-            Named("means") = NumericVector(0),
-            Named("min_idx") = NA_INTEGER,
-            Named("max_idx") = NA_INTEGER,
-            Named("min_value") = NA_REAL,
-            Named("max_value") = NA_REAL
-        );
-    }
-
-    NumericVector means(n_windows);
-
-    // Calculate first window sum
-    double window_sum = 0.0;
-    for (int i = 0; i < window_size; ++i) {
-        window_sum += x[i];
-    }
-    means[0] = window_sum / window_size;
-
-    // Slide window using O(1) updates
-    for (int i = 1; i < n_windows; ++i) {
-        window_sum = window_sum - x[i - 1] + x[i + window_size - 1];
-        means[i] = window_sum / window_size;
-    }
-
-    // Find min and max
-    int min_idx = 0, max_idx = 0;
-    double min_val = means[0], max_val = means[0];
-
-    for (int i = 1; i < n_windows; ++i) {
-        if (means[i] < min_val) {
-            min_val = means[i];
-            min_idx = i;
-        }
-        if (means[i] > max_val) {
-            max_val = means[i];
-            max_idx = i;
-        }
-    }
-
-    return Rcpp::List::create(
-        Named("means") = means,
-        Named("min_idx") = min_idx,
-        Named("max_idx") = max_idx,
-        Named("min_value") = min_val,
-        Named("max_value") = max_val
-    );
-}
-
 
 // Calculate L5 and M10 from minute-level data using van Someren (1999) method
 // CORRECT METHOD: First create average 24-hour profile, then apply circular sliding window
@@ -96,8 +38,13 @@ Rcpp::List calculate_L5_M10_cpp(NumericVector minute_data,
     int n = minute_data.size();
     const int MINUTES_PER_DAY = 1440;
 
-    if (n < MINUTES_PER_DAY) {
-        // Not enough data for circadian analysis
+    bool any_valid = false;
+    for (int i = 0; i < n && !any_valid; ++i) {
+        any_valid = !ISNA(minute_data[i]) && R_finite(minute_data[i]);
+    }
+
+    if (n < MINUTES_PER_DAY || !any_valid) {
+        // Not enough data for circadian analysis: under a day, or no valid minute
         return Rcpp::List::create(
             Named("L5_value") = NA_REAL,
             Named("L5_onset") = NA_INTEGER,
@@ -236,18 +183,20 @@ Rcpp::List calculate_L5_M10_cpp(NumericVector minute_data,
 }
 
 
-// Calculate L1 and M1 (1-hour windows for finer granularity)
-// [[Rcpp::export]]
-Rcpp::List calculate_L1_M1_cpp(NumericVector minute_data) {
-    return calculate_L5_M10_cpp(minute_data, 60, 60);
-}
-
-
 // Interdaily Stability (IS)
+
+// TRUE when the first n values are all equal: no variance, so IS and IV are undefined
+static bool is_constant(const NumericVector& x, int n) {
+    for (int i = 1; i < n; ++i) {
+        if (!(x[i] == x[0])) return false;
+    }
+    return true;
+}
 
 // IS measures day-to-day consistency (0-1, higher = more stable)
 // [[Rcpp::export]]
 double calculate_IS_cpp(NumericVector hourly_data, int hours_per_day = 24) {
+    if (hours_per_day <= 0) Rcpp::stop("hours_per_day must be positive");
     int n = hourly_data.size();
     int n_days = n / hours_per_day;
 
@@ -292,6 +241,11 @@ double calculate_IS_cpp(NumericVector hourly_data, int hours_per_day = 24) {
     // IS = (n * Var(hourly_means)) / Var(total)
     double IS = var_hourly / var_total;
 
+    // NA when undefined: a constant series, or an NA hour
+    if (is_constant(hourly_data, total_hours) || !R_finite(IS)) {
+        return NA_REAL;
+    }
+
     return std::max(0.0, std::min(1.0, IS));
 }
 
@@ -334,13 +288,13 @@ double calculate_IV_cpp(NumericVector hourly_data) {
     // IV = (n * sum_sq_diff) / ((n-1) * var_total)
     double IV = (n * sum_sq_diff) / ((n - 1) * var_total);
 
-    return R_finite(IV) ? IV : NA_REAL;
+    // NA when undefined: a constant series, or an NA hour
+    return R_finite(IV) && !is_constant(hourly_data, n) ? IV : NA_REAL;
 }
 
 
 // Phi (Autocorrelation at lag 1)
 
-// [[Rcpp::export]]
 double calculate_phi_cpp(NumericVector x, int lag = 1) {
     int n = x.size();
 
@@ -377,9 +331,20 @@ double calculate_phi_cpp(NumericVector x, int lag = 1) {
 
 // Rolling Statistics (General Purpose)
 
-// Rolling mean with O(n) complexity
-// [[Rcpp::export]]
-NumericVector rolling_mean_cpp(NumericVector x, int window) {
+static double window_sum(const NumericVector& x, int start, int window) {
+    double s = 0.0;
+    for (int j = start; j < start + window; ++j) {
+        s += x[j];
+    }
+    return s;
+}
+
+// The running sum keeps only finite values; a window holding NA, NaN or Inf is
+// summed directly, so a missing value reaches only the windows that contain it
+static NumericVector rolling_sum_impl(const NumericVector& x, int window) {
+    if (window < 1) {
+        Rcpp::stop("window must be at least 1");
+    }
     int n = x.size();
     int n_out = n - window + 1;
 
@@ -389,19 +354,32 @@ NumericVector rolling_mean_cpp(NumericVector x, int window) {
 
     NumericVector result(n_out);
     double sum = 0.0;
+    int n_bad = 0;
 
     // Initialize first window
     for (int i = 0; i < window; ++i) {
-        sum += x[i];
+        if (R_finite(x[i])) sum += x[i]; else ++n_bad;
     }
-    result[0] = sum / window;
+    result[0] = n_bad ? window_sum(x, 0, window) : sum;
 
     // Slide window
     for (int i = 1; i < n_out; ++i) {
-        sum = sum - x[i - 1] + x[i + window - 1];
-        result[i] = sum / window;
+        double out = x[i - 1], in = x[i + window - 1];
+        if (R_finite(out)) sum -= out; else --n_bad;
+        if (R_finite(in)) sum += in; else ++n_bad;
+        result[i] = n_bad ? window_sum(x, i, window) : sum;
     }
 
+    return result;
+}
+
+// Rolling mean with O(n) complexity
+// [[Rcpp::export]]
+NumericVector rolling_mean_cpp(NumericVector x, int window) {
+    NumericVector result = rolling_sum_impl(x, window);
+    for (int i = 0; i < result.size(); ++i) {
+        result[i] /= window;
+    }
     return result;
 }
 
@@ -409,11 +387,19 @@ NumericVector rolling_mean_cpp(NumericVector x, int window) {
 // Rolling standard deviation with O(n) complexity using Welford's algorithm
 // [[Rcpp::export]]
 NumericVector rolling_sd_cpp(NumericVector x, int window) {
+    if (window < 1) {
+        Rcpp::stop("window must be at least 1");
+    }
     int n = x.size();
     int n_out = n - window + 1;
 
     if (n_out <= 0) {
         return NumericVector(0);
+    }
+
+    // one value has no spread, as with stats::sd
+    if (window == 1) {
+        return NumericVector(n_out, NA_REAL);
     }
 
     NumericVector result(n_out);
@@ -441,81 +427,7 @@ NumericVector rolling_sd_cpp(NumericVector x, int window) {
 // Rolling sum
 // [[Rcpp::export]]
 NumericVector rolling_sum_cpp(NumericVector x, int window) {
-    int n = x.size();
-    int n_out = n - window + 1;
-
-    if (n_out <= 0) {
-        return NumericVector(0);
-    }
-
-    NumericVector result(n_out);
-    double sum = 0.0;
-
-    // Initialize
-    for (int i = 0; i < window; ++i) {
-        sum += x[i];
-    }
-    result[0] = sum;
-
-    // Slide
-    for (int i = 1; i < n_out; ++i) {
-        sum = sum - x[i - 1] + x[i + window - 1];
-        result[i] = sum;
-    }
-
-    return result;
-}
-
-
-// Rolling max
-// [[Rcpp::export]]
-NumericVector rolling_max_cpp(NumericVector x, int window) {
-    int n = x.size();
-    int n_out = n - window + 1;
-
-    if (n_out <= 0) {
-        return NumericVector(0);
-    }
-
-    NumericVector result(n_out);
-
-    for (int i = 0; i < n_out; ++i) {
-        double max_val = x[i];
-        for (int j = 1; j < window; ++j) {
-            if (x[i + j] > max_val) {
-                max_val = x[i + j];
-            }
-        }
-        result[i] = max_val;
-    }
-
-    return result;
-}
-
-
-// Rolling min
-// [[Rcpp::export]]
-NumericVector rolling_min_cpp(NumericVector x, int window) {
-    int n = x.size();
-    int n_out = n - window + 1;
-
-    if (n_out <= 0) {
-        return NumericVector(0);
-    }
-
-    NumericVector result(n_out);
-
-    for (int i = 0; i < n_out; ++i) {
-        double min_val = x[i];
-        for (int j = 1; j < window; ++j) {
-            if (x[i + j] < min_val) {
-                min_val = x[i + j];
-            }
-        }
-        result[i] = min_val;
-    }
-
-    return result;
+    return rolling_sum_impl(x, window);
 }
 
 
@@ -527,8 +439,8 @@ NumericVector rolling_min_cpp(NumericVector x, int window) {
 Rcpp::List calculate_all_circadian_cpp(NumericVector minute_data,
                                         int hours_per_day = 24,
                                         int start_minute = 0) {
+    if (hours_per_day <= 0) Rcpp::stop("hours_per_day must be positive");
     int n = minute_data.size();
-    int minutes_per_day = hours_per_day * 60;
 
     // Convert to hourly for IS/IV
     int n_hours = n / 60;

@@ -36,7 +36,8 @@ load.actigraph.csv <- function(filepath, skip.lines = 10) {
     "Accelerometer Z" = "z",
     "X" = "x",
     "Y" = "y",
-    "Z" = "z"
+    "Z" = "z",
+    "Timestamp" = "timestamp"
   )
   for (old.name in names(col.mapping)) {
     if (old.name %in% names(data)) names(data)[names(data) == old.name] <- col.mapping[old.name]
@@ -76,10 +77,35 @@ sample.rate <- function(timestamps) {
 #' @export
 filter.time.range <- function(accel.data, start.time, end.time) {
   if (!"timestamp" %in% names(accel.data)) stop("Data must have a 'timestamp' column")
-  if (is.character(start.time)) start.time <- as.POSIXct(start.time)
-  if (is.character(end.time)) end.time <- as.POSIXct(end.time)
+  # Character times are read on the data's own clock
+  tz <- attr(accel.data$timestamp, "tzone")
+  if (is.null(tz)) tz <- ""
+  if (is.character(start.time)) start.time <- as.POSIXct(start.time, tz = tz[1])
+  if (is.character(end.time)) end.time <- as.POSIXct(end.time, tz = tz[1])
   accel.data[accel.data$timestamp >= start.time & accel.data$timestamp <= end.time, ]
 }
+
+# Calendar date on the clock the timestamps print in. as.Date() on a POSIXct takes
+# the date in UTC, which splits the day at the wrong hour for any other zone.
+.clock_date <- function(x) as.Date(as.POSIXlt(x))
+
+# A clock string such as a sleep period's in-bed time is wall-clock time, read in UTC like
+# the .agd timestamps; the session zone would shift a time that falls in a DST gap.
+.clock_time <- function(x) if (is.character(x)) as.POSIXct(x, tz = "UTC") else as.POSIXct(x)
+
+# English day, month and AM/PM names whatever the locale
+.format_english <- function(x, fmt, ...) .in_c_time(format(x, format = fmt, ...))
+
+# Evaluates expr under the C time locale, whose day and month names are English
+.in_c_time <- function(expr) {
+  old_lc_time <- Sys.getlocale("LC_TIME")
+  on.exit(try(Sys.setlocale("LC_TIME", old_lc_time), silent = TRUE), add = TRUE)
+  Sys.setlocale("LC_TIME", "C")
+  expr
+}
+
+# base R has this only from 4.4, and DESCRIPTION allows 4.1
+`%||%` <- function(x, y) if (is.null(x)) y else x
 
 #' Calculate Data Quality Metrics
 #'
@@ -125,7 +151,7 @@ valid.days <- function(timestamps, wear_time, min.wear.hours = 10, epoch_length 
   # Calculate minutes per epoch based on epoch_length
  minutes_per_epoch <- epoch_length / 60
 
-  dates <- as.Date(timestamps)
+  dates <- .clock_date(timestamps)
   unique.dates <- unique(dates)
 
   daily.stats <- data.frame(

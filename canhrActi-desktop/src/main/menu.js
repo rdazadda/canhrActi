@@ -1,19 +1,41 @@
-const { Menu, app, shell, dialog } = require('electron');
-const path = require('node:path');
-const log = require('electron-log/main');
+const { Menu, app } = require('electron');
 
-module.exports = function buildMenu({ openDevtools, reload } = {}) {
+// actions come from index.js, which owns the windows and the link URLs.
+module.exports = function buildMenu(actions = {}) {
   const isDebug = process.env.CANHRACTI_DEBUG === '1' || !app.isPackaged;
+  const isMac = process.platform === 'darwin';
+  const run = (name, ...args) => () => actions[name] && actions[name](...args);
+  // Not role 'quit', which would skip the quit dialog.
+  const quit = { label: isMac ? 'Quit CANHRActi' : 'Exit CANHRActi', accelerator: 'CmdOrCtrl+Q', click: run('quit') };
+  const about = { label: 'About CANHRActi', click: run('about') };
 
+  // On macOS copy and paste only work through Edit menu items.
   const template = [
+    ...(isMac
+      ? [{
+          role: 'appMenu',
+          submenu: [
+            about,
+            { type: 'separator' },
+            { role: 'services' },
+            { type: 'separator' },
+            { role: 'hide', label: 'Hide CANHRActi' },
+            { role: 'hideOthers' },
+            { role: 'unhide' },
+            { type: 'separator' },
+            quit,
+          ],
+        }]
+      : []),
     {
       label: 'File',
-      submenu: [{ role: 'quit', label: 'Exit CANHRActi' }],
+      submenu: [isMac ? { role: 'close' } : quit],
     },
+    ...(isMac ? [{ role: 'editMenu' }] : []),
     {
       label: 'View',
       submenu: [
-        { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => reload && reload() },
+        { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: run('reload') },
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },
@@ -22,48 +44,21 @@ module.exports = function buildMenu({ openDevtools, reload } = {}) {
         { role: 'togglefullscreen' },
       ],
     },
+    ...(isMac ? [{ role: 'windowMenu' }] : []),
     {
       label: 'Help',
       submenu: [
-        {
-          label: 'CANHRActi on GitHub',
-          click: () => shell.openExternal('https://github.com/rdazadda/canhrActi'),
-        },
-        {
-          label: 'Report an Issue',
-          click: () => shell.openExternal('https://github.com/rdazadda/canhrActi/issues'),
-        },
+        { label: 'CANHRActi on GitHub', click: run('openLink', 'github') },
+        { label: 'Report an Issue', click: run('openLink', 'issues') },
         { type: 'separator' },
-        {
-          label: 'Open Log Folder',
-          click: () => shell.openPath(path.dirname(log.transports.file.getFile().path)),
-        },
+        { label: 'Open Log Folder', click: run('openLogs') },
         ...(isDebug
           ? [
               { type: 'separator' },
-              {
-                label: 'Toggle Developer Tools',
-                accelerator: 'F12',
-                click: () => openDevtools && openDevtools(),
-              },
+              { label: 'Toggle Developer Tools', accelerator: 'F12', click: run('openDevtools') },
             ]
           : []),
-        { type: 'separator' },
-        {
-          label: 'About CANHRActi',
-          click: () =>
-            dialog.showMessageBox({
-              type: 'info',
-              title: 'About CANHRActi',
-              message: `CANHRActi ${app.getVersion()}`,
-              detail:
-                'CANHR Accelerometer Physical Activity and Sleep Analysis\n' +
-                'Center for Alaska Native Health Research\n\n' +
-                `Electron ${process.versions.electron} · ` +
-                `Node ${process.versions.node} · ` +
-                `Chromium ${process.versions.chrome}`,
-            }),
-        },
+        ...(isMac ? [] : [{ type: 'separator' }, about]),
       ],
     },
   ];

@@ -1,5 +1,7 @@
 name: Desktop Release
 
+# A desktop-v* tag builds, checks and publishes. A manual run builds and
+# checks the same way but never publishes.
 on:
   push:
     tags:
@@ -7,10 +9,243 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  # A tag run is never cancelled, so a half-published release cannot be left behind.
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check the tag matches package.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./canhrActi-desktop/package.json').version")
+          echo "package.json version: $version"
+          if [[ "$GITHUB_REF" == refs/tags/desktop-v* ]]; then
+            if [ "$GITHUB_REF_NAME" != "desktop-v$version" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match desktop-v$version from canhrActi-desktop/package.json"
+              exit 1
+            fi
+          else
+            echo "Not a tag run, so nothing is published. A release of this commit needs the tag desktop-v$version."
+          fi
+
+      - name: Check every file the app and installer name is committed
+        working-directory: canhrActi-desktop
+        shell: bash
+        run: |
+          node <<'EOF'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const missing = [];
+          const need = (file, from) => {
+            if (!fs.existsSync(file)) missing.push(`${file} (named in ${from})`);
+          };
+          const local = (ref) => ref && !/^([a-z][a-z0-9+.-]*:|\/\/|#)/i.test(ref);
+          const clean = (ref) => ref.split(/[?#]/)[0];
+          const renderer = 'src/renderer';
+          for (const page of fs.readdirSync(renderer).filter((f) => f.endsWith('.html'))) {
+            const html = fs.readFileSync(path.join(renderer, page), 'utf8');
+            for (const m of html.matchAll(/\b(?:src|href)\s*=\s*["']([^"']+)["']/g)) {
+              if (!local(m[1])) continue;
+              const file = path.join(renderer, clean(m[1]));
+              need(file, `${renderer}/${page}`);
+              if (!file.endsWith('.css') || !fs.existsSync(file)) continue;
+              const css = fs.readFileSync(file, 'utf8');
+              for (const u of css.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/g)) {
+                if (local(u[1])) need(path.join(path.dirname(file), clean(u[1])), file);
+              }
+            }
+          }
+          for (const js of fs.readdirSync('src/main').filter((f) => f.endsWith('.js'))) {
+            const text = fs.readFileSync(path.join('src/main', js), 'utf8');
+            for (const m of text.matchAll(/(?:localWindow\(|path\.join\(RENDERER,\s*)['"]([^'"]+)['"]/g)) {
+              need(path.join(renderer, m[1]), `src/main/${js}`);
+            }
+            for (const m of text.matchAll(/require\(\s*['"](\.{1,2}\/[^'"]+)['"]\s*\)/g)) {
+              const base = path.join('src/main', m[1]);
+              if (![base, `${base}.js`, path.join(base, 'index.js')].some((p) => fs.existsSync(p))) {
+                missing.push(`${base}.js (required in src/main/${js})`);
+              }
+            }
+          }
+          const builder = fs.readFileSync('electron-builder.yml', 'utf8');
+          for (const m of builder.matchAll(/(?<![\w./-])build\/[\w.\/-]+/g)) {
+            need(m[0], 'electron-builder.yml');
+          }
+          need('rcode/launch.R', 'electron-builder.yml');
+          if (missing.length) {
+            for (const m of missing) console.log(`::error::Missing from the checkout: ${m}`);
+            process.exit(1);
+          }
+          console.log('Every referenced file is in the checkout.');
+          EOF
+
+      - name: Write the CI checks
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/ci"
+          cat > "$RUNNER_TEMP/ci/check-bundle.R" <<'EOF'
+          # Loads every bundled package, checks the GGIR versions and that each package
+          # the sources name is bundled, and resolves a future_promise on a multisession worker.
+          lib <- file.path(R.home(), "library")
+          .libPaths(lib)
+          cat(R.version.string, "\nLibrary:", lib, "\n")
+          problems <- character()
+          ip <- installed.packages(lib.loc = .libPaths())
+          pkgs <- rownames(ip)[file.exists(file.path(ip[, "LibPath"], rownames(ip), "NAMESPACE"))]
+          required <- c("canhrActi", "agcounts", "GGIR", "GGIRread", "read.gt3x", "ActCR", "openxlsx",
+                        "shiny", "future", "promises", "pdftools", "png", "plotly", "ggrepel", "patchwork")
+          for (p in setdiff(required, pkgs)) problems <- c(problems, paste("not bundled:", p))
+          # The raw pages match GGIR 3.3.6's files, and the fast .gt3x reader needs read.gt3x 1.2.0.
+          pins <- c(GGIR = "3.3.6", GGIRread = "1.0.8", read.gt3x = "1.2.0")
+          for (p in intersect(names(pins), pkgs)) {
+            v <- ip[match(p, rownames(ip)), "Version"]
+            if (package_version(v) != pins[[p]]) problems <- c(problems, sprintf("%s is %s, not %s", p, v, pins[[p]]))
+          }
+          for (p in pkgs) {
+            err <- tryCatch({
+              suppressPackageStartupMessages(loadNamespace(p))
+              NULL
+            }, error = function(e) conditionMessage(e))
+            if (!is.null(err)) problems <- c(problems, sprintf("%s does not load: %s", p, err))
+          }
+          cat("Tried to load", length(pkgs), "packages\n")
+
+          src <- Sys.getenv("CANHR_SOURCE_DIR")
+          if (nzchar(src)) {
+            files <- c(list.files(file.path(src, "R"), "[.][Rr]$", full.names = TRUE),
+                       list.files(file.path(src, "inst", "shiny"), "[.][Rr]$",
+                                  full.names = TRUE, recursive = TRUE))
+            named <- character()
+            for (f in files) {
+              pd <- getParseData(parse(f, keep.source = TRUE))
+              named <- c(named, pd$text[pd$token == "SYMBOL_PACKAGE"])
+              loaders <- pd$id[pd$token == "SYMBOL_FUNCTION_CALL" &
+                                 pd$text %in% c("library", "require", "requireNamespace", "loadNamespace")]
+              for (id in loaders) {
+                fun <- pd$text[pd$id == id]
+                call <- pd$parent[pd$id == pd$parent[pd$id == id]]
+                if ("character.only" %in% pd$text[pd$parent == call & pd$token == "SYMBOL_SUB"]) next
+                args <- pd[pd$parent == call & pd$token == "expr", ]
+                args <- args[order(args$line1, args$col1), ]
+                if (nrow(args) < 2) next
+                leaf <- pd[pd$parent == args$id[2], ]
+                if (nrow(leaf) != 1) next
+                if (leaf$token == "STR_CONST") named <- c(named, gsub("^[\"']|[\"']$", "", leaf$text))
+                if (leaf$token == "SYMBOL" && fun %in% c("library", "require")) named <- c(named, leaf$text)
+              }
+            }
+            # Reached only by metrics the dashboard never turns on.
+            optional <- c("actilifecounts")
+            for (p in setdiff(unique(named), c(rownames(ip), optional))) {
+              problems <- c(problems, paste("named in the sources but not bundled:", p))
+            }
+            cat("Scanned", length(files), "source files for package names\n")
+          }
+
+          resolve <- function(workers, expr) {
+            future::plan(future::multisession, workers = workers)
+            on.exit(future::plan(future::sequential))
+            state <- new.env()
+            state$done <- FALSE
+            promises::then(
+              promises::future_promise(expr, substitute = FALSE, globals = FALSE),
+              onFulfilled = function(value) {
+                state$value <- value
+                state$done <- TRUE
+              },
+              onRejected = function(err) {
+                state$error <- conditionMessage(err)
+                state$done <- TRUE
+              }
+            )
+            deadline <- Sys.time() + 180
+            while (!state$done && Sys.time() < deadline) later::run_now(1)
+            if (!state$done) stop("it did not resolve within 180 s")
+            if (!is.null(state$error)) stop(state$error)
+            state$value
+          }
+          # One worker runs in this process; two start R workers, as the dashboard does.
+          tryCatch({
+            stopifnot(identical(resolve(1, quote(1)), 1))
+            pid <- resolve(2, quote(Sys.getpid()))
+            if (identical(pid, Sys.getpid())) stop("it ran in this process, not a worker")
+            cat("future_promise resolved, and in worker process", pid, "\n")
+          }, error = function(e) {
+            problems <<- c(problems, paste("future_promise failed:", conditionMessage(e)))
+          })
+
+          if (length(problems)) {
+            cat(sprintf("::error::%s\n", problems), sep = "")
+            quit(status = 1)
+          }
+          cat("Bundle check passed\n")
+          EOF
+          cat > "$RUNNER_TEMP/ci/smoke.sh" <<'EOF'
+          #!/usr/bin/env bash
+          # Usage: smoke.sh <label> <command...>
+          # Starts the packaged app in smoke mode. Passes only when the app exits 0
+          # and reports CANHRACTI_SMOKE_OK on stdout or in its log.
+          set -u
+          label=$1
+          shift
+          out="$GITHUB_WORKSPACE/smoke-logs/$label"
+          mkdir -p "$out"
+          # electron-log writes <app name>/logs/main.log under userData, and on macOS
+          # ~/Library/Logs/<app name>/main.log. The app name is package.json's
+          # productName or name.
+          case "${RUNNER_OS:-}" in
+            Windows) base=$APPDATA; sub=logs/ ;;
+            macOS) base=$HOME/Library/Logs; sub= ;;
+            *) base=${XDG_CONFIG_HOME:-$HOME/.config}; sub=logs/ ;;
+          esac
+          logs=("$base/canhractivity-desktop/${sub}main.log" "$base/CANHRActi/${sub}main.log")
+          rm -f "${logs[@]}"
+          secs=${SMOKE_TIMEOUT:-300}
+          if command -v timeout > /dev/null 2>&1; then
+            limit=(timeout "$secs")
+          else
+            limit=(perl -e 'alarm shift; exec @ARGV or die "cannot run $ARGV[0]: $!\n"' "$secs")
+          fi
+          CANHRACTI_SMOKE=1 "${limit[@]}" "$@" > "$out/stdout.txt" 2>&1
+          code=$?
+          n=0
+          for f in "${logs[@]}"; do
+            if [ -f "$f" ]; then
+              n=$((n + 1))
+              cp "$f" "$out/main-$n.log"
+            fi
+          done
+          cat "$out/stdout.txt"
+          if [ "$code" -eq 0 ] && grep -qs CANHRACTI_SMOKE_OK "$out"/*; then
+            echo "Smoke test passed: $label"
+            exit 0
+          fi
+          grep -hs CANHRACTI_SMOKE_FAIL "$out"/* | head -n 5
+          echo "::error::Smoke test failed ($label) with exit code $code. The logs are in the smoke-logs artifact."
+          exit 1
+          EOF
+
+      - name: Keep the CI checks for the other jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-checks
+          path: ${{ runner.temp }}/ci
+          if-no-files-found: error
+          retention-days: 7
+
   build:
+    needs: preflight
     strategy:
       fail-fast: false
       matrix:
@@ -19,19 +254,27 @@ jobs:
             target: win
             arch: x64
             r-version: "4.5.3"
+            installer: CANHRActi-Setup.exe
           - os: macos-26            # Apple Silicon (arm64)
             target: mac
             arch: arm64
             r-version: "4.5.3"
+            installer: CANHRActi-mac-arm64.dmg
           - os: macos-26-intel      # native Intel x86_64 (macOS 26 is the final Intel-capable line)
             target: mac
             arch: x64
             r-version: "4.5.3"
-          - os: ubuntu-24.04
+            installer: CANHRActi-mac-x64.dmg
+          - os: ubuntu-22.04        # GCC 11, so what compiles here runs on Ubuntu 22.04 and Debian 12
             target: linux
             arch: x64
             r-version: "4.5.3"
+            installer: CANHRActi.AppImage
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      TARGET: ${{ matrix.target }}
+      ARCH: ${{ matrix.arch }}
     defaults:
       run:
         working-directory: canhrActi-desktop
@@ -46,15 +289,17 @@ jobs:
           cache: npm
           cache-dependency-path: canhrActi-desktop/package-lock.json
 
-      - name: Install Linux system dependencies
+      - name: Get the CI checks
+        uses: actions/download-artifact@v4
+        with:
+          name: ci-checks
+          path: ${{ runner.temp }}/ci
+
+      - name: Install Linux test tools
         if: matrix.target == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libcurl4-openssl-dev libssl-dev libxml2-dev \
-            libfontconfig1-dev libfreetype6-dev libharfbuzz-dev \
-            libfribidi-dev libpng-dev libjpeg-dev libtiff5-dev \
-            libcairo2-dev libxt-dev
+          sudo apt-get install -y xvfb
 
       - name: Install gfortran (macOS)
         if: matrix.target == 'mac'
@@ -77,17 +322,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: canhrActi-desktop/resources/R
-          key: portable-r-${{ matrix.r-version }}-${{ matrix.os }}-${{ matrix.arch }}-v5-${{ hashFiles('canhrActi-desktop/scripts/fetch-r-portable.js') }}-${{ hashFiles('DESCRIPTION', 'NAMESPACE', 'R/**', 'src/**', 'inst/shiny/**') }}
+          key: portable-r-${{ matrix.r-version }}-${{ matrix.os }}-${{ matrix.arch }}-v6-${{ hashFiles('canhrActi-desktop/scripts/fetch-r-portable.js', 'canhrActi-desktop/scripts/run-install.js', 'canhrActi-desktop/scripts/install-canhrActi.R', 'canhrActi-desktop/scripts/strip-r.js', '.github/workflows/desktop-release.yml') }}-${{ hashFiles('DESCRIPTION', 'NAMESPACE', 'R/**', 'src/**', 'inst/shiny/**') }}
 
       - name: Validate cached R bundle
         if: steps.cache-r.outputs.cache-hit == 'true'
         shell: bash
         run: |
           ok=true
-          case "${{ matrix.target }}" in
+          case "$TARGET" in
             win)   { [ -f resources/R/bin/x64/Rscript.exe ] || [ -f resources/R/bin/Rscript.exe ]; } || ok=false ;;
-            mac)   { [ -f resources/R/R.framework/Resources/Rscript ] || [ -f resources/R/bin/Rscript ]; } || ok=false ;;
-            linux) [ -f resources/R/bin/Rscript ] || ok=false ;;
+            *)     [ -f resources/R/bin/Rscript ] || ok=false ;;
           esac
           if [ "$ok" = "false" ]; then
             echo "Cached R bundle is incomplete; wiping so fetch-r-portable re-downloads."
@@ -97,22 +341,18 @@ jobs:
       - name: Fetch R
         run: node scripts/fetch-r-portable.js --platform ${{ matrix.target }} --arch ${{ matrix.arch }} --version ${{ matrix.r-version }}
 
-      - name: Verify R works (Linux)
-        if: matrix.target == 'linux'
+      - name: Verify R works
         shell: bash
         run: |
-          export LD_LIBRARY_PATH="$PWD/resources/R/lib/R/lib:$LD_LIBRARY_PATH"
-          ls -la resources/R/bin/ || true
-          ls -la resources/R/lib/R/lib/ || true
-          ./resources/R/bin/Rscript --version || echo "Rscript failed; will rely on env in run-install.js"
-
-      - name: Verify R works (macOS)
-        if: matrix.target == 'mac'
-        shell: bash
-        run: |
-          ls -la resources/R/ || true
-          ls -la resources/R/R.framework/Resources/ 2>/dev/null || ls -la resources/R/bin/ 2>/dev/null || true
-          resources/R/R.framework/Resources/Rscript --version 2>&1 || resources/R/bin/Rscript --version 2>&1 || true
+          set -euo pipefail
+          rs=resources/R/bin/Rscript
+          if [ "$TARGET" = win ]; then
+            rs=resources/R/bin/x64/Rscript.exe
+            [ -f "$rs" ] || rs=resources/R/bin/Rscript.exe
+          fi
+          echo "RSCRIPT=$PWD/$rs" >> "$GITHUB_ENV"
+          "$rs" --version
+          "$rs" --vanilla -e 'cat("R_HOME:", R.home(), "\n"); stopifnot(dir.exists(file.path(R.home(), "library", "base")))'
 
       - name: Configure gettext for data.table compile (macOS)
         if: matrix.target == 'mac'
@@ -135,48 +375,300 @@ jobs:
         run: npm run setup:packages
 
       - name: Strip R bundle
+        id: strip
         run: npm run setup:strip
 
+      # The checks below each run once the bundle exists, so one run reports every failure.
+
+      - name: Check the bundled R loads every package
+        if: ${{ !cancelled() && steps.strip.outcome == 'success' }}
+        shell: bash
+        env:
+          CANHR_SOURCE_DIR: ${{ github.workspace }}
+        run: '"$RSCRIPT" --vanilla "$RUNNER_TEMP/ci/check-bundle.R"'
+
+      - name: Check bundled libraries against the oldest supported distros (Linux)
+        if: ${{ !cancelled() && steps.strip.outcome == 'success' && matrix.target == 'linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          R=resources/R
+          # Found on every glibc distro; anything else must ship in the bundle.
+          allow=" libc.so.6 libm.so.6 libdl.so.2 libpthread.so.0 librt.so.1 libutil.so.1 libresolv.so.2 libstdc++.so.6 libgcc_s.so.1 libz.so.1 ld-linux-x86-64.so.2 "
+          declare -A have=()
+          while IFS= read -r name; do have[$name]=1; done < <(find "$R" \( -type f -o -type l \) -printf '%f\n')
+          elfs=()
+          while IFS= read -r -d '' f; do
+            if [ "$(head -c 4 "$f" | od -An -c | tr -d ' ')" = '177ELF' ]; then elfs+=("$f"); fi
+          done < <(find "$R" -type f \( -name '*.so' -o -name '*.so.*' -o -path '*/bin/*' -o -path '*/libs/*' \) -print0)
+          for f in "${elfs[@]}"; do
+            soname=$(readelf -dW "$f" | sed -n 's/.*(SONAME).*\[\(.*\)\]/\1/p')
+            if [ -n "$soname" ]; then have[$soname]=1; fi
+          done
+          too_new() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n 1)" = "$1" ]; }
+          bad=0
+          for f in "${elfs[@]}"; do
+            rel=${f#"$R"/}
+            while IFS= read -r needed; do
+              case "$allow" in *" $needed "*) continue ;; esac
+              if [ -n "${have[$needed]:-}" ]; then continue; fi
+              echo "::error::$rel needs $needed, which is neither bundled nor on every distro"
+              bad=1
+            done < <(readelf -dW "$f" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p')
+            while IFS= read -r v; do
+              case "$v" in
+                GLIBC_[0-9]*) too_new "${v#GLIBC_}" 2.35 ;;
+                GLIBCXX_[0-9]*) too_new "${v#GLIBCXX_}" 3.4.30 ;;
+                CXXABI_[0-9]*) too_new "${v#CXXABI_}" 1.3.13 ;;
+                GCC_[0-9]*) too_new "${v#GCC_}" 12.0.0 ;;
+                *) false ;;
+              esac && { echo "::error::$rel needs $v, newer than Ubuntu 22.04 and Debian 12 have"; bad=1; }
+            done < <(readelf -VW "$f" | awk '/^Version needs section/ {n = 1; next} /^Version (definition|symbols) section/ {n = 0} n && /Name:/ {for (i = 1; i < NF; i++) if ($i == "Name:") print $(i + 1)}')
+          done
+          echo "Checked ${#elfs[@]} ELF files."
+          if ls -d "$R"/lib/R/library/*/help > /dev/null 2>&1; then
+            echo "::error::setup:strip left per-package help folders in the Linux bundle"
+            bad=1
+          fi
+          exit "$bad"
+
+      - name: Load the bundled R in clean containers (Linux)
+        if: ${{ !cancelled() && steps.strip.outcome == 'success' && matrix.target == 'linux' }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          failed=()
+          for image in ubuntu:22.04 ubuntu:24.04 debian:12 fedora:latest; do
+            echo "::group::$image"
+            case "$image" in
+              fedora:*) prep='dnf -y -q install ca-certificates fontconfig' ;;
+              *) prep='apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends ca-certificates fontconfig' ;;
+            esac
+            if ! docker run --rm \
+                -v "$PWD/resources/R:/opt/canhr-r:ro" \
+                -v "$RUNNER_TEMP/ci/check-bundle.R:/opt/check-bundle.R:ro" \
+                "$image" sh -c "$prep > /dev/null && /opt/canhr-r/bin/Rscript --vanilla /opt/check-bundle.R"; then
+              failed+=("$image")
+            fi
+            echo "::endgroup::"
+          done
+          if [ "${#failed[@]}" -gt 0 ]; then
+            echo "::error::The bundled R failed in: ${failed[*]}"
+            exit 1
+          fi
+
       - name: Build installer (Windows)
-        if: matrix.target == 'win'
+        id: build-win
+        if: ${{ !cancelled() && steps.strip.outcome == 'success' && matrix.target == 'win' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build:win
 
       - name: Build installer (macOS)
-        if: matrix.target == 'mac'
+        id: build-mac
+        if: ${{ !cancelled() && steps.strip.outcome == 'success' && matrix.target == 'mac' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run build:mac:${{ matrix.arch }}
 
       - name: Build installer (Linux)
-        if: matrix.target == 'linux'
+        id: build-linux
+        if: ${{ !cancelled() && steps.strip.outcome == 'success' && matrix.target == 'linux' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build:linux
 
+      - name: Check the app bundle (macOS)
+        if: ${{ !cancelled() && steps.build-mac.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$ARCH" = arm64 ]; then app=dist/mac-arm64/CANHRActi.app; else app=dist/mac/CANHRActi.app; fi
+          codesign --verify --deep --strict --verbose=2 "$app"
+          min=$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$app/Contents/Info.plist" 2> /dev/null || true)
+          min=${min:-12.0}
+          echo "App minimum macOS: $min"
+          ver_gt() {
+            local i a b
+            IFS=. read -r -a a <<< "$1"
+            IFS=. read -r -a b <<< "$2"
+            for ((i = 0; i < ${#a[@]} || i < ${#b[@]}; i++)); do
+              if ((10#${a[i]:-0} > 10#${b[i]:-0})); then return 0; fi
+              if ((10#${a[i]:-0} < 10#${b[i]:-0})); then return 1; fi
+            done
+            return 1
+          }
+          # Base R's own X11 and cairo modules load XQuartz on demand, as in CRAN R.
+          x11_ok=" library/grDevices/libs/cairo.so modules/R_X11.so modules/R_de.so "
+          r="$app/Contents/Resources/R"
+          bad=0
+          checked=0
+          while IFS= read -r -d '' f; do
+            case "$(file -b "$f")" in *Mach-O*) ;; *) continue ;; esac
+            checked=$((checked + 1))
+            rel=${f#"$r"/}
+            while IFS= read -r dep; do
+              case "$dep" in
+                /Library/Frameworks/* | /usr/local/* | /opt/*)
+                  if [[ "$dep" == /opt/X11/* && "$x11_ok" == *" $rel "* ]]; then continue; fi
+                  echo "::error::$rel links $dep"
+                  bad=1
+                  ;;
+              esac
+            done < <(otool -L "$f" | awk '/^\t/ {print $1}')
+            while IFS= read -r v; do
+              if ver_gt "$v" "$min"; then
+                echo "::error::$rel is built for macOS $v, above the app's minimum $min"
+                bad=1
+              fi
+            done < <(otool -l "$f" | awk '/LC_BUILD_VERSION/ {b = 1} b && $1 == "minos" {print $2; b = 0} /LC_VERSION_MIN_MACOSX/ {m = 1} m && $1 == "version" {print $2; m = 0}')
+          done < <(find "$r" -type f \( -name '*.so' -o -name '*.dylib' -o -path '*/bin/*' \) -print0)
+          echo "Checked $checked Mach-O files."
+          exit "$bad"
+
+      - name: Smoke test the app (Windows)
+        if: ${{ !cancelled() && steps.build-win.outcome == 'success' }}
+        shell: bash
+        run: bash "$RUNNER_TEMP/ci/smoke.sh" windows dist/win-unpacked/CANHRActi.exe
+
+      - name: Smoke test the app (macOS)
+        if: ${{ !cancelled() && steps.build-mac.outcome == 'success' }}
+        shell: bash
+        run: |
+          if [ "$ARCH" = arm64 ]; then app=dist/mac-arm64/CANHRActi.app; else app=dist/mac/CANHRActi.app; fi
+          bash "$RUNNER_TEMP/ci/smoke.sh" "mac-$ARCH" "$app/Contents/MacOS/CANHRActi"
+
+      - name: Smoke test the app (Linux)
+        if: ${{ !cancelled() && steps.build-linux.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x dist/CANHRActi.AppImage
+          run=(dist/CANHRActi.AppImage)
+          if [ ! -e /dev/fuse ] || ! command -v fusermount3 > /dev/null 2>&1; then
+            echo "No FUSE 3 on this runner, so the AppImage runs with --appimage-extract-and-run."
+            run+=(--appimage-extract-and-run)
+          fi
+          bash "$RUNNER_TEMP/ci/smoke.sh" linux xvfb-run -a "${run[@]}"
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: canhrActi-${{ matrix.target }}-${{ matrix.arch }}
-          path: |
-            canhrActi-desktop/dist/*.exe
-            canhrActi-desktop/dist/*.dmg
-            canhrActi-desktop/dist/*.AppImage
-          if-no-files-found: warn
+          name: installer-${{ matrix.target }}-${{ matrix.arch }}
+          path: canhrActi-desktop/dist/${{ matrix.installer }}
+          if-no-files-found: error
           retention-days: 30
 
-      - name: Upload to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/desktop-v')
-        uses: softprops/action-gh-release@v2
+      - name: Upload smoke test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-          fail_on_unmatched_files: false
-          files: |
-            canhrActi-desktop/dist/*.exe
-            canhrActi-desktop/dist/*.dmg
-            canhrActi-desktop/dist/*.AppImage
+          name: smoke-logs-${{ matrix.target }}-${{ matrix.arch }}
+          path: smoke-logs
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Ubuntu 24.04 and later block unprivileged user namespaces; the AppImage
+  # must then start Electron with --no-sandbox by itself.
+  smoke-linux-userns:
+    needs: build
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Get the CI checks
+        uses: actions/download-artifact@v4
+        with:
+          name: ci-checks
+          path: ${{ runner.temp }}/ci
+
+      - name: Get the AppImage
+        uses: actions/download-artifact@v4
+        with:
+          name: installer-linux-x64
+          path: dist
+
+      - name: Smoke test with user namespaces restricted
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
+          if unshare -Ur true 2> /dev/null; then
+            echo "::error::User namespaces are still allowed, so this run would prove nothing."
+            exit 1
+          fi
+          chmod +x dist/CANHRActi.AppImage
+          run=(dist/CANHRActi.AppImage)
+          if [ ! -e /dev/fuse ] || ! command -v fusermount3 > /dev/null 2>&1; then
+            echo "No FUSE 3 on this runner, so the AppImage runs with --appimage-extract-and-run."
+            run+=(--appimage-extract-and-run)
+          fi
+          bash "$RUNNER_TEMP/ci/smoke.sh" linux-userns-restricted xvfb-run -a "${run[@]}"
+
+      - name: Upload smoke test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs-linux-userns
+          path: smoke-logs
+          if-no-files-found: ignore
+          retention-days: 14
+
+  release:
+    needs: [build, smoke-linux-userns]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Get the installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: installer-*
+          path: installers
+          merge-multiple: true
+
+      - name: Check all four installers are here
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in CANHRActi-Setup.exe CANHRActi-mac-arm64.dmg CANHRActi-mac-x64.dmg CANHRActi.AppImage; do
+            if [ ! -s "installers/$f" ]; then
+              echo "::error::installers/$f is missing"
+              exit 1
+            fi
+          done
+          ls -l installers
+
+      - name: Publish the release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/desktop-v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          files=(CANHRActi-Setup.exe CANHRActi-mac-arm64.dmg CANHRActi-mac-x64.dmg CANHRActi.AppImage)
+          # The release stays a draft until all four installers are in and nothing stale is left.
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --draft=true
+          else
+            gh release create "$TAG" --draft --verify-tag --title "$TAG" --notes ""
+          fi
+          (cd installers && gh release upload "$TAG" "${files[@]}" --clobber)
+          gh release view "$TAG" --json assets --jq '.assets[].name' | while IFS= read -r name; do
+            keep=false
+            for f in "${files[@]}"; do
+              if [ "$name" = "$f" ]; then keep=true; fi
+            done
+            if [ "$keep" = false ]; then
+              echo "Removing $name, which this run did not build"
+              gh release delete-asset "$TAG" "$name" --yes
+            fi
+          done
+          gh release edit "$TAG" --draft=false
+          gh release view "$TAG" --json url,assets --jq '.url, (.assets[] | "\(.name) \(.size)")'

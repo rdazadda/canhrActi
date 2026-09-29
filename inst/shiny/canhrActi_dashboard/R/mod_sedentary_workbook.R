@@ -49,14 +49,23 @@
   mean_break_min = "Mean Break (min)",
   micro = "Micro <2 min", short = "Short 2-5 min", medium = "Medium 5-15 min",
   long = "Long 15-30 min", extended = "Extended >=30 min",
-  column = "Column", definition = "Definition", unit = "Unit"
+  column = "Column", definition = "Definition", unit = "Unit",
+  # Raw-only columns: the label names the metric and its unit
+  metric_sum = "{metric} Sum ({unit})", metric_avg = "{metric} Mean ({unit})",
+  metric_max = "{metric} Max ({unit})", metric_per_min = "{metric} per Minute ({unit})"
 )
 
-.sw_relabel <- function(df) {
+.sw_relabel <- function(df, metric = NULL) {
   if (is.null(df) || ncol(df) == 0) return(df)
+  # metric is the raw metric key ("raw:ENMO") when there is one; only the
+  # raw-only columns carry tokens
+  mn <- if (is.null(metric) || !circ_is_raw_metric(metric)) "Metric" else circ_metric_name(metric)
+  un <- if (is.null(metric) || !circ_is_raw_metric(metric)) "" else "mg"
   names(df) <- vapply(names(df), function(n) {
-    if (n %in% names(.SW_LABELS)) .SW_LABELS[[n]]
-    else tools::toTitleCase(gsub("_", " ", n))
+    lab <- if (n %in% names(.SW_LABELS)) .SW_LABELS[[n]]
+           else tools::toTitleCase(gsub("_", " ", n))
+    lab <- gsub("{metric}", mn, lab, fixed = TRUE)
+    trimws(gsub(" ()", "", gsub("{unit}", un, lab, fixed = TRUE), fixed = TRUE))
   }, character(1))
   df
 }
@@ -68,8 +77,10 @@
   n <- nrow(bouts)
   if (n < 2) return(rep(NA_real_, n))
   ibi <- rep(NA_real_, n)
+  # end_time is the start of a bout's last epoch, so one epoch is taken off the gap
+  ep <- bouts$duration_min / (bouts$end_index - bouts$start_index + 1)
   ibi[2:n] <- as.numeric(difftime(bouts$start_time[2:n], bouts$end_time[1:(n - 1)],
-                                  units = "mins"))
+                                  units = "mins")) - ep[1:(n - 1)]
   round(ibi, 1)
 }
 
@@ -89,7 +100,9 @@
     file_name = .sw_get(r$name, NA_character_),
     cut_points = metric,
     sleep_excluded = isTRUE(r$sleep_excluded),
-    epoch_length_s = .sw_get(if (!is.null(sf)) sf$epoch_length else NA_real_),
+    # The run's own epoch first; shared$files has no entry for a raw id
+    epoch_length_s = .sw_get(r$parameters$epoch_length %||%
+                             (if (!is.null(sf)) sf$epoch_length else NA_real_)),
     weight_lbs = .sw_get(if (!is.null(subj)) subj$weight_lbs else NA_real_),
     age = .sw_get(if (!is.null(subj)) subj$age else NA_real_),
     gender = .sw_get(if (!is.null(subj)) subj$sex else NA_character_, NA_character_),
@@ -118,27 +131,88 @@
   )
 }
 
+# How this workbook was produced, read off the stored run and never off a
+# live control.
+.sw_provenance <- function(results, shared, cut_label, metric = NULL) {
+  p <- if (length(results)) results[[1]]$parameters else NULL
+  na <- function(x) if (is.null(x) || length(x) != 1 || is.na(x)) "not recorded" else as.character(x)
+  is_raw <- identical(p$family, "raw")
+  rows <- list(
+    c("Exported",              format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
+    c("Analysis run at",       na(p$run_at)),
+    c("Package version",       na(p$package_version)),
+    c("Recordings in export",  as.character(length(results))),
+    c("Recording type",        if (is_raw) "Raw acceleration (.gt3x)" else "Activity counts (.agd)"),
+    c("Metric",                if (is.null(metric)) "Axis 1 (ActiGraph counts)"
+                               else circ_metric_provenance(metric)),
+    c("Unit",                  if (is_raw) "mg" else "counts"),
+    c("Cut point",             na(cut_label)),
+    c("Sedentary threshold",   na(p$threshold)),
+    c("Epoch length (s)",      na(p$epoch_length)),
+    c("Prolonged bout (min)",  na(p$prolonged_threshold)),
+    c("Gap bridging (min)",    na(p$min_break_length)),
+    c("Sleep window excluded", if (isTRUE(p$sleep_excluded)) "yes" else "no"),
+    c("Wear mask applied",     if (isTRUE(p$wear_time_available)) "yes" else "no"),
+    # Name a source only when a mask was applied
+    c("Wear source",           if (!isTRUE(p$wear_time_available)) "none applied"
+                               else if (is_raw) "GGIR part 2" else "Wear time tab"),
+    # Where the waking-hours window came from, as the adapter reported it.
+    c("Sleep source",          if (isTRUE(p$include_sleep)) "sleep counted as sedentary"
+                               else switch(p$sleep_source %||% "none",
+                                           "none" = "none applied",
+                                           "Cole-Kripke fallback" = "Cole-Kripke, scored in the Sedentary tab",
+                                           p$sleep_source))
+  )
+  df <- as.data.frame(do.call(rbind, rows), stringsAsFactors = FALSE)
+  names(df) <- c("Setting", "Value")
+  df
+}
+
 # Full per-bout signal substrate (supersedes the Bout-Level CSV).
 .sw_bouts <- function(results, shared) {
   parts <- lapply(results, function(r) {
     b <- r$fragmentation$bouts
     if (is.null(b) || nrow(b) == 0 || is.null(r$file_id)) return(NULL)
-    sf <- shared$files[[r$file_id]]
-    if (is.null(sf) || is.null(sf$data)) return(NULL)
-    data <- sf$data
-    epl <- if (!is.null(sf$epoch_length)) sf$epoch_length else 60
+    fid <- r$file_id
+    sf <- shared$files[[fid]]
+    # A .gt3x has no $data frame; its series comes from the adapter as one
+    # metric column
+    is_raw <- is.null(sf) || is.null(sf$data)
+    if (is_raw) {
+      # The cut point names the metric it was validated on, so the series
+      # rebuilt here is the one the bouts were detected in
+      m <- sed_metric_for(shared, r$parameters$cut_points, "raw")
+      s <- .cw_epoch_series(shared, fid, r, m)
+      if (is.null(s) || !identical(s$kind, "raw")) return(NULL)
+      data <- data.frame(metric = s$value)
+      epl <- s$epoch_length %||% 60
+      # An index is already a row of the raw series
+      kk <- 1L
+    } else {
+      data <- sf$data
+      # A bout index counts epochs of the scored series, coarsened to the
+      # coarsest epoch in the study; sf$data is at the file's native epoch.
+      # The index is mapped into native rows and the per-minute columns
+      # divide by the native epoch.
+      e0 <- suppressWarnings(as.numeric(sf$epoch_length %||% 60))
+      if (!is.finite(e0) || e0 <= 0) e0 <- 60
+      epl <- e0
+      run_ep <- suppressWarnings(as.numeric(r$parameters$epoch_length %||% e0))
+      kk <- if (is.finite(run_ep) && run_ep > 0) max(1L, as.integer(round(run_ep / e0))) else 1L
+    }
     ibi <- .sw_ibi(b)
     has <- function(col) col %in% names(data)
     rows <- lapply(seq_len(nrow(b)), function(i) {
       si <- b$start_index[i]; ei <- b$end_index[i]
-      bd <- data[si:ei, , drop = FALSE]
+      bd <- data[seq.int((si - 1L) * kk + 1L, min(nrow(data), ei * kk)), , drop = FALSE]
       vm <- if (all(c("axis1", "axis2", "axis3") %in% names(bd)))
         sqrt(bd$axis1^2 + bd$axis2^2 + bd$axis3^2) else NULL
       # Reducers that return NA (not -Inf / NaN) when a bout slice is all-NA for a column.
       red <- function(x, f) { v <- suppressWarnings(f(x, na.rm = TRUE)); if (is.finite(v)) v else NA_real_ }
       ax <- function(col, f) if (has(col)) round(red(bd[[col]], f), 1) else NA_real_
       cpm <- function(x) round(red(x, mean) * 60 / epl, 1)
-      data.frame(
+      # An .agd gives three axes, VM, steps and lux; a .gt3x the one scored metric
+      base <- data.frame(
         subject_id = .sw_get(r$subject_id, NA_character_),
         file_name = .sw_get(r$name, NA_character_),
         bout_id = b$bout_id[i],
@@ -146,7 +220,14 @@
         duration_min = round(b$duration_min[i], 2),
         inter_bout_interval_min = ibi[i],
         n_epochs = nrow(bd),
-        calendar_days = as.numeric(as.Date(b$end_time[i]) - as.Date(b$start_time[i])) + 1,
+        calendar_days = as.numeric(as.Date(format(b$end_time[i], "%Y-%m-%d")) -
+                                     as.Date(format(b$start_time[i], "%Y-%m-%d"))) + 1,
+        stringsAsFactors = FALSE)
+      sig <- if (is_raw) data.frame(
+        metric_sum = ax("metric", sum), metric_avg = ax("metric", mean),
+        metric_max = ax("metric", max), metric_per_min = cpm(bd$metric),
+        stringsAsFactors = FALSE
+      ) else data.frame(
         axis1_counts = ax("axis1", sum), axis2_counts = ax("axis2", sum), axis3_counts = ax("axis3", sum),
         axis1_avg = ax("axis1", mean), axis2_avg = ax("axis2", mean), axis3_avg = ax("axis3", mean),
         axis1_max = ax("axis1", max), axis2_max = ax("axis2", max), axis3_max = ax("axis3", max),
@@ -160,9 +241,10 @@
         steps_counts = ax("steps", sum), steps_avg = ax("steps", mean), steps_max = ax("steps", max),
         steps_per_min = if (has("steps")) cpm(bd$steps) else NA_real_,
         lux_avg = ax("lux", mean), lux_max = ax("lux", max),
-        start_index = si, end_index = ei,
         stringsAsFactors = FALSE
       )
+      cbind(base, sig,
+            data.frame(start_index = si, end_index = ei, stringsAsFactors = FALSE))
     })
     do.call(rbind, rows)
   })
@@ -245,7 +327,8 @@
 
 #' Short data dictionary for the sedentary workbook.
 #' @keywords internal
-sedentary_data_dictionary <- function() {
+sedentary_data_dictionary <- function(metric = NULL) {
+  is_raw <- !is.null(metric) && circ_is_raw_metric(metric)
   d <- function(column, definition, unit) {
     data.frame(column = column, definition = definition, unit = unit, stringsAsFactors = FALSE)
   }
@@ -261,34 +344,60 @@ sedentary_data_dictionary <- function() {
     d("Weibull Shape k", "Shape of the bout-duration survival model: k<1 decreasing, ~1 memoryless, >1 increasing hazard", "unitless"),
     d("Sedentary Regularity Index", "Day-to-day concordance of the sedentary/active state 24 h apart", "-100 to 100"),
     d("Activity Balance Index", "Time in short (<10 min) vs prolonged (>=30 min) sedentary bouts", "0 to 1"),
-    d("Bouts sheet (Axis/VM/Steps/Lux)", "Per-bout raw signal over the bout's epochs: counts (sum), average, max and counts-per-minute for each axis and vector magnitude; steps and lux when present. Break Before = inter-bout interval (NA for the first bout)", "counts / cpm / min / lux"),
+    if (is_raw)
+      d(paste0("Bouts sheet (", circ_metric_name(metric), ")"),
+        paste0("Per-bout signal over the bout's epochs: sum, mean, max and per-minute ",
+               "of ", circ_metric_name(metric), ". A .gt3x is summarised to one metric ",
+               "per epoch, so there are no separate axes, steps or lux columns as there ",
+               "are for an .agd. Break Before = inter-bout interval (NA for the first bout)"),
+        "mg / min")
+    else
+      d("Bouts sheet (Axis/VM/Steps/Lux)", "Per-bout raw signal over the bout's epochs: counts (sum), average, max and counts-per-minute for each axis and vector magnitude; steps and lux when present. Break Before = inter-bout interval (NA for the first bout)", "counts / cpm / min / lux"),
     stringsAsFactors = FALSE
   )
 }
 
+#' The Summary Metrics sheet, as a data frame.
+#'
+#' One definition of the per-recording metric set, used by both the workbook
+#' sheet and the table on the page.
+#' @keywords internal
+sedentary_metrics_df <- function(results, shared, metric = "not recorded") {
+  if (is.null(results) || length(results) == 0) return(NULL)
+  df <- do.call(rbind, lapply(results, .sw_summary_row, shared = shared, metric = metric))
+  .sw_relabel(df)
+}
+
 #' Write the reproducible sedentary workbook to `file`.
 #' @keywords internal
-sedentary_write_workbook <- function(file, results, shared, metric = "Sedentary <100 CPM") {
+sedentary_write_workbook <- function(file, results, shared, metric = "not recorded") {
+  # The run's metric, read off the stored results and derived from the cut
+  # point the same way the Bouts sheet derives its series. NULL on a counts run.
+  run_metric <- tryCatch({
+    p <- results[[1]]$parameters
+    if (identical(p$family, "raw")) sed_metric_for(shared, p$cut_points, "raw") else NULL
+  }, error = function(e) NULL)
   wb <- openxlsx::createWorkbook()
   add <- function(name, df) {
     openxlsx::addWorksheet(wb, name)
     if (!is.null(df) && nrow(df) > 0) {
-      openxlsx::writeData(wb, name, .sw_relabel(df))
+      openxlsx::writeData(wb, name, if (identical(name, "Summary Metrics")) df else .sw_relabel(df, run_metric))
       openxlsx::freezePane(wb, name, firstRow = TRUE)
     } else {
       openxlsx::writeData(wb, name, data.frame(Note = "No data available for this sheet"))
     }
   }
 
-  summary_df <- do.call(rbind, lapply(results, .sw_summary_row, shared = shared, metric = metric))
+  summary_df <- sedentary_metrics_df(results, shared, metric)
 
+  add("Provenance",     .sw_provenance(results, shared, metric, run_metric))
   add("Summary Metrics", summary_df)
   add("Bouts", .sw_bouts(results, shared))
   add("Daily Fragmentation", .sw_daily(results))
   add("Hourly Fragmentation", .sw_hourly(results))
   add("Bout Distribution", .sw_distribution(results))
   add("Break Patterns", .sw_breaks(results))
-  add("Data Dictionary", sedentary_data_dictionary())
+  add("Data Dictionary", sedentary_data_dictionary(run_metric))
 
   openxlsx::saveWorkbook(wb, file, overwrite = TRUE)
   invisible(file)

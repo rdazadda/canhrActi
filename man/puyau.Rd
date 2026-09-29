@@ -32,8 +32,6 @@ monitors in children. Obes Res, 10(3), 150-157.
 \seealso{
 Other children cut-points:
 \code{\link[=butte_preschool]{butte_preschool()}},
-\code{\link[=chandler]{chandler()}},
-\code{\link[=copeland]{copeland()}},
 \code{\link[=evenson]{evenson()}},
 \code{\link[=mattocks]{mattocks()}},
 \code{\link[=pate_preschool]{pate_preschool()}},

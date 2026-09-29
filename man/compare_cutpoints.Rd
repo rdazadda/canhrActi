@@ -12,11 +12,12 @@ compare_cutpoints(
 )
 }
 \arguments{
-\item{data}{Numeric vector of activity data}
+\item{data}{Numeric vector of activity metric per minute (CPM or VM CPM);
+\code{\link{to_cpm}} converts counts of other epoch lengths}
 
 \item{algorithms}{Character vector of algorithm names to compare}
 
-\item{epoch_seconds}{Epoch length in seconds}
+\item{epoch_seconds}{Epoch length in seconds, for the minutes each epoch counts}
 
 \item{wear_time}{Logical vector indicating valid wear time}
 }

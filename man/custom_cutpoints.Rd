@@ -10,9 +10,11 @@ custom_cutpoints(data, thresholds, labels = NULL)
 \item{data}{Numeric vector of activity metric (CPM, VM CPM, etc.)}
 
 \item{thresholds}{Named numeric vector of thresholds, e.g.,
-c(light = 100, moderate = 2020, vigorous = 5999)}
+c(light = 100, moderate = 2020, vigorous = 5999), in any order}
 
-\item{labels}{Character vector of intensity labels (default: derived from thresholds)}
+\item{labels}{Character vector of intensity labels from lowest to highest, one
+more than the thresholds (default: "sedentary", then the names of the
+thresholds in increasing order)}
 }
 \value{
 Ordered factor with intensity levels

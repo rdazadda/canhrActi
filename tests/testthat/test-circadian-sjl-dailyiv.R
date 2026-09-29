@@ -64,12 +64,17 @@ test_that("sleep.tudor.locke -> social.jet.lag runs on a scored sleep series", {
   expect_lt(abs(sjl$social_jet_lag_hours), 0.5)
 })
 
-test_that("recovers a known weekend sleep delay", {
+# Two weeks from Monday 2024-01-01: in bed 23:00-07:00 on weekdays, 01:00-09:00 at weekends.
+.sjl_weekend_delay <- function() {
   dates <- seq(as.Date("2024-01-01"), as.Date("2024-01-14"), by = "day")
-  wknd <- weekdays(dates) %in% c("Saturday", "Sunday")
+  wknd <- as.POSIXlt(dates)$wday %in% c(0, 6)
   in_bed  <- ifelse(wknd, paste(dates, "01:00:00"), paste(dates, "23:00:00"))
   out_bed <- ifelse(wknd, paste(dates, "09:00:00"), paste(dates + 1, "07:00:00"))
-  sp <- data.frame(in_bed_time = in_bed, out_bed_time = out_bed, stringsAsFactors = FALSE)
+  data.frame(in_bed_time = in_bed, out_bed_time = out_bed, stringsAsFactors = FALSE)
+}
+
+test_that("recovers a known weekend sleep delay", {
+  sp <- .sjl_weekend_delay()
 
   sjl <- social.jet.lag(sp)
   expect_equal(sjl$MSW, 3, tolerance = 0.1)   # weekday mid-sleep 03:00
@@ -78,9 +83,35 @@ test_that("recovers a known weekend sleep delay", {
   expect_equal(sjl$social_jet_lag_min, 120, tolerance = 6)
 })
 
+test_that("work nights do not depend on the weekday names of the locale", {
+  local_german_time()
+
+  sjl <- social.jet.lag(.sjl_weekend_delay())
+  expect_equal(c(sjl$n_work_nights, sjl$n_free_nights), c(10, 4))
+  expect_equal(sjl$MSW, 3, tolerance = 0.1)
+  expect_equal(sjl$MSF, 5, tolerance = 0.1)
+  expect_equal(sjl$social_jet_lag_hours, 2, tolerance = 0.1)
+})
+
 test_that("degrades gracefully with no sleep periods", {
   sp <- data.frame(in_bed_time = character(0), out_bed_time = character(0),
                    stringsAsFactors = FALSE)
   sjl <- social.jet.lag(sp)
   expect_true(is.na(sjl$social_jet_lag_hours))
+})
+
+test_that("mid-sleep rounds to whole clock minutes and a bedtime in a DST gap keeps its clock time", {
+  withr::local_timezone("America/Anchorage")
+  expect_identical(format(.clock_time("2024-03-10 02:30:00"), "%H:%M"), "02:30")
+  # work nights with mid-sleep at 04:00, 04:00 and 03:59; the one free night starts at
+  # 02:30 on Sunday 10 March, an hour Alaska skips
+  sp <- data.frame(
+    in_bed_time = c("2024-03-04 23:00:00", "2024-03-05 23:00:00", "2024-03-06 22:58:00", "2024-03-10 02:30:00"),
+    out_bed_time = c("2024-03-05 09:00:00", "2024-03-06 09:00:00", "2024-03-07 09:00:00", "2024-03-10 10:30:00"),
+    stringsAsFactors = FALSE
+  )
+  sjl <- social.jet.lag(sp)
+  expect_identical(sjl$MSW_time, "04:00")
+  expect_equal(sjl$MSF, 6.5)
+  expect_identical(sjl$MSF_time, "06:30")
 })

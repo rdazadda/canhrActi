@@ -219,9 +219,10 @@ matthews <- function(counts_per_minute) {
 #' Apply Santos-Lozano Adult (2013) Cut Points
 #'
 #' Adult cut-points validated against indirect calorimetry in a Spanish population.
-#' Provides separate thresholds for younger and older adults.
+#' Provides separate thresholds for younger and older adults. They are GT3X vector
+#' magnitude cut points, so the input is vector magnitude counts per minute.
 #'
-#' @param counts_per_minute Numeric vector of CPM
+#' @param counts_per_minute Numeric vector of vector magnitude CPM
 #' @param age_group Character: "younger" (18-64) or "older" (65+)
 #'
 #' @return Ordered factor with intensity levels
@@ -229,25 +230,28 @@ matthews <- function(counts_per_minute) {
 #' @details
 #' Santos-Lozano (2013) cutpoints for younger adults (18-64):
 #' \itemize{
-#'   \item Sedentary: 0-99 CPM
-#'   \item Light: 100-3207 CPM
-#'   \item Moderate: 3208-8564 CPM
-#'   \item Vigorous: >= 8565 CPM
+#'   \item Sedentary: 0-99 VM CPM
+#'   \item Light: 100-3207 VM CPM
+#'   \item Moderate: 3208-8564 VM CPM
+#'   \item Vigorous: >= 8565 VM CPM
 #' }
 #'
 #' For older adults (65+):
 #' \itemize{
-#'   \item Sedentary: 0-99 CPM
-#'   \item Light: 100-2750 CPM
-#'   \item Moderate: 2751-9358 CPM
-#'   \item Vigorous: >= 9359 CPM
+#'   \item Sedentary: 0-99 VM CPM
+#'   \item Light: 100-2750 VM CPM
+#'   \item Moderate: 2751-9358 VM CPM
+#'   \item Vigorous: >= 9359 VM CPM
 #' }
 #'
+#' The paper sets the moderate and vigorous cuts; the sedentary cut of 100 is the
+#' package's.
+#'
 #' @references
-#' Santos-Lozano A, et al. (2013). Validation and determination
+#' Santos-Lozano A, et al. (2013). Actigraph GT3X: validation and determination
 #' of physical activity intensity cut points. Int J Sports Med, 34(11), 975-982.
 #'
-#' @family adult cut-points
+#' @family triaxial cut-points
 #' @export
 santos_lozano <- function(counts_per_minute, age_group = c("younger", "older")) {
   age_group <- match.arg(age_group)
@@ -393,10 +397,14 @@ crouter <- function(counts_per_minute, cv = NULL) {
 #' @family triaxial cut-points
 #' @export
 sasaki_vm3 <- function(vm_counts_per_minute) {
+  .warn_negative_counts(vm_counts_per_minute, "sasaki_vm3")
+  .vm3_classes(vm_counts_per_minute)
+}
+
+# The Sasaki, John and Freedson (2011) classes, shared by sasaki_vm3() and freedson_vm3()
+.vm3_classes <- function(vm_counts_per_minute) {
   n <- length(vm_counts_per_minute)
   intensity <- character(n)
-
-  .warn_negative_counts(vm_counts_per_minute, "sasaki_vm3")
 
   # Sasaki et al. (2011) VM cut-points:
   # Sedentary: 0-199, Light: 200-2689, Moderate: 2690-6166, Vigorous: 6167-9642, Very Vigorous: >=9643
@@ -416,8 +424,10 @@ sasaki_vm3 <- function(vm_counts_per_minute) {
 
 #' Apply Freedson VM3 (2011) Cut Points
 #'
-#' Triaxial cut-points from Freedson's Vector Magnitude validation study.
-#' Alternative to Sasaki VM3 with slightly different thresholds.
+#' The vector magnitude cut-points of Sasaki, John and Freedson (2011), which
+#' ActiLife lists as Freedson VM3; the same thresholds as \code{\link{sasaki_vm3}}.
+#' 2453 VM CPM, sometimes quoted with this name, is the switch point of the
+#' Freedson VM3 energy equation, not an intensity cut.
 #'
 #' @param vm_counts_per_minute Numeric vector of vector magnitude CPM
 #'
@@ -426,33 +436,22 @@ sasaki_vm3 <- function(vm_counts_per_minute) {
 #' @details
 #' Freedson VM3 (2011) cutpoints:
 #' \itemize{
-#'   \item Sedentary: 0-99 VM CPM
-#'   \item Light: 100-2452 VM CPM
-#'   \item Moderate: 2453-6891 VM CPM
-#'   \item Vigorous: >= 6892 VM CPM
+#'   \item Sedentary: 0-199 VM CPM
+#'   \item Light: 200-2689 VM CPM
+#'   \item Moderate: 2690-6166 VM CPM
+#'   \item Vigorous: 6167-9642 VM CPM
+#'   \item Very Vigorous: >= 9643 VM CPM
 #' }
 #'
 #' @references
-#' Freedson PS, et al. (2011). Evaluation of artificial neural network algorithms
-#' for predicting METs and activity type from accelerometer data. J Sci Med Sport.
+#' Sasaki JE, John D, Freedson PS. (2011). Validation and comparison of ActiGraph
+#' activity monitors. J Sci Med Sport, 14(5), 411-416.
 #'
 #' @family triaxial cut-points
 #' @export
 freedson_vm3 <- function(vm_counts_per_minute) {
-  n <- length(vm_counts_per_minute)
-  intensity <- character(n)
-
   .warn_negative_counts(vm_counts_per_minute, "freedson_vm3")
-
-  intensity[vm_counts_per_minute < 100]   <- "sedentary"
-  intensity[vm_counts_per_minute >= 100 & vm_counts_per_minute < 2453] <- "light"
-  intensity[vm_counts_per_minute >= 2453 & vm_counts_per_minute < 6892] <- "moderate"
-  intensity[vm_counts_per_minute >= 6892] <- "vigorous"
-  intensity[is.na(vm_counts_per_minute)] <- NA_character_
-
-  factor(intensity,
-         levels = c("sedentary", "light", "moderate", "vigorous"),
-         ordered = TRUE)
+  .vm3_classes(vm_counts_per_minute)
 }
 
 
@@ -631,31 +630,24 @@ pate_preschool <- function(counts_per_minute) {
 
 #' Apply Butte (2014) Preschooler Cut Points
 #'
-#' Cut-points for preschoolers validated against room calorimetry in the
-#' VIVA project. Provides age-specific thresholds.
+#' Cut-points for preschoolers (mean age 4.5) validated against room calorimetry,
+#' for the ActiGraph vertical axis.
 #'
-#' @param counts_per_minute Numeric vector of CPM
-#' @param age Age in years (3-6)
+#' @param counts_per_minute Numeric vector of vertical-axis CPM
 #'
 #' @return Ordered factor with intensity levels
 #'
 #' @details
-#' Butte (2014) provides age-specific regression equations. This implementation
-#' is a COUNT-THRESHOLD APPROXIMATION of those equations: it varies only the
-#' single MVPA cut by age and applies fixed sedentary/light cuts for all ages.
-#' Approximate cutpoints:
-#' Age 3-4:
+#' Butte (2014) cutpoints, ActiGraph x-axis:
 #' \itemize{
 #'   \item Sedentary: 0-239 CPM
 #'   \item Light: 240-2119 CPM
-#'   \item Moderate-Vigorous: >= 2120 CPM
+#'   \item Moderate: 2120-4449 CPM
+#'   \item Vigorous: >= 4450 CPM
 #' }
-#' Age 5-6:
-#' \itemize{
-#'   \item Sedentary: 0-239 CPM
-#'   \item Light: 240-2295 CPM
-#'   \item Moderate-Vigorous: >= 2296 CPM
-#' }
+#'
+#' The paper gives one set for preschoolers, with no cut by age; for school-age
+#' children see \code{\link{evenson}}.
 #'
 #' @references
 #' Butte NF, Wong WW, Lee JS, Adolph AL, Puyau MR, Zakeri IF. (2014). Prediction
@@ -664,109 +656,16 @@ pate_preschool <- function(counts_per_minute) {
 #'
 #' @family children cut-points
 #' @export
-butte_preschool <- function(counts_per_minute, age = 4) {
+butte_preschool <- function(counts_per_minute) {
   n <- length(counts_per_minute)
   intensity <- character(n)
 
   .warn_negative_counts(counts_per_minute, "butte_preschool")
 
-  # Age-dependent moderate threshold
-  mvpa_threshold <- if (age < 5) 2120 else 2296
-
   intensity[counts_per_minute < 240] <- "sedentary"
-  intensity[counts_per_minute >= 240 & counts_per_minute < mvpa_threshold] <- "light"
-  intensity[counts_per_minute >= mvpa_threshold] <- "mvpa"
-  intensity[is.na(counts_per_minute)] <- NA_character_
-
-  factor(intensity,
-         levels = c("sedentary", "light", "mvpa"),
-         ordered = TRUE)
-}
-
-
-#' Apply Chandler (2016) Children Cut Points
-#'
-#' Cut-points for children validated with indirect calorimetry using a
-#' wrist-worn accelerometer. Specifically developed for 8-12 year olds.
-#'
-#' @param counts_per_minute Numeric vector of CPM
-#'
-#' @return Ordered factor with intensity levels
-#'
-#' @details
-#' Chandler (2016) cutpoints for 8-12 year-old children, wrist-worn (15-sec epochs):
-#' \itemize{
-#'   \item Sedentary: 0-5 counts/15s (0-20 CPM)
-#'   \item Light: 6-404 counts/15s (21-1616 CPM)
-#'   \item Moderate: 405-810 counts/15s (1617-3240 CPM)
-#'   \item Vigorous: >= 811 counts/15s (>= 3241 CPM)
-#' }
-#'
-#' Note: Values shown are converted to CPM from original 15-second epoch values.
-#'
-#' @references
-#' Chandler JL, et al. (2016). Classification of physical activity intensities
-#' using a wrist-worn accelerometer in 8-12-year-old children.
-#' Pediatr Obes, 11(2), 120-127.
-#'
-#' @family children cut-points
-#' @export
-chandler <- function(counts_per_minute) {
-  n <- length(counts_per_minute)
-  intensity <- character(n)
-
-  .warn_negative_counts(counts_per_minute, "chandler")
-
-  intensity[counts_per_minute <= 20] <- "sedentary"
-  intensity[counts_per_minute > 20 & counts_per_minute <= 1616] <- "light"
-  intensity[counts_per_minute > 1616 & counts_per_minute <= 3240] <- "moderate"
-  intensity[counts_per_minute > 3240] <- "vigorous"
-  intensity[is.na(counts_per_minute)] <- NA_character_
-
-  factor(intensity,
-         levels = c("sedentary", "light", "moderate", "vigorous"),
-         ordered = TRUE)
-}
-
-
-#' Apply Copeland (2009) Children Cut Points
-#'
-#' Cut-points for children (13-14 years) validated in free-living conditions.
-#'
-#' @param counts_per_minute Numeric vector of CPM
-#'
-#' @return Ordered factor with intensity levels
-#'
-#' @details
-#' Copeland (2009) children cutpoints:
-#' \itemize{
-#'   \item Sedentary: 0-100 CPM
-#'   \item Light: 101-2220 CPM
-#'   \item Moderate: 2221-6130 CPM
-#'   \item Vigorous: >= 6131 CPM
-#' }
-#'
-#' @references
-#' Source citation requires confirmation. The 0/100/2220/6130 CPM thresholds
-#' implemented here are child-magnitude cut-points and do NOT correspond to the
-#' older-adult paper (Copeland JL, Esliger DW. (2009). Accelerometer assessment
-#' of physical activity in active, healthy older adults. J Aging Phys Act,
-#' 17(1), 17-30) that was previously (and incorrectly) cited here; that paper is
-#' the source for \code{\link{copeland_older}}, not this children function. The
-#' validation study for these specific child thresholds has not been confirmed.
-#'
-#' @family children cut-points
-#' @export
-copeland <- function(counts_per_minute) {
-  n <- length(counts_per_minute)
-  intensity <- character(n)
-
-  .warn_negative_counts(counts_per_minute, "copeland")
-
-  intensity[counts_per_minute <= 100] <- "sedentary"
-  intensity[counts_per_minute > 100 & counts_per_minute <= 2220] <- "light"
-  intensity[counts_per_minute > 2220 & counts_per_minute <= 6130] <- "moderate"
-  intensity[counts_per_minute > 6130] <- "vigorous"
+  intensity[counts_per_minute >= 240 & counts_per_minute < 2120] <- "light"
+  intensity[counts_per_minute >= 2120 & counts_per_minute < 4450] <- "moderate"
+  intensity[counts_per_minute >= 4450] <- "vigorous"
   intensity[is.na(counts_per_minute)] <- NA_character_
 
   factor(intensity,
@@ -785,19 +684,18 @@ copeland <- function(counts_per_minute) {
 #' @return Ordered factor with intensity levels
 #'
 #' @details
-#' Romanzini (2014) cutpoints:
+#' Romanzini (2014) cutpoints for the vertical axis, published in counts per
+#' 15 s and applied here to counts per minute (times four):
 #' \itemize{
-#'   \item Sedentary: 0-180 CPM
-#'   \item Light: 181-756 CPM
-#'   \item Moderate: 757-1111 CPM
-#'   \item Vigorous: >= 1112 CPM
+#'   \item Sedentary: <= 46 counts/15 s (<= 184 CPM)
+#'   \item Light: 47-606 counts/15 s (185-2427 CPM)
+#'   \item Moderate: 607-817 counts/15 s (2428-3271 CPM)
+#'   \item Vigorous: >= 818 counts/15 s (>= 3272 CPM)
 #' }
 #'
-#' Note: These thresholds are notably lower than other cut-points.
-#'
 #' @references
-#' Romanzini M, et al. (2014). Calibration of accelerometers
-#' in adolescents. Eur J Sport Sci, 14(1), 91-99.
+#' Romanzini M, et al. (2014). Calibration of ActiGraph GT3X, Actical and RT3
+#' accelerometers in adolescents. Eur J Sport Sci, 14(1), 91-99.
 #'
 #' @family children cut-points
 #' @export
@@ -807,10 +705,11 @@ romanzini <- function(counts_per_minute) {
 
   .warn_negative_counts(counts_per_minute, "romanzini")
 
-  intensity[counts_per_minute <= 180] <- "sedentary"
-  intensity[counts_per_minute > 180 & counts_per_minute <= 756] <- "light"
-  intensity[counts_per_minute > 756 & counts_per_minute <= 1111] <- "moderate"
-  intensity[counts_per_minute > 1111] <- "vigorous"
+  # 46, 607 and 818 counts per 15 s, times four
+  intensity[counts_per_minute <= 184] <- "sedentary"
+  intensity[counts_per_minute > 184 & counts_per_minute < 2428] <- "light"
+  intensity[counts_per_minute >= 2428 & counts_per_minute < 3272] <- "moderate"
+  intensity[counts_per_minute >= 3272] <- "vigorous"
   intensity[is.na(counts_per_minute)] <- NA_character_
 
   factor(intensity,
@@ -823,24 +722,22 @@ romanzini <- function(counts_per_minute) {
 
 #' Apply Copeland (2009) Older Adult Cut Points
 #'
-#' Cut-points specifically validated for healthy older adults (65+).
-#' Lower thresholds account for reduced movement efficiency with age.
+#' Cut-points validated for active, healthy older adults (mean age 70).
 #'
 #' @param counts_per_minute Numeric vector of CPM
 #'
 #' @return Ordered factor with intensity levels
 #'
 #' @details
-#' Copeland (2009) cutpoints for older adults:
+#' Copeland and Esliger (2009) set one cut point, 1041 CPM for moderate to vigorous
+#' activity, and counted time under 50 CPM as sedentary:
 #' \itemize{
-#'   \item Sedentary: 0-99 CPM
-#'   \item Light: 100-1040 CPM
-#'   \item Moderate: 1041-1800 CPM (lower than adults)
-#'   \item Vigorous: >= 1801 CPM
+#'   \item Sedentary: 0-49 CPM
+#'   \item Light: 50-1040 CPM
+#'   \item Moderate to vigorous: >= 1041 CPM, returned as "moderate"
 #' }
 #'
-#' Note: The moderate threshold is substantially lower than adult cut-points
-#' to account for age-related changes in movement patterns.
+#' The paper has no separate vigorous cut, so no epoch is "vigorous".
 #'
 #' @references
 #' Copeland JL, Esliger DW. (2009). Accelerometer assessment of physical
@@ -854,10 +751,9 @@ copeland_older <- function(counts_per_minute) {
 
   .warn_negative_counts(counts_per_minute, "copeland_older")
 
-  intensity[counts_per_minute < 100] <- "sedentary"
-  intensity[counts_per_minute >= 100 & counts_per_minute <= 1040] <- "light"
-  intensity[counts_per_minute > 1040 & counts_per_minute <= 1800] <- "moderate"
-  intensity[counts_per_minute > 1800] <- "vigorous"
+  intensity[counts_per_minute < 50] <- "sedentary"
+  intensity[counts_per_minute >= 50 & counts_per_minute < 1041] <- "light"
+  intensity[counts_per_minute >= 1041] <- "moderate"
   intensity[is.na(counts_per_minute)] <- NA_character_
 
   factor(intensity,
@@ -902,8 +798,10 @@ CANHR.Cutpoints <- function(counts_per_minute) {
 #'
 #' @param data Numeric vector of activity metric (CPM, VM CPM, etc.)
 #' @param thresholds Named numeric vector of thresholds, e.g.,
-#'   c(light = 100, moderate = 2020, vigorous = 5999)
-#' @param labels Character vector of intensity labels (default: derived from thresholds)
+#'   c(light = 100, moderate = 2020, vigorous = 5999), in any order
+#' @param labels Character vector of intensity labels from lowest to highest, one
+#'   more than the thresholds (default: "sedentary", then the names of the
+#'   thresholds in increasing order)
 #'
 #' @return Ordered factor with intensity levels
 #'
@@ -924,7 +822,8 @@ custom_cutpoints <- function(data,
       stop("When 'labels' is NULL, 'thresholds' must be a fully named numeric ",
            "vector (e.g., c(light = 100, moderate = 2020, vigorous = 5999)).")
     }
-    labels <- c("sedentary", names(thresholds))
+    # Each name goes with its own threshold, in the sorted order used below
+    labels <- c("sedentary", names(sort(thresholds)))
   }
 
   # Each threshold opens a new category above the base level, so the number of
@@ -962,10 +861,12 @@ custom_cutpoints <- function(data,
 #'
 #' Unified function to apply any supported cut-point algorithm.
 #'
-#' @param data Numeric vector of activity metric (CPM or VM CPM)
+#' @param data Numeric vector of activity metric per minute (CPM or VM CPM);
+#'   \code{\link{to_cpm}} converts counts of other epoch lengths
 #' @param algorithm Character string specifying algorithm. See Details.
-#' @param epoch_seconds Current epoch length (for CPM conversion)
-#' @param age Numeric age in years (for age-specific algorithms)
+#' @param epoch_seconds Epoch length in seconds. \code{data} is already per
+#'   minute, so it is not rescaled for any algorithm.
+#' @param age Numeric age in years, used by "auto"
 #' @param ... Additional arguments passed to specific algorithms
 #'
 #' @return Ordered factor with intensity levels
@@ -974,15 +875,14 @@ custom_cutpoints <- function(data,
 #' Supported algorithms:
 #'
 #' \strong{Adult count-based:}
-#' "freedson", "troiano", "matthews", "santos_lozano_younger",
-#' "santos_lozano_older", "crouter"
+#' "freedson", "troiano", "matthews", "crouter"
 #'
 #' \strong{Triaxial/VM:}
-#' "sasaki_vm3", "freedson_vm3"
+#' "sasaki_vm3", "freedson_vm3", "santos_lozano_younger", "santos_lozano_older"
 #'
 #' \strong{Children count-based:}
 #' "evenson", "puyau", "mattocks", "pate_preschool",
-#' "butte_preschool", "chandler", "copeland", "romanzini"
+#' "butte_preschool", "romanzini"
 #'
 #' \strong{Older adults:}
 #' "copeland_older"
@@ -1010,18 +910,6 @@ apply_cutpoints <- function(data,
                              age = NULL,
                              ...) {
 
-  # Convert to CPM if needed (for count-based algorithms)
-  needs_cpm <- algorithm %in% c(
-    "freedson", "troiano", "matthews", "santos_lozano_younger",
-    "santos_lozano_older", "crouter", "evenson", "puyau", "mattocks",
-    "pate_preschool", "butte_preschool", "chandler", "copeland",
-    "romanzini", "copeland_older", "canhr"
-  )
-
-  if (needs_cpm && epoch_seconds != 60) {
-    data <- to_cpm(data, epoch_seconds)
-  }
-
   # Auto-select algorithm based on age
   if (algorithm == "auto") {
     if (is.null(age)) {
@@ -1048,22 +936,20 @@ apply_cutpoints <- function(data,
     "freedson" = freedson(data),
     "troiano" = troiano(data),
     "matthews" = matthews(data),
-    "santos_lozano_younger" = santos_lozano(data, "younger"),
-    "santos_lozano_older" = santos_lozano(data, "older"),
     "crouter" = crouter(data, ...),
 
     # Triaxial/VM
     "sasaki_vm3" = sasaki_vm3(data),
     "freedson_vm3" = freedson_vm3(data),
+    "santos_lozano_younger" = santos_lozano(data, "younger"),
+    "santos_lozano_older" = santos_lozano(data, "older"),
 
     # Children count-based
     "evenson" = evenson(data),
     "puyau" = puyau(data),
     "mattocks" = mattocks(data),
     "pate_preschool" = pate_preschool(data),
-    "butte_preschool" = butte_preschool(data, ...),
-    "chandler" = chandler(data),
-    "copeland" = copeland(data),
+    "butte_preschool" = butte_preschool(data),
     "romanzini" = romanzini(data),
 
     # Older adults
@@ -1126,11 +1012,11 @@ get_cutpoint_thresholds <- function(algorithm = "freedson") {
     # Matthews (2005): sed < 100, light 100-759, lifestyle 760-1951, mod 1952-5724, vig >= 5725
     "matthews" = list(sedentary = 100, light = 760, lifestyle = 1952, moderate = 5725, vigorous = Inf),
 
-    # Santos-Lozano younger (2013): sed < 100, light 100-3207, mod 3208-8564, vig >= 8565
+    # Santos-Lozano younger (2013), vector magnitude: sed < 100, light 100-3207, mod 3208-8564, vig >= 8565
     "santos_lozano" = ,
     "santos_lozano_younger" = list(sedentary = 100, light = 3208, moderate = 8565, vigorous = Inf),
 
-    # Santos-Lozano older (2013): sed < 100, light 100-2750, mod 2751-9358, vig >= 9359
+    # Santos-Lozano older (2013), vector magnitude: sed < 100, light 100-2750, mod 2751-9358, vig >= 9359
     "santos_lozano_older" = list(sedentary = 100, light = 2751, moderate = 9359, vigorous = Inf),
 
     # Crouter (2006) without CV: sed <= 50, light 51-1040, mod 1041-5724, vig >= 5725
@@ -1140,8 +1026,8 @@ get_cutpoint_thresholds <- function(algorithm = "freedson") {
     # Sasaki VM3 (2011): sed < 200, light 200-2689, mod 2690-6166, vig 6167-9642, vvig >= 9643
     "sasaki_vm3" = list(sedentary = 200, light = 2690, moderate = 6167, vigorous = 9643),
 
-    # Freedson VM3 (2011): sed < 100, light 100-2452, mod 2453-6891, vig >= 6892
-    "freedson_vm3" = list(sedentary = 100, light = 2453, moderate = 6892, vigorous = Inf),
+    # Freedson VM3 (2011) is Sasaki, John and Freedson's set, as above
+    "freedson_vm3" = list(sedentary = 200, light = 2690, moderate = 6167, vigorous = 9643),
 
     # Children cut-points
     # Evenson (2008): sed <= 100, light 101-2295, mod 2296-4011, vig > 4011
@@ -1156,21 +1042,15 @@ get_cutpoint_thresholds <- function(algorithm = "freedson") {
     # Pate preschool (2006): sed < 800, light 800-1679, mod 1680-3367, vig >= 3368
     "pate_preschool" = list(sedentary = 800, light = 1680, moderate = 3368, vigorous = Inf),
 
-    # Butte preschool (2014) age 5+: sed < 240, light 240-2295, mvpa >= 2296
-    "butte_preschool" = list(sedentary = 240, light = 2296, moderate = Inf, vigorous = Inf),
+    # Butte preschool (2014): sed < 240, light 240-2119, mod 2120-4449, vig >= 4450
+    "butte_preschool" = list(sedentary = 240, light = 2120, moderate = 4450, vigorous = Inf),
 
-    # Chandler (2016): sed <= 20, light 21-1616, mod 1617-3240, vig > 3240
-    "chandler" = list(sedentary = 21, light = 1617, moderate = 3241, vigorous = Inf),
-
-    # Copeland children (2009): sed <= 100, light 101-2220, mod 2221-6130, vig > 6130
-    "copeland" = list(sedentary = 101, light = 2221, moderate = 6131, vigorous = Inf),
-
-    # Romanzini (2014): sed <= 180, light 181-756, mod 757-1111, vig > 1111
-    "romanzini" = list(sedentary = 181, light = 757, moderate = 1112, vigorous = Inf),
+    # Romanzini (2014), vertical axis x4: sed <= 184, light 185-2427, mod 2428-3271, vig >= 3272
+    "romanzini" = list(sedentary = 185, light = 2428, moderate = 3272, vigorous = Inf),
 
     # Older adults
-    # Copeland older (2009): sed < 100, light 100-1040, mod 1041-1800, vig > 1800
-    "copeland_older" = list(sedentary = 100, light = 1041, moderate = 1801, vigorous = Inf),
+    # Copeland older (2009): sed < 50, light 50-1040, MVPA >= 1041 with no vigorous cut
+    "copeland_older" = list(sedentary = 50, light = 1041, moderate = Inf, vigorous = Inf),
 
     # CANHR custom: sed <= 150, light 151-2200, mod 2201-6000, vig 6001-10000, vvig > 10000
     "canhr" = list(sedentary = 151, light = 2201, moderate = 6001, vigorous = 10001),
@@ -1206,38 +1086,36 @@ list_cutpoints <- function(category = "all") {
   cutpoints_info <- data.frame(
     algorithm = c(
       # Adult count-based
-      "freedson", "troiano", "matthews", "santos_lozano_younger",
-      "santos_lozano_older", "crouter",
+      "freedson", "troiano", "matthews", "crouter",
       # Triaxial
-      "sasaki_vm3", "freedson_vm3",
+      "sasaki_vm3", "freedson_vm3", "santos_lozano_younger", "santos_lozano_older",
       # Children
       "evenson", "puyau", "mattocks", "pate_preschool",
-      "butte_preschool", "chandler", "copeland", "romanzini",
+      "butte_preschool", "romanzini",
       # Older adults
       "copeland_older",
       # Custom
       "canhr"
     ),
     category = c(
-      rep("adult", 6),
-      rep("triaxial", 2),
-      rep("children", 8),
+      rep("adult", 4),
+      rep("triaxial", 4),
+      rep("children", 6),
       "older_adult",
       "custom"
     ),
     input = c(
+      rep("CPM", 4),
+      rep("VM CPM", 4),
       rep("CPM", 6),
-      rep("VM CPM", 2),
-      rep("CPM", 8),
       "CPM",
       "CPM"
     ),
     reference = c(
-      "Freedson 1998", "Troiano 2008", "Matthews 2005",
-      "Santos-Lozano 2013", "Santos-Lozano 2013", "Crouter 2006",
-      "Sasaki 2011", "Freedson 2011",
+      "Freedson 1998", "Troiano 2008", "Matthews 2005", "Crouter 2006",
+      "Sasaki 2011", "Sasaki 2011", "Santos-Lozano 2013", "Santos-Lozano 2013",
       "Evenson 2008", "Puyau 2002", "Mattocks 2007", "Pate 2006",
-      "Butte 2014", "Chandler 2016", "Copeland 2009", "Romanzini 2014",
+      "Butte 2014", "Romanzini 2014",
       "Copeland 2009",
       "CANHR Custom"
     ),
@@ -1378,9 +1256,10 @@ light_activity <- function(intensity_levels,
 #'
 #' Apply multiple cut-point algorithms and compare results.
 #'
-#' @param data Numeric vector of activity data
+#' @param data Numeric vector of activity metric per minute (CPM or VM CPM);
+#'   \code{\link{to_cpm}} converts counts of other epoch lengths
 #' @param algorithms Character vector of algorithm names to compare
-#' @param epoch_seconds Epoch length in seconds
+#' @param epoch_seconds Epoch length in seconds, for the minutes each epoch counts
 #' @param wear_time Logical vector indicating valid wear time
 #'
 #' @return Data frame comparing MVPA minutes across algorithms
@@ -1412,7 +1291,7 @@ compare_cutpoints <- function(data,
 
   for (algo in algorithms) {
     tryCatch({
-      intensity <- apply_cutpoints(data, algo, epoch_seconds)
+      intensity <- apply_cutpoints(data, algo)
 
       results <- rbind(results, data.frame(
         algorithm = algo,

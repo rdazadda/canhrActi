@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Installer header</title>
+<style>
+  @font-face {
+    font-family: 'Roboto';
+    font-style: normal;
+    font-weight: 100 900;
+    src: url('../../../inst/shiny/canhrActi_dashboard/www/fonts/roboto-latin.woff2') format('woff2');
+  }
+
+  /* The dashboard's shell band, light theme. */
+  :root {
+    --band: #262f3c;
+    --tile: #ffffff;
+    --name: #ffffff;
+  }
+
+  html, body {
+    margin: 0;
+    width: 150px;
+    height: 57px;
+    overflow: hidden;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: var(--band);
+    font-family: 'Roboto', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .tile {
+    flex: 0 0 32px;
+    width: 32px;
+    height: 32px;
+    padding: 3px;
+    box-sizing: border-box;
+    border-radius: 6px;
+    background: var(--tile);
+  }
+  .tile img {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .name {
+    font-size: 17px;
+    font-weight: 500;
+    color: var(--name);
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+  <div class="tile"><img src="../icon.png" alt=""></div>
+  <div class="name">CANHRActi</div>
+</body>
+</html>

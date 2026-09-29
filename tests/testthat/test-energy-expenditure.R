@@ -38,7 +38,7 @@ test_that("calculate.energy.expenditure validates body mass range", {
 
 test_that("calculate.energy.expenditure uses default body mass", {
   mets <- c(3.0)
-  expect_warning(result <- calculate.energy.expenditure(mets, body_mass = NA))
+  expect_warning(result <- calculate.energy.expenditure(mets, body_mass = NA), "70 kg")
   expect_true(result$total_kcal > 0)
 })
 
@@ -86,6 +86,7 @@ test_that("calculate.energy.expenditure.direct uses freedson.vm3", {
 
   vm <- sqrt(3000^2 + 2000^2 + 1000^2)
   expect_true(result$kcal_per_min > 0)
+  expect_equal(result$kcal_per_min, 0.001064 * vm + 0.087512 * 70 - 5.500229)
 })
 
 test_that("calculate.energy.expenditure.direct warns for missing body mass", {
@@ -160,6 +161,15 @@ test_that("calculate.average.mets filters by wear time", {
   result <- calculate.average.mets(mets, wear.time, timestamp)
 
   expect_equal(result$average_mets, 2.0)
+})
+
+test_that("calculate.average.mets averages each day on the timestamps' own clock", {
+  timestamp <- seq(as.POSIXct("2024-01-01 00:00:00", tz = "America/Anchorage"), by = 60, length.out = 2880)
+
+  result <- calculate.average.mets(rep(c(2, 4), each = 1440), rep(TRUE, 2880), timestamp)
+
+  expect_identical(result$daily_average_mets$date, as.Date(c("2024-01-01", "2024-01-02")))
+  expect_identical(result$daily_average_mets$average_mets, c(2, 4))
 })
 
 test_that("energy expenditure functions handle empty input", {

@@ -10,15 +10,44 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
-// sliding_window_mean_cpp
-Rcpp::List sliding_window_mean_cpp(NumericVector x, int window_size);
-RcppExport SEXP _canhrActi_sliding_window_mean_cpp(SEXP xSEXP, SEXP window_sizeSEXP) {
+// gt3x_log_index_cpp
+Rcpp::List gt3x_log_index_cpp(std::string path);
+RcppExport SEXP _canhrActi_gt3x_log_index_cpp(SEXP pathSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP);
-    Rcpp::traits::input_parameter< int >::type window_size(window_sizeSEXP);
-    rcpp_result_gen = Rcpp::wrap(sliding_window_mean_cpp(x, window_size));
+    Rcpp::traits::input_parameter< std::string >::type path(pathSEXP);
+    rcpp_result_gen = Rcpp::wrap(gt3x_log_index_cpp(path));
+    return rcpp_result_gen;
+END_RCPP
+}
+// gt3x_log_block_cpp
+Rcpp::List gt3x_log_block_cpp(std::string path, NumericVector off, NumericVector ts, int sf, double scale, double start);
+RcppExport SEXP _canhrActi_gt3x_log_block_cpp(SEXP pathSEXP, SEXP offSEXP, SEXP tsSEXP, SEXP sfSEXP, SEXP scaleSEXP, SEXP startSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type path(pathSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type off(offSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type ts(tsSEXP);
+    Rcpp::traits::input_parameter< int >::type sf(sfSEXP);
+    Rcpp::traits::input_parameter< double >::type scale(scaleSEXP);
+    Rcpp::traits::input_parameter< double >::type start(startSEXP);
+    rcpp_result_gen = Rcpp::wrap(gt3x_log_block_cpp(path, off, ts, sf, scale, start));
+    return rcpp_result_gen;
+END_RCPP
+}
+// gt3x_copy_stored_cpp
+double gt3x_copy_stored_cpp(std::string src, std::string dst, double offset, double len);
+RcppExport SEXP _canhrActi_gt3x_copy_stored_cpp(SEXP srcSEXP, SEXP dstSEXP, SEXP offsetSEXP, SEXP lenSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type src(srcSEXP);
+    Rcpp::traits::input_parameter< std::string >::type dst(dstSEXP);
+    Rcpp::traits::input_parameter< double >::type offset(offsetSEXP);
+    Rcpp::traits::input_parameter< double >::type len(lenSEXP);
+    rcpp_result_gen = Rcpp::wrap(gt3x_copy_stored_cpp(src, dst, offset, len));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -33,17 +62,6 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type window_M10(window_M10SEXP);
     Rcpp::traits::input_parameter< int >::type start_minute(start_minuteSEXP);
     rcpp_result_gen = Rcpp::wrap(calculate_L5_M10_cpp(minute_data, window_L5, window_M10, start_minute));
-    return rcpp_result_gen;
-END_RCPP
-}
-// calculate_L1_M1_cpp
-Rcpp::List calculate_L1_M1_cpp(NumericVector minute_data);
-RcppExport SEXP _canhrActi_calculate_L1_M1_cpp(SEXP minute_dataSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< NumericVector >::type minute_data(minute_dataSEXP);
-    rcpp_result_gen = Rcpp::wrap(calculate_L1_M1_cpp(minute_data));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -67,18 +85,6 @@ BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< NumericVector >::type hourly_data(hourly_dataSEXP);
     rcpp_result_gen = Rcpp::wrap(calculate_IV_cpp(hourly_data));
-    return rcpp_result_gen;
-END_RCPP
-}
-// calculate_phi_cpp
-double calculate_phi_cpp(NumericVector x, int lag);
-RcppExport SEXP _canhrActi_calculate_phi_cpp(SEXP xSEXP, SEXP lagSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP);
-    Rcpp::traits::input_parameter< int >::type lag(lagSEXP);
-    rcpp_result_gen = Rcpp::wrap(calculate_phi_cpp(x, lag));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -118,30 +124,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// rolling_max_cpp
-NumericVector rolling_max_cpp(NumericVector x, int window);
-RcppExport SEXP _canhrActi_rolling_max_cpp(SEXP xSEXP, SEXP windowSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP);
-    Rcpp::traits::input_parameter< int >::type window(windowSEXP);
-    rcpp_result_gen = Rcpp::wrap(rolling_max_cpp(x, window));
-    return rcpp_result_gen;
-END_RCPP
-}
-// rolling_min_cpp
-NumericVector rolling_min_cpp(NumericVector x, int window);
-RcppExport SEXP _canhrActi_rolling_min_cpp(SEXP xSEXP, SEXP windowSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP);
-    Rcpp::traits::input_parameter< int >::type window(windowSEXP);
-    rcpp_result_gen = Rcpp::wrap(rolling_min_cpp(x, window));
-    return rcpp_result_gen;
-END_RCPP
-}
 // calculate_all_circadian_cpp
 Rcpp::List calculate_all_circadian_cpp(NumericVector minute_data, int hours_per_day, int start_minute);
 RcppExport SEXP _canhrActi_calculate_all_circadian_cpp(SEXP minute_dataSEXP, SEXP hours_per_daySEXP, SEXP start_minuteSEXP) {
@@ -157,17 +139,15 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_canhrActi_sliding_window_mean_cpp", (DL_FUNC) &_canhrActi_sliding_window_mean_cpp, 2},
+    {"_canhrActi_gt3x_log_index_cpp", (DL_FUNC) &_canhrActi_gt3x_log_index_cpp, 1},
+    {"_canhrActi_gt3x_log_block_cpp", (DL_FUNC) &_canhrActi_gt3x_log_block_cpp, 6},
+    {"_canhrActi_gt3x_copy_stored_cpp", (DL_FUNC) &_canhrActi_gt3x_copy_stored_cpp, 4},
     {"_canhrActi_calculate_L5_M10_cpp", (DL_FUNC) &_canhrActi_calculate_L5_M10_cpp, 4},
-    {"_canhrActi_calculate_L1_M1_cpp", (DL_FUNC) &_canhrActi_calculate_L1_M1_cpp, 1},
     {"_canhrActi_calculate_IS_cpp", (DL_FUNC) &_canhrActi_calculate_IS_cpp, 2},
     {"_canhrActi_calculate_IV_cpp", (DL_FUNC) &_canhrActi_calculate_IV_cpp, 1},
-    {"_canhrActi_calculate_phi_cpp", (DL_FUNC) &_canhrActi_calculate_phi_cpp, 2},
     {"_canhrActi_rolling_mean_cpp", (DL_FUNC) &_canhrActi_rolling_mean_cpp, 2},
     {"_canhrActi_rolling_sd_cpp", (DL_FUNC) &_canhrActi_rolling_sd_cpp, 2},
     {"_canhrActi_rolling_sum_cpp", (DL_FUNC) &_canhrActi_rolling_sum_cpp, 2},
-    {"_canhrActi_rolling_max_cpp", (DL_FUNC) &_canhrActi_rolling_max_cpp, 2},
-    {"_canhrActi_rolling_min_cpp", (DL_FUNC) &_canhrActi_rolling_min_cpp, 2},
     {"_canhrActi_calculate_all_circadian_cpp", (DL_FUNC) &_canhrActi_calculate_all_circadian_cpp, 3},
     {NULL, NULL, 0}
 };

@@ -22,7 +22,7 @@ create_summary_figure(
 
 \item{wear_time}{Optional wear time vector}
 
-\item{include}{Panels to include: "heatmap", "clock", "distribution", "daily"}
+\item{include}{Panels to include: "heatmap", "clock", "distribution"}
 
 \item{title}{Overall figure title}
 }

@@ -13,24 +13,28 @@ freedson_vm3(vm_counts_per_minute)
 Ordered factor with intensity levels
 }
 \description{
-Triaxial cut-points from Freedson's Vector Magnitude validation study.
-Alternative to Sasaki VM3 with slightly different thresholds.
+The vector magnitude cut-points of Sasaki, John and Freedson (2011), which
+ActiLife lists as Freedson VM3; the same thresholds as \code{\link{sasaki_vm3}}.
+2453 VM CPM, sometimes quoted with this name, is the switch point of the
+Freedson VM3 energy equation, not an intensity cut.
 }
 \details{
 Freedson VM3 (2011) cutpoints:
 \itemize{
-\item Sedentary: 0-99 VM CPM
-\item Light: 100-2452 VM CPM
-\item Moderate: 2453-6891 VM CPM
-\item Vigorous: >= 6892 VM CPM
+\item Sedentary: 0-199 VM CPM
+\item Light: 200-2689 VM CPM
+\item Moderate: 2690-6166 VM CPM
+\item Vigorous: 6167-9642 VM CPM
+\item Very Vigorous: >= 9643 VM CPM
 }
 }
 \references{
-Freedson PS, et al. (2011). Evaluation of artificial neural network algorithms
-for predicting METs and activity type from accelerometer data. J Sci Med Sport.
+Sasaki JE, John D, Freedson PS. (2011). Validation and comparison of ActiGraph
+activity monitors. J Sci Med Sport, 14(5), 411-416.
 }
 \seealso{
 Other triaxial cut-points:
+\code{\link[=santos_lozano]{santos_lozano()}},
 \code{\link[=sasaki_vm3]{sasaki_vm3()}}
 }
 \concept{triaxial cut-points}

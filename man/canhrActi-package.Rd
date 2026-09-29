@@ -3,9 +3,9 @@
 \docType{package}
 \name{canhrActi-package}
 \alias{canhrActi-package}
-\title{canhrActi: CANHR ActiGraph Physical Activity Analysis}
+\title{canhrActi: Activity, Sleep and Circadian Analysis of Accelerometer Data}
 \description{
-Comprehensive accelerometer data analysis suite developed by the Center for Alaska Native Health Research (CANHR). Implements scientifically validated algorithms including Choi (2011) and Troiano (2007) wear time detection, Freedson (1998) intensity cut points, Cole-Kripke and Sadeh sleep scoring, and 12 METs prediction algorithms. Features unique wake period inversion (sleepwaker methodology) for separating sleep from waking sedentary behavior. Includes circadian rhythm analysis (L5, M10, IS, IV, RA, phi) and sedentary fragmentation metrics. Supports ActiGraph AGD files with pre-processed activity counts. Produces results compatible with ActiLife software.
+Accelerometer analysis for physical activity, sleep, sedentary behavior and circadian rhythm research, from the Center for Alaska Native Health Research (CANHR). Reads 'ActiGraph' count files (.agd) and raw recordings ('ActiGraph' .gt3x, 'Axivity' .cwa, 'GENEActiv' .bin). Count results are compatible with 'ActiLife', the raw pipeline gives the same results as 'GGIR', and an interactive dashboard runs the full analysis without writing code.
 }
 \seealso{
 Useful links:
@@ -16,13 +16,13 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Raymond Dacosta Azadda \email{rdazadda@alaska.edu}
+\strong{Maintainer}: Raymond Dacosta Azadda \email{rdazadda@alaska.edu} (\href{https://orcid.org/0009-0002-4384-4556}{ORCID})
 
 Authors:
 \itemize{
-  \item Raymond Dacosta Azadda \email{rdazadda@alaska.edu}
-  \item Andrew Grogan-Kaylor \email{agrogan@umich.edu}
-  \item KyungSook Lee \email{klee98@alaska.edu}
+  \item Raymond Dacosta Azadda \email{rdazadda@alaska.edu} (\href{https://orcid.org/0009-0002-4384-4556}{ORCID})
+  \item AK CEAL Team
+  \item Stacy Rasmus
 }
 
 }

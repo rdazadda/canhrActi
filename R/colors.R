@@ -155,7 +155,7 @@ show_canhrActi_colors <- function() {
 
   for (pal in palettes) {
     colors <- canhrActi_palette(pal)
-    cat("\n", toupper(pal), "Palette:\n", sep = "")
+    cat("\n", toupper(pal), " Palette:\n", sep = "")
     for (i in seq_along(colors)) {
       cat(sprintf("  %-15s %s\n", names(colors)[i], colors[i]))
     }

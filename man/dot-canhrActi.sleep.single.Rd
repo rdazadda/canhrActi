@@ -13,7 +13,8 @@
   wake_time_end,
   min_sleep_period,
   max_sleep_period,
-  min_nonzero_epochs
+  min_nonzero_epochs,
+  verbose = TRUE
 )
 }
 \description{

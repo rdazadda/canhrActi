@@ -51,6 +51,10 @@ comprehensive sleep metrics (TST, WASO, SOL, efficiency), activity overlay,
 and awakening markers.
 }
 \details{
+Each panel is one night, noon to noon, dated by its evening. With
+\code{sleep_periods}, a night that holds more than one period is labelled by
+its longest.
+
 This enhanced hypnogram includes:
 \itemize{
 \item TST (Total Sleep Time) annotation

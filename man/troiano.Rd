@@ -33,7 +33,6 @@ by accelerometer. Med Sci Sports Exerc, 40(1), 181-188.
 Other adult cut-points:
 \code{\link[=crouter]{crouter()}},
 \code{\link[=freedson]{freedson()}},
-\code{\link[=matthews]{matthews()}},
-\code{\link[=santos_lozano]{santos_lozano()}}
+\code{\link[=matthews]{matthews()}}
 }
 \concept{adult cut-points}

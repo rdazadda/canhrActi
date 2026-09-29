@@ -34,6 +34,7 @@ monitors. J Sci Med Sport, 14(5), 411-416.
 }
 \seealso{
 Other triaxial cut-points:
-\code{\link[=freedson_vm3]{freedson_vm3()}}
+\code{\link[=freedson_vm3]{freedson_vm3()}},
+\code{\link[=santos_lozano]{santos_lozano()}}
 }
 \concept{triaxial cut-points}

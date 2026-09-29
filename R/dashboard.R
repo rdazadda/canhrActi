@@ -10,28 +10,25 @@
 #' @param port Integer. The TCP port for the Shiny app. Default is NULL (random port).
 #' @param host Character. The hostname. Default is "127.0.0.1" (localhost).
 #'
-#' @return Invisibly returns the Shiny app object.
+#' @return The value \code{shiny::runApp()} returns when the app stops.
 #'
 #' @details
 #' The dashboard includes the following modules:
 #' \itemize{
-#'   \item \strong{Data Upload}: Load AGD files, configure subject info
-#'   \item \strong{Overview}: Quick summary of data quality and key metrics
+#'   \item \strong{Overview}: Load files, with a quick summary of data quality and key metrics
 #'   \item \strong{Wear Time}: Detect wear/non-wear time using Choi, Troiano, or CANHR algorithms
-#'   \item \strong{Sleep Analysis}: Cole-Kripke, Sadeh, and Tudor-Locke sleep detection
-#'   \item \strong{Physical Activity}: Intensity classification and MVPA bout detection
-#'   \item \strong{Circadian Rhythm}: L5, M10, IS, IV, RA, and phi analysis
-#'   \item \strong{Batch Processing}: Process multiple files at once
-#'   \item \strong{Export}: Generate CSV exports and HTML reports
+#'   \item \strong{Activity}: Intensity classification and MVPA bout detection
+#'   \item \strong{Sleep}: Cole-Kripke, Sadeh, and Tudor-Locke sleep detection
+#'   \item \strong{Circadian}: L5, M10, IS, IV, RA, and phi analysis
+#'   \item \strong{Sedentary}: Sedentary bouts and their fragmentation
+#'   \item \strong{Visualization}: Figures built from the loaded recordings
 #' }
 #'
 #' @section Required Packages:
 #' The dashboard requires additional packages that are suggested dependencies:
 #' \itemize{
 #'   \item shiny
-#'   \item bslib
-#'   \item bsicons
-#'   \item DT
+#'   \item shinydashboard
 #'   \item shinyjs
 #' }
 #'
@@ -55,7 +52,7 @@
 run_dashboard <- function(launch.browser = TRUE, port = NULL, host = "127.0.0.1") {
 
   # Check for required packages
-  required_packages <- c("shiny", "shinydashboard", "bslib", "bsicons", "DT", "shinyjs")
+  required_packages <- c("shiny", "shinydashboard", "shinyjs")
   missing_packages <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
 
 

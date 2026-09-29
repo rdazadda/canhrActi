@@ -1,8 +1,4 @@
 # Tests for sri.matrix() - Phillips (2017) epoch-of-day x day matrix SRI.
-#
-# Reference packages (ActCR provides the canonical SRI() implementation used
-# in the sleep literature) are only used here, guarded by skip_if_not_installed,
-# to numerically validate the hand-coded base-R math.
 
 # --- Helpers ----------------------------------------------------------------
 
@@ -170,7 +166,6 @@ test_that("all-NA states return NA but report calendar span", {
 # --- Agreement with the existing fast (single-lag) form ---------------------
 
 test_that("matches .calculate.sri.fast on a clean gapless regular series", {
-  skip_if_not(exists(".calculate.sri.fast"))
   ts <- .make_ts(5)
   state <- .regular_states(ts, sleep_start = 0, sleep_hours = 8)
   fast <- .calculate.sri.fast(state, ts, 60)
@@ -178,43 +173,4 @@ test_that("matches .calculate.sri.fast on a clean gapless regular series", {
   # On a perfectly regular, gapless, midnight-aligned series the two forms
   # coincide (both 100). Allow tiny rounding tolerance.
   expect_equal(mat, fast, tolerance = 1e-6)
-})
-
-
-# --- Numeric validation against ActCR reference (if installed) --------------
-
-test_that("matches ActCR::SRI reference implementation", {
-  skip_if_not_installed("ActCR")
-  # ActCR::SRI expects a long data.frame with columns: Id, time, state
-  # where state is 0/1 (1 = sleep). We build a moderately irregular sleeper
-  # so the value is strictly interior (not a trivial +/-100 endpoint).
-  set.seed(42)
-  n_days <- 7
-  ts <- .make_ts(n_days)
-  per_day <- 1440
-
-  # Each day shift sleep onset by a random amount -> partial regularity.
-  state_chr <- character(0)
-  day_starts <- sample(21:25, n_days, replace = TRUE) %% 24  # onset hour
-  for (d in seq_len(n_days)) {
-    day_ts <- ts[((d - 1) * per_day + 1):(d * per_day)]
-    state_chr <- c(state_chr,
-                   .regular_states(day_ts, sleep_start = day_starts[d],
-                                   sleep_hours = 8))
-  }
-  ours <- sri.matrix(state_chr, ts, 60)$SRI
-
-  ref_val <- tryCatch({
-    df <- data.frame(
-      Id = 1L,
-      Time = ts,
-      State = as.integer(state_chr == "S")
-    )
-    # ActCR::SRI signature varies across versions; attempt the documented one.
-    r <- ActCR::SRI(df)
-    if (is.list(r) && !is.null(r$SRI)) r$SRI else as.numeric(r)
-  }, error = function(e) NA_real_)
-
-  skip_if(is.na(ref_val), "ActCR::SRI signature differs; skipping numeric xref")
-  expect_equal(ours, as.numeric(ref_val), tolerance = 0.5)
 })

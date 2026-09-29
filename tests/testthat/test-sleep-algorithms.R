@@ -20,10 +20,11 @@ test_that("cole-kripke handles NA values with warning", {
   expect_equal(length(result), 5)
 })
 
-test_that("cole-kripke caps counts at 300", {
+test_that("cole-kripke lets a spike wake its neighbours", {
   counts <- c(rep(0, 50), rep(50000, 10), rep(0, 50))
   result <- sleep.cole.kripke(counts, apply_rescoring = FALSE)
-  expect_true(any(result == "W"))
+  # the window reaches 2 epochs before the spike at 51:60 and 4 after it
+  expect_equal(which(result == "W"), 49:64)
 })
 
 test_that("cole-kripke uses 7-epoch window correctly", {
@@ -65,6 +66,7 @@ test_that("sadeh caps counts at 300", {
   counts <- c(rep(0, 50), rep(50000, 10), rep(0, 50))
   result <- sleep.sadeh(counts)
   expect_true(any(result == "W"))
+  expect_identical(result, sleep.sadeh(c(rep(0, 50), rep(300, 10), rep(0, 50))))
 })
 
 test_that("sadeh uses 11-epoch window correctly", {
@@ -111,20 +113,17 @@ test_that("tudor-locke requires minimum sleep period", {
 })
 
 test_that("tudor-locke detects multiple sleep periods", {
-  # Create realistic sleep period with multiple awakenings and variable activity
-  # Use the same pattern as the single-period test which works
-  sleep.state <- c(rep("W", 10),
-                   rep("S", 80), rep("W", 3), rep("S", 70), rep("W", 3), rep("S", 50),
-                   rep("W", 15))
-  timestamps <- seq(as.POSIXct("2024-01-01 22:00:00"), by = 60, length.out = 231)
-  counts <- c(rep(500, 10),
-              c(rep(30, 40), rep(80, 40)), rep(300, 3),
-              c(rep(20, 35), rep(100, 35)), rep(300, 3),
-              c(rep(40, 25), rep(90, 25)),
-              rep(500, 15))
+  # The night from the single-period test, twice, 24 hours apart
+  night.state <- c(rep("S", 80), rep("W", 3), rep("S", 70), rep("W", 3), rep("S", 50))
+  night.counts <- c(c(rep(30, 40), rep(80, 40)), rep(300, 3),
+                    c(rep(20, 35), rep(100, 35)), rep(300, 3),
+                    c(rep(40, 25), rep(90, 25)))
+  sleep.state <- c(rep("W", 10), night.state, rep("W", 1234), night.state, rep("W", 15))
+  counts <- c(rep(500, 10), night.counts, rep(500, 1234), night.counts, rep(500, 15))
+  timestamps <- seq(as.POSIXct("2024-01-01 22:00:00"), by = 60, length.out = 1671)
   result <- sleep.tudor.locke(sleep.state, timestamps, counts = counts)
-  # Test that we can detect at least 1 period (verifies multi-period capability)
-  expect_true(nrow(result) >= 1)
+  expect_equal(nrow(result), 2)
+  expect_equal(result$in_bed_time, c("2024-01-01 22:10:00", "2024-01-02 22:10:00"))
 })
 
 test_that("tudor-locke validates length mismatch", {
@@ -275,8 +274,11 @@ test_that("tudor-locke accepts filter_suspicious parameter", {
   sleep.state <- c(rep("W", 10), rep("S", 200), rep("W", 15))
   timestamps <- seq(as.POSIXct("2024-01-01 22:00:00"), by = 60, length.out = 225)
 
-  expect_no_error(sleep.tudor.locke(sleep.state, timestamps, filter_suspicious = FALSE))
-  expect_no_error(sleep.tudor.locke(sleep.state, timestamps, filter_suspicious = TRUE))
+  expect_no_warning(result <- sleep.tudor.locke(sleep.state, timestamps, filter_suspicious = FALSE))
+  expect_equal(nrow(result), 1)
+  expect_warning(result <- sleep.tudor.locke(sleep.state, timestamps, filter_suspicious = TRUE),
+                 "suspicious")
+  expect_equal(nrow(result), 0)
 })
 
 test_that("sadeh accepts epoch_length parameter", {

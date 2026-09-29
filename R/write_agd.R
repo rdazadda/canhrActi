@@ -85,7 +85,7 @@ gt3x.to.agd <- function(gt3x_path, agd_path = NULL, epoch = 60, lfe = FALSE, tz 
     agd_path <- sub("\\.gt3x$", sprintf("_%dsec.agd", epoch), gt3x_path, ignore.case = TRUE)
   }
   ct   <- gt3x.counts(gt3x_path, epoch = epoch, lfe = lfe, tz = tz)
-  info <- read.gt3x::parse_gt3x_info(gt3x_path)
+  info <- .gt3x.info(gt3x_path)
   get  <- function(k, d) { v <- info[[k]]; if (is.null(v) || length(v) == 0) d else v }
 
   write.agd(
@@ -99,4 +99,22 @@ gt3x.to.agd <- function(gt3x_path, agd_path = NULL, epoch = 60, lfe = FALSE, tz 
     sample_rate   = as.numeric(get("Sample Rate", 30))
   )
   agd_path
+}
+
+#' The Header of a .gt3x as parse_gt3x_info Reads It, Unzipping Only info.txt
+#'
+#' parse_gt3x_info() on an archive unzips the whole recording to read info.txt; taking
+#' info.txt out alone gives the same header. Anything else goes to parse_gt3x_info().
+#' @keywords internal
+#' @noRd
+.gt3x.info <- function(path) {
+  if (is.character(path) && length(path) == 1 && !is.na(path) && grepl("\\.gt3x$", path, ignore.case = TRUE) &&
+      file.exists(path) && !dir.exists(path)) {
+    d <- tempfile("gt3x_info")
+    on.exit(unlink(d, recursive = TRUE), add = TRUE)
+    got <- tryCatch(utils::unzip(path, files = "info.txt", exdir = d),
+                    warning = function(w) NULL, error = function(e) NULL)
+    if (length(got) == 1 && file.exists(file.path(d, "info.txt"))) return(read.gt3x::parse_gt3x_info(d))
+  }
+  read.gt3x::parse_gt3x_info(path)
 }

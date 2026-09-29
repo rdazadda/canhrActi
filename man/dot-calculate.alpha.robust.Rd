@@ -9,7 +9,8 @@
   xmin_candidates = NULL,
   bootstrap_n = 100,
   bootstrap_gof = FALSE,
-  gof_bootstrap_n = 200
+  gof_bootstrap_n = 200,
+  step = 1
 )
 }
 \arguments{
@@ -29,6 +30,9 @@ meet or exceed the empirical KS statistic.}
 
 \item{gof_bootstrap_n}{Number of synthetic datasets for the GoF bootstrap when
 \code{bootstrap_gof = TRUE} (default 200).}
+
+\item{step}{Spacing of the durations in minutes, one epoch (default 1). The
+discrete-data correction takes half of it off xmin.}
 }
 \value{
 List with alpha, xmin, KS statistic, confidence intervals, and either a

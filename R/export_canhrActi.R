@@ -84,7 +84,12 @@
     vm_counts <- numeric(0)
   }
 
-  avg_mvpa_per_day <- if (n_valid_days > 0) total_mvpa / n_valid_days else 0
+  # Class times are minutes at any epoch length; the percentages stay epoch ratios
+  to_min <- function(n) .epoch_min(n, epoch_sec)
+  avg_mvpa_per_day <- if (n_valid_days > 0) to_min(total_mvpa) / n_valid_days else 0
+
+  lux <- wear_valid_epochs$lux
+  has_lux <- !is.null(lux) && any(!is.na(lux))
 
   list(
     epoch_sec = epoch_sec,
@@ -92,13 +97,15 @@
     n_wear_epochs = n_wear_epochs,
     wear_valid_epochs = wear_valid_epochs,
     vm_counts = vm_counts,
-    sedentary = sedentary,
-    light = light,
-    moderate = moderate,
-    vigorous = vigorous,
-    very_vigorous = very_vigorous,
-    total_mvpa = total_mvpa,
+    sedentary = to_min(sedentary),
+    light = to_min(light),
+    moderate = to_min(moderate),
+    vigorous = to_min(vigorous),
+    very_vigorous = to_min(very_vigorous),
+    total_mvpa = to_min(total_mvpa),
     avg_mvpa_per_day = avg_mvpa_per_day,
+    lux_avg = if (has_lux) mean(lux, na.rm = TRUE) else 0,
+    lux_max = if (has_lux) max(lux, na.rm = TRUE) else 0,
     sed_pct_str   = pct(sedentary),
     light_pct_str = pct(light),
     mod_pct_str   = pct(moderate),
@@ -112,6 +119,91 @@
     vig_pct   = if (n_wear_epochs > 0) 100 * vigorous / n_wear_epochs else 0,
     vvig_pct  = if (n_wear_epochs > 0) 100 * very_vigorous / n_wear_epochs else 0,
     mvpa_pct  = if (n_wear_epochs > 0) 100 * total_mvpa / n_wear_epochs else 0
+  )
+}
+
+
+# Row lists to one data frame under ActiLife's column names, which rbind.data.frame()
+# passes through make.names()
+.rows_to_frame <- function(rows) {
+  out <- do.call(rbind.data.frame, c(rows, stringsAsFactors = FALSE, make.row.names = FALSE))
+  if (length(rows) > 0) names(out) <- names(rows[[1]])
+  out
+}
+
+# Epochs to minutes, for every time column at any epoch length
+.epoch_min <- function(n, epoch_sec) round(n * epoch_sec / 60, 2)
+
+# Mean and maximum lux of the worn epochs, 0 and 0 without a light sensor
+.lux_stats <- function(worn) {
+  lux <- worn$lux
+  if (is.null(lux) || all(is.na(lux))) return(c(0, 0))
+  c(round(mean(lux, na.rm = TRUE), 1), max(lux, na.rm = TRUE))
+}
+
+# The Summary row that export_summary(), export_summary_internal() and the batch
+# summary all write, from .build_actilife_summary(); s = NULL (no valid day) gives
+# a row of zeros. Times are minutes.
+.summary_frame <- function(s, subject_id, filename, weight_lbs, age, gender, epoch_sec = 60) {
+  if (!is.null(s)) epoch_sec <- s$epoch_sec
+  w <- if (is.null(s)) NULL else s$wear_valid_epochs
+  worn <- !is.null(w) && nrow(w) > 0
+  per_min <- 60 / epoch_sec
+  stat <- function(x, f, digits = NULL) {
+    if (!worn || is.null(x) || all(is.na(x))) return(0)
+    v <- f(x[!is.na(x)])
+    if (is.null(digits)) v else round(v, digits)
+  }
+  vm <- if (is.null(s)) numeric(0) else s$vm_counts
+  zero_pct <- "0.00%"
+  n_wear <- if (is.null(s)) 0 else s$n_wear_epochs
+  data.frame(
+    "Subject" = subject_id,
+    "Filename" = filename,
+    "Epoch" = epoch_sec,
+    "Weight (lbs)" = weight_lbs,
+    "Age" = age,
+    "Gender" = gender,
+    "Sedentary" = s$sedentary %||% 0,
+    "Light" = s$light %||% 0,
+    "Moderate" = s$moderate %||% 0,
+    "Vigorous" = s$vigorous %||% 0,
+    "Very Vigorous" = s$very_vigorous %||% 0,
+    "% in Sedentary" = s$sed_pct_str %||% zero_pct,
+    "% in Light" = s$light_pct_str %||% zero_pct,
+    "% in Moderate" = s$mod_pct_str %||% zero_pct,
+    "% in Vigorous" = s$vig_pct_str %||% zero_pct,
+    "% in Very Vigorous" = s$vvig_pct_str %||% zero_pct,
+    "Total MVPA" = s$total_mvpa %||% 0,
+    "% in MVPA" = s$mvpa_pct_str %||% zero_pct,
+    "Average MVPA Per day" = round(s$avg_mvpa_per_day %||% 0, 1),
+    "Axis 1 Counts" = stat(w$axis1, sum),
+    "Axis 2 Counts" = stat(w$axis2, sum),
+    "Axis 3 Counts" = stat(w$axis3, sum),
+    "Axis 1 Average Counts" = stat(w$axis1, mean, 1),
+    "Axis 2 Average Counts" = stat(w$axis2, mean, 1),
+    "Axis 3 Average Counts" = stat(w$axis3, mean, 1),
+    "Axis 1 Max Counts" = stat(w$axis1, max),
+    "Axis 2 Max Counts" = stat(w$axis2, max),
+    "Axis 3 Max Counts" = stat(w$axis3, max),
+    "Axis 1 CPM" = stat(w$axis1, function(x) mean(x) * per_min, 1),
+    "Axis 2 CPM" = stat(w$axis2, function(x) mean(x) * per_min, 1),
+    "Axis 3 CPM" = stat(w$axis3, function(x) mean(x) * per_min, 1),
+    "Vector Magnitude Counts" = if (length(vm) > 0) round(sum(vm), 1) else 0,
+    "Vector Magnitude Average Counts" = if (length(vm) > 0) round(mean(vm), 1) else 0,
+    "Vector Magnitude Max Counts" = if (length(vm) > 0) round(max(vm), 1) else 0,
+    "Vector Magnitude CPM" = if (length(vm) > 0) round(mean(vm) * per_min, 1) else 0,
+    "Steps Counts" = stat(w$steps, sum),
+    "Steps Average Counts" = stat(w$steps, mean, 1),
+    "Steps Max Counts" = stat(w$steps, max),
+    "Steps Per Minute" = stat(w$steps, function(x) mean(x) * per_min, 1),
+    "Lux Average Counts" = round(s$lux_avg %||% 0, 1),
+    "Lux Max Counts" = s$lux_max %||% 0,
+    "Number of Epochs" = n_wear,
+    "Time" = round(n_wear * epoch_sec / 60, 2),
+    "Calendar Days" = s$n_valid_days %||% 0,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
   )
 }
 
@@ -174,65 +266,7 @@ export_summary <- function(analysis_results,
     return(invisible(NULL))
   }
 
-  epoch_sec <- s$epoch_sec
-  n_wear_epochs <- s$n_wear_epochs
-  wear_valid_epochs <- s$wear_valid_epochs
-  vm_counts <- s$vm_counts
-  sedentary <- s$sedentary
-  light <- s$light
-  moderate <- s$moderate
-  vigorous <- s$vigorous
-  very_vigorous <- s$very_vigorous
-  total_mvpa <- s$total_mvpa
-
-  summary_data <- data.frame(
-    "Subject" = subject_id,
-    "Filename" = filename,
-    "Epoch" = epoch_sec,
-    "Weight (lbs)" = weight_lbs,
-    "Age" = age,
-    "Gender" = gender,
-    "Sedentary" = sedentary,
-    "Light" = light,
-    "Moderate" = moderate,
-    "Vigorous" = vigorous,
-    "Very Vigorous" = very_vigorous,
-    "% in Sedentary" = s$sed_pct_str,
-    "% in Light" = s$light_pct_str,
-    "% in Moderate" = s$mod_pct_str,
-    "% in Vigorous" = s$vig_pct_str,
-    "% in Very Vigorous" = s$vvig_pct_str,
-    "Total MVPA" = total_mvpa,
-    "% in MVPA" = s$mvpa_pct_str,
-    "Average MVPA Per day" = round(s$avg_mvpa_per_day, 1),
-    "Axis 1 Counts" = if(n_wear_epochs > 0) sum(wear_valid_epochs$axis1) else 0,
-    "Axis 2 Counts" = if(n_wear_epochs > 0) sum(wear_valid_epochs$axis2) else 0,
-    "Axis 3 Counts" = if(n_wear_epochs > 0) sum(wear_valid_epochs$axis3) else 0,
-    "Axis 1 Average Counts" = if(n_wear_epochs > 0) round(mean(wear_valid_epochs$axis1), 1) else 0,
-    "Axis 2 Average Counts" = if(n_wear_epochs > 0) round(mean(wear_valid_epochs$axis2), 1) else 0,
-    "Axis 3 Average Counts" = if(n_wear_epochs > 0) round(mean(wear_valid_epochs$axis3), 1) else 0,
-    "Axis 1 Max Counts" = if(n_wear_epochs > 0) max(wear_valid_epochs$axis1) else 0,
-    "Axis 2 Max Counts" = if(n_wear_epochs > 0) max(wear_valid_epochs$axis2) else 0,
-    "Axis 3 Max Counts" = if(n_wear_epochs > 0) max(wear_valid_epochs$axis3) else 0,
-    "Axis 1 CPM" = if(n_wear_epochs > 0) round(mean(wear_valid_epochs$axis1) * (60 / epoch_sec), 1) else 0,
-    "Axis 2 CPM" = if(n_wear_epochs > 0) round(mean(wear_valid_epochs$axis2) * (60 / epoch_sec), 1) else 0,
-    "Axis 3 CPM" = if(n_wear_epochs > 0) round(mean(wear_valid_epochs$axis3) * (60 / epoch_sec), 1) else 0,
-    "Vector Magnitude Counts" = if(length(vm_counts) > 0) round(sum(vm_counts), 1) else 0,
-    "Vector Magnitude Average Counts" = if(length(vm_counts) > 0) round(mean(vm_counts), 1) else 0,
-    "Vector Magnitude Max Counts" = if(length(vm_counts) > 0) round(max(vm_counts), 1) else 0,
-    "Vector Magnitude CPM" = if(length(vm_counts) > 0) round(mean(vm_counts) * (60 / epoch_sec), 1) else 0,
-    "Steps Counts" = if(n_wear_epochs > 0) sum(wear_valid_epochs$steps, na.rm = TRUE) else 0,
-    "Steps Average Counts" = if(n_wear_epochs > 0) round(mean(wear_valid_epochs$steps, na.rm = TRUE), 1) else 0,
-    "Steps Max Counts" = if(n_wear_epochs > 0 && any(!is.na(wear_valid_epochs$steps))) max(wear_valid_epochs$steps, na.rm = TRUE) else 0,
-    "Steps Per Minute" = if(n_wear_epochs > 0) round(mean(wear_valid_epochs$steps, na.rm = TRUE) * (60 / epoch_sec), 1) else 0,
-    "Lux Average Counts" = 0,
-    "Lux Max Counts" = 0,
-    "Number of Epochs" = n_wear_epochs,
-    "Time" = round(n_wear_epochs * (epoch_sec / 60), 1),
-    "Calendar Days" = s$n_valid_days,
-    stringsAsFactors = FALSE,
-    check.names = FALSE
-  )
+  summary_data <- .summary_frame(s, subject_id, filename, weight_lbs, age, gender)
 
   write.csv(summary_data, output_path, row.names = FALSE, na = "", quote = TRUE)
 
@@ -294,13 +328,22 @@ export_daily_detailed <- function(analysis_results,
 
   filename <- basename(analysis_results$parameters$file_path)
 
+  if ("is_valid_day" %in% names(daily)) {
+    valid_dates <- as.Date(daily$date[daily$is_valid_day == TRUE])
+  } else if ("is.valid" %in% names(daily)) {
+    valid_dates <- as.Date(daily$date[daily$is.valid == TRUE])
+  } else {
+    valid_dates <- as.Date(daily$date)
+  }
+
   rows_list <- list()
 
   for (i in 1:nrow(daily)) {
     date_i <- as.Date(daily$date[i])
     day_epochs_all <- epoch_data[epoch_data$date == date_i, ]
 
-    if (nrow(day_epochs_all) == 0) {
+    # A day with no epochs, or one that failed the wear rule, is written as zeros
+    if (nrow(day_epochs_all) == 0 || !(date_i %in% valid_dates)) {
       rows_list[[i]] <- list(
         Subject = subject_id,
         Filename = filename,
@@ -309,7 +352,7 @@ export_daily_detailed <- function(analysis_results,
         Age = age,
         Gender = gender,
         Date = format(date_i, "%m/%d/%Y"),
-        "Day of Week" = weekdays(date_i),
+        "Day of Week" = .format_english(date_i, "%A"),
         "Day of Week Num" = as.numeric(format(date_i, "%u")),
         Sedentary = 0,
         Light = 0,
@@ -378,19 +421,19 @@ export_daily_detailed <- function(analysis_results,
       Age = age,
       Gender = gender,
       Date = format(as.Date(date_i), "%m/%d/%Y"),
-      "Day of Week" = weekdays(as.Date(date_i)),
+      "Day of Week" = .format_english(as.Date(date_i), "%A"),
       "Day of Week Num" = as.numeric(format(as.Date(date_i), "%u")),
-      Sedentary = sedentary,
-      Light = light,
-      Moderate = moderate,
-      Vigorous = vigorous,
-      "Very Vigorous" = very_vigorous,
+      Sedentary = .epoch_min(sedentary, epoch_sec),
+      Light = .epoch_min(light, epoch_sec),
+      Moderate = .epoch_min(moderate, epoch_sec),
+      Vigorous = .epoch_min(vigorous, epoch_sec),
+      "Very Vigorous" = .epoch_min(very_vigorous, epoch_sec),
       "% in Sedentary" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * sedentary / n_wear_epochs) else "0.00%",
       "% in Light" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * light / n_wear_epochs) else "0.00%",
       "% in Moderate" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * moderate / n_wear_epochs) else "0.00%",
       "% in Vigorous" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * vigorous / n_wear_epochs) else "0.00%",
       "% in Very Vigorous" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * very_vigorous / n_wear_epochs) else "0.00%",
-      "Total MVPA" = total_mvpa,
+      "Total MVPA" = .epoch_min(total_mvpa, epoch_sec),
       "% in MVPA" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * total_mvpa / n_wear_epochs) else "0.00%",
       "Average MVPA Per Hour" = if(n_wear_epochs > 0) round(total_mvpa / (n_wear_epochs / 60), 1) else 0,
       "Axis 1 Counts" = if(n_wear_epochs > 0) sum(wear_epochs$axis1) else 0,
@@ -413,15 +456,15 @@ export_daily_detailed <- function(analysis_results,
       "Steps Average Counts" = if(n_wear_epochs > 0) round(mean(wear_epochs$steps, na.rm = TRUE), 1) else 0,
       "Steps Max Counts" = if(n_wear_epochs > 0) max(wear_epochs$steps, na.rm = TRUE) else 0,
       "Steps Per Minute" = if(n_wear_epochs > 0) round(mean(wear_epochs$steps, na.rm = TRUE) * (60 / epoch_sec), 1) else 0,
-      "Lux Average Counts" = 0,
-      "Lux Max Counts" = 0,
+      "Lux Average Counts" = .lux_stats(wear_epochs)[1],
+      "Lux Max Counts" = .lux_stats(wear_epochs)[2],
       "Number of Epochs" = n_wear_epochs,
-      Time = round(n_wear_epochs * (epoch_sec / 60), 1),
+      Time = .epoch_min(n_wear_epochs, epoch_sec),
       "Calendar Days" = 1
     )
   }
 
-  daily_data <- do.call(rbind.data.frame, c(rows_list, stringsAsFactors = FALSE, make.row.names = FALSE))
+  daily_data <- .rows_to_frame(rows_list)
 
   write.csv(daily_data, output_path, row.names = FALSE, na = "", quote = TRUE)
 
@@ -491,7 +534,7 @@ export_hourly_detailed <- function(analysis_results,
     valid_dates <- as.Date(daily$date)
   }
 
-  epoch_data$hour <- format(epoch_data$timestamp, "%I:00 %p")
+  epoch_data$hour <- .format_english(epoch_data$timestamp, "%I:00 %p")
   epoch_data$hour_24 <- as.numeric(format(epoch_data$timestamp, "%H"))
 
   dates <- unique(epoch_data$date)
@@ -517,7 +560,7 @@ export_hourly_detailed <- function(analysis_results,
           Gender = gender,
           Date = format(as.Date(date_i), "%m/%d/%Y"),
           Hour = hour_label,
-          "Day of Week" = weekdays(as.Date(date_i)),
+          "Day of Week" = .format_english(as.Date(date_i), "%A"),
           "Day of Week Num" = as.numeric(format(as.Date(date_i), "%u")),
           Sedentary = 0,
           Light = 0,
@@ -586,19 +629,19 @@ export_hourly_detailed <- function(analysis_results,
         Gender = gender,
         Date = format(as.Date(date_i), "%m/%d/%Y"),
         Hour = hour_label,
-        "Day of Week" = weekdays(as.Date(date_i)),
+        "Day of Week" = .format_english(as.Date(date_i), "%A"),
         "Day of Week Num" = as.numeric(format(as.Date(date_i), "%u")),
-        Sedentary = sedentary,
-        Light = light,
-        Moderate = moderate,
-        Vigorous = vigorous,
-        "Very Vigorous" = very_vigorous,
+        Sedentary = .epoch_min(sedentary, epoch_sec),
+        Light = .epoch_min(light, epoch_sec),
+        Moderate = .epoch_min(moderate, epoch_sec),
+        Vigorous = .epoch_min(vigorous, epoch_sec),
+        "Very Vigorous" = .epoch_min(very_vigorous, epoch_sec),
         "% in Sedentary" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * sedentary / n_wear_epochs) else "0.00%",
         "% in Light" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * light / n_wear_epochs) else "0.00%",
         "% in Moderate" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * moderate / n_wear_epochs) else "0.00%",
         "% in Vigorous" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * vigorous / n_wear_epochs) else "0.00%",
         "% in Very Vigorous" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * very_vigorous / n_wear_epochs) else "0.00%",
-        "Total MVPA" = total_mvpa,
+        "Total MVPA" = .epoch_min(total_mvpa, epoch_sec),
         "% in MVPA" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * total_mvpa / n_wear_epochs) else "0.00%",
         "Axis 1 Counts" = if(n_wear_epochs > 0) sum(wear_hour_data$axis1) else 0,
         "Axis 2 Counts" = if(n_wear_epochs > 0) sum(wear_hour_data$axis2) else 0,
@@ -620,16 +663,16 @@ export_hourly_detailed <- function(analysis_results,
         "Steps Average Counts" = if(n_wear_epochs > 0) round(mean(wear_hour_data$steps, na.rm = TRUE), 1) else 0,
         "Steps Max Counts" = if(n_wear_epochs > 0) max(wear_hour_data$steps, na.rm = TRUE) else 0,
         "Steps Per Minute" = if(n_wear_epochs > 0) round(mean(wear_hour_data$steps, na.rm = TRUE) * (60 / epoch_sec), 1) else 0,
-        "Lux Average Counts" = 0,
-        "Lux Max Counts" = 0,
+        "Lux Average Counts" = .lux_stats(wear_hour_data)[1],
+        "Lux Max Counts" = .lux_stats(wear_hour_data)[2],
         "Number of Epochs" = n_wear_epochs,
-        Time = round(n_wear_epochs * (epoch_sec / 60), 1),
+        Time = .epoch_min(n_wear_epochs, epoch_sec),
         "Calendar Days" = 1
       )
     }
   }
 
-  hourly_data <- do.call(rbind.data.frame, c(hourly_rows, stringsAsFactors = FALSE, make.row.names = FALSE))
+  hourly_data <- .rows_to_frame(hourly_rows)
 
   write.csv(hourly_data, output_path, row.names = FALSE, na = "", quote = TRUE)
 
@@ -826,67 +869,7 @@ export_summary_internal <- function(analysis_results) {
     return(NULL)
   }
 
-  epoch_sec <- s$epoch_sec
-  n_wear_epochs <- s$n_wear_epochs
-  wear_valid_epochs <- s$wear_valid_epochs
-  vm_counts <- s$vm_counts
-  sedentary <- s$sedentary
-  light <- s$light
-  moderate <- s$moderate
-  vigorous <- s$vigorous
-  very_vigorous <- s$very_vigorous
-  total_mvpa <- s$total_mvpa
-
-  summary_data <- data.frame(
-    "Subject" = subject_id,
-    "Filename" = filename,
-    "Epoch" = epoch_sec,
-    "Weight (lbs)" = weight_lbs,
-    "Age" = age,
-    "Gender" = gender,
-    "Sedentary" = sedentary,
-    "Light" = light,
-    "Moderate" = moderate,
-    "Vigorous" = vigorous,
-    "Very Vigorous" = very_vigorous,
-    "% in Sedentary" = s$sed_pct_str,
-    "% in Light" = s$light_pct_str,
-    "% in Moderate" = s$mod_pct_str,
-    "% in Vigorous" = s$vig_pct_str,
-    "% in Very Vigorous" = s$vvig_pct_str,
-    "Total MVPA" = total_mvpa,
-    "% in MVPA" = s$mvpa_pct_str,
-    "Average MVPA Per day" = round(s$avg_mvpa_per_day, 1),
-    "Axis 1 Counts" = if(nrow(wear_valid_epochs) > 0) sum(wear_valid_epochs$axis1) else 0,
-    "Axis 2 Counts" = if(nrow(wear_valid_epochs) > 0) sum(wear_valid_epochs$axis2) else 0,
-    "Axis 3 Counts" = if(nrow(wear_valid_epochs) > 0) sum(wear_valid_epochs$axis3) else 0,
-    "Axis 1 Average Counts" = if(nrow(wear_valid_epochs) > 0) round(mean(wear_valid_epochs$axis1), 1) else 0,
-    "Axis 2 Average Counts" = if(nrow(wear_valid_epochs) > 0) round(mean(wear_valid_epochs$axis2), 1) else 0,
-    "Axis 3 Average Counts" = if(nrow(wear_valid_epochs) > 0) round(mean(wear_valid_epochs$axis3), 1) else 0,
-    "Axis 1 Max Counts" = if(nrow(wear_valid_epochs) > 0) max(wear_valid_epochs$axis1) else 0,
-    "Axis 2 Max Counts" = if(nrow(wear_valid_epochs) > 0) max(wear_valid_epochs$axis2) else 0,
-    "Axis 3 Max Counts" = if(nrow(wear_valid_epochs) > 0) max(wear_valid_epochs$axis3) else 0,
-    "Axis 1 CPM" = if(nrow(wear_valid_epochs) > 0) round(mean(wear_valid_epochs$axis1) * (60 / epoch_sec), 1) else 0,
-    "Axis 2 CPM" = if(nrow(wear_valid_epochs) > 0) round(mean(wear_valid_epochs$axis2) * (60 / epoch_sec), 1) else 0,
-    "Axis 3 CPM" = if(nrow(wear_valid_epochs) > 0) round(mean(wear_valid_epochs$axis3) * (60 / epoch_sec), 1) else 0,
-    "Vector Magnitude Counts" = if(length(vm_counts) > 0) round(sum(vm_counts), 1) else 0,
-    "Vector Magnitude Average Counts" = if(length(vm_counts) > 0) round(mean(vm_counts), 1) else 0,
-    "Vector Magnitude Max Counts" = if(length(vm_counts) > 0) round(max(vm_counts), 1) else 0,
-    "Vector Magnitude CPM" = if(length(vm_counts) > 0) round(mean(vm_counts) * (60 / epoch_sec), 1) else 0,
-    "Steps Counts" = if(nrow(wear_valid_epochs) > 0) sum(wear_valid_epochs$steps, na.rm = TRUE) else 0,
-    "Steps Average Counts" = if(nrow(wear_valid_epochs) > 0) round(mean(wear_valid_epochs$steps, na.rm = TRUE), 1) else 0,
-    "Steps Max Counts" = if(nrow(wear_valid_epochs) > 0 && any(!is.na(wear_valid_epochs$steps))) max(wear_valid_epochs$steps, na.rm = TRUE) else 0,
-    "Steps Per Minute" = if(nrow(wear_valid_epochs) > 0) round(mean(wear_valid_epochs$steps, na.rm = TRUE), 1) else 0,
-    "Lux Average Counts" = 0,
-    "Lux Max Counts" = 0,
-    "Number of Epochs" = n_wear_epochs,
-    "Time" = round(n_wear_epochs * (epoch_sec / 60), 1),
-    "Calendar Days" = s$n_valid_days,
-    stringsAsFactors = FALSE,
-    check.names = FALSE
-  )
-
-  return(summary_data)
+  .summary_frame(s, subject_id, filename, weight_lbs, age, gender)
 }
 
 
@@ -927,13 +910,22 @@ export_daily_detailed_internal <- function(analysis_results) {
 
   filename <- basename(analysis_results$parameters$file_path)
 
+  if ("is_valid_day" %in% names(daily)) {
+    valid_dates <- as.Date(daily$date[daily$is_valid_day == TRUE])
+  } else if ("is.valid" %in% names(daily)) {
+    valid_dates <- as.Date(daily$date[daily$is.valid == TRUE])
+  } else {
+    valid_dates <- as.Date(daily$date)
+  }
+
   rows_list <- list()
 
   for (i in 1:nrow(daily)) {
     date_i <- as.Date(daily$date[i])
     day_epochs_all <- epoch_data[epoch_data$date == date_i, ]
 
-    if (nrow(day_epochs_all) == 0) {
+    # A day with no epochs, or one that failed the wear rule, is written as zeros
+    if (nrow(day_epochs_all) == 0 || !(date_i %in% valid_dates)) {
       rows_list[[i]] <- list(
         Subject = subject_id,
         Filename = filename,
@@ -942,7 +934,7 @@ export_daily_detailed_internal <- function(analysis_results) {
         Age = age,
         Gender = gender,
         Date = format(date_i, "%m/%d/%Y"),
-        "Day of Week" = weekdays(date_i),
+        "Day of Week" = .format_english(date_i, "%A"),
         "Day of Week Num" = as.numeric(format(date_i, "%u")),
         Sedentary = 0,
         Light = 0,
@@ -994,9 +986,9 @@ export_daily_detailed_internal <- function(analysis_results) {
     vigorous <- sum(day_epochs_all$intensity == "vigorous" & day_epochs_all$wear_time)
     very_vigorous <- sum(day_epochs_all$intensity == "very_vigorous" & day_epochs_all$wear_time)
     total_mvpa <- moderate + vigorous + very_vigorous
-    total_epochs <- nrow(day_epochs_all)
 
     wear_epochs <- day_epochs_all[day_epochs_all$wear_time, ]
+    n_wear_epochs <- nrow(wear_epochs)
 
     if (nrow(wear_epochs) > 0) {
       vm_counts <- sqrt(wear_epochs$axis1^2 + wear_epochs$axis2^2 + wear_epochs$axis3^2)
@@ -1012,21 +1004,21 @@ export_daily_detailed_internal <- function(analysis_results) {
       Age = age,
       Gender = gender,
       Date = format(as.Date(date_i), "%m/%d/%Y"),
-      "Day of Week" = weekdays(as.Date(date_i)),
+      "Day of Week" = .format_english(as.Date(date_i), "%A"),
       "Day of Week Num" = as.numeric(format(as.Date(date_i), "%u")),
-      Sedentary = sedentary,
-      Light = light,
-      Moderate = moderate,
-      Vigorous = vigorous,
-      "Very Vigorous" = very_vigorous,
-      "% in Sedentary" = sprintf("%.2f%%", 100 * sedentary / total_epochs),
-      "% in Light" = sprintf("%.2f%%", 100 * light / total_epochs),
-      "% in Moderate" = sprintf("%.2f%%", 100 * moderate / total_epochs),
-      "% in Vigorous" = sprintf("%.2f%%", 100 * vigorous / total_epochs),
-      "% in Very Vigorous" = sprintf("%.2f%%", 100 * very_vigorous / total_epochs),
-      "Total MVPA" = total_mvpa,
-      "% in MVPA" = sprintf("%.2f%%", 100 * total_mvpa / total_epochs),
-      "Average MVPA Per Hour" = round(total_mvpa / (total_epochs / 60), 1),
+      Sedentary = .epoch_min(sedentary, epoch_sec),
+      Light = .epoch_min(light, epoch_sec),
+      Moderate = .epoch_min(moderate, epoch_sec),
+      Vigorous = .epoch_min(vigorous, epoch_sec),
+      "Very Vigorous" = .epoch_min(very_vigorous, epoch_sec),
+      "% in Sedentary" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * sedentary / n_wear_epochs) else "0.00%",
+      "% in Light" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * light / n_wear_epochs) else "0.00%",
+      "% in Moderate" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * moderate / n_wear_epochs) else "0.00%",
+      "% in Vigorous" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * vigorous / n_wear_epochs) else "0.00%",
+      "% in Very Vigorous" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * very_vigorous / n_wear_epochs) else "0.00%",
+      "Total MVPA" = .epoch_min(total_mvpa, epoch_sec),
+      "% in MVPA" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * total_mvpa / n_wear_epochs) else "0.00%",
+      "Average MVPA Per Hour" = if(n_wear_epochs > 0) round(total_mvpa / (n_wear_epochs / 60), 1) else 0,
       "Axis 1 Counts" = if(nrow(wear_epochs) > 0) sum(wear_epochs$axis1) else 0,
       "Axis 2 Counts" = if(nrow(wear_epochs) > 0) sum(wear_epochs$axis2) else 0,
       "Axis 3 Counts" = if(nrow(wear_epochs) > 0) sum(wear_epochs$axis3) else 0,
@@ -1046,16 +1038,16 @@ export_daily_detailed_internal <- function(analysis_results) {
       "Steps Counts" = if(nrow(wear_epochs) > 0) sum(wear_epochs$steps, na.rm = TRUE) else 0,
       "Steps Average Counts" = if(nrow(wear_epochs) > 0) round(mean(wear_epochs$steps, na.rm = TRUE), 1) else 0,
       "Steps Max Counts" = if(nrow(wear_epochs) > 0) max(wear_epochs$steps, na.rm = TRUE) else 0,
-      "Steps Per Minute" = if(nrow(wear_epochs) > 0) round(mean(wear_epochs$steps, na.rm = TRUE), 1) else 0,
-      "Lux Average Counts" = 0,
-      "Lux Max Counts" = 0,
-      "Number of Epochs" = total_epochs,
-      Time = round(total_epochs * (epoch_sec / 60), 1),
+      "Steps Per Minute" = if(nrow(wear_epochs) > 0) round(mean(wear_epochs$steps, na.rm = TRUE) * (60 / epoch_sec), 1) else 0,
+      "Lux Average Counts" = .lux_stats(wear_epochs)[1],
+      "Lux Max Counts" = .lux_stats(wear_epochs)[2],
+      "Number of Epochs" = n_wear_epochs,
+      Time = .epoch_min(n_wear_epochs, epoch_sec),
       "Calendar Days" = 1
     )
   }
 
-  daily_data <- do.call(rbind.data.frame, c(rows_list, stringsAsFactors = FALSE, make.row.names = FALSE))
+  daily_data <- .rows_to_frame(rows_list)
   return(daily_data)
 }
 
@@ -1105,7 +1097,7 @@ export_hourly_detailed_internal <- function(analysis_results) {
     valid_dates <- as.Date(daily$date)
   }
 
-  epoch_data$hour <- format(epoch_data$timestamp, "%I:00 %p")
+  epoch_data$hour <- .format_english(epoch_data$timestamp, "%I:00 %p")
   epoch_data$hour_24 <- as.numeric(format(epoch_data$timestamp, "%H"))
 
   dates <- unique(epoch_data$date)
@@ -1131,7 +1123,7 @@ export_hourly_detailed_internal <- function(analysis_results) {
           Gender = gender,
           Date = format(as.Date(date_i), "%m/%d/%Y"),
           Hour = hour_label,
-          "Day of Week" = weekdays(as.Date(date_i)),
+          "Day of Week" = .format_english(as.Date(date_i), "%A"),
           "Day of Week Num" = as.numeric(format(as.Date(date_i), "%u")),
           Sedentary = 0,
           Light = 0,
@@ -1182,9 +1174,9 @@ export_hourly_detailed_internal <- function(analysis_results) {
       vigorous <- sum(all_hour_data$intensity == "vigorous" & all_hour_data$wear_time)
       very_vigorous <- sum(all_hour_data$intensity == "very_vigorous" & all_hour_data$wear_time)
       total_mvpa <- moderate + vigorous + very_vigorous
-      total_epochs <- nrow(all_hour_data)
 
       wear_hour_data <- all_hour_data[all_hour_data$wear_time, ]
+      n_wear_epochs <- nrow(wear_hour_data)
 
       if (nrow(wear_hour_data) > 0) {
         vm_counts <- sqrt(wear_hour_data$axis1^2 + wear_hour_data$axis2^2 + wear_hour_data$axis3^2)
@@ -1201,20 +1193,20 @@ export_hourly_detailed_internal <- function(analysis_results) {
         Gender = gender,
         Date = format(as.Date(date_i), "%m/%d/%Y"),
         Hour = hour_label,
-        "Day of Week" = weekdays(as.Date(date_i)),
+        "Day of Week" = .format_english(as.Date(date_i), "%A"),
         "Day of Week Num" = as.numeric(format(as.Date(date_i), "%u")),
-        Sedentary = sedentary,
-        Light = light,
-        Moderate = moderate,
-        Vigorous = vigorous,
-        "Very Vigorous" = very_vigorous,
-        "% in Sedentary" = sprintf("%.2f%%", 100 * sedentary / total_epochs),
-        "% in Light" = sprintf("%.2f%%", 100 * light / total_epochs),
-        "% in Moderate" = sprintf("%.2f%%", 100 * moderate / total_epochs),
-        "% in Vigorous" = sprintf("%.2f%%", 100 * vigorous / total_epochs),
-        "% in Very Vigorous" = sprintf("%.2f%%", 100 * very_vigorous / total_epochs),
-        "Total MVPA" = total_mvpa,
-        "% in MVPA" = sprintf("%.2f%%", 100 * total_mvpa / total_epochs),
+        Sedentary = .epoch_min(sedentary, epoch_sec),
+        Light = .epoch_min(light, epoch_sec),
+        Moderate = .epoch_min(moderate, epoch_sec),
+        Vigorous = .epoch_min(vigorous, epoch_sec),
+        "Very Vigorous" = .epoch_min(very_vigorous, epoch_sec),
+        "% in Sedentary" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * sedentary / n_wear_epochs) else "0.00%",
+        "% in Light" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * light / n_wear_epochs) else "0.00%",
+        "% in Moderate" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * moderate / n_wear_epochs) else "0.00%",
+        "% in Vigorous" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * vigorous / n_wear_epochs) else "0.00%",
+        "% in Very Vigorous" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * very_vigorous / n_wear_epochs) else "0.00%",
+        "Total MVPA" = .epoch_min(total_mvpa, epoch_sec),
+        "% in MVPA" = if(n_wear_epochs > 0) sprintf("%.2f%%", 100 * total_mvpa / n_wear_epochs) else "0.00%",
         "Axis 1 Counts" = if(nrow(wear_hour_data) > 0) sum(wear_hour_data$axis1) else 0,
         "Axis 2 Counts" = if(nrow(wear_hour_data) > 0) sum(wear_hour_data$axis2) else 0,
         "Axis 3 Counts" = if(nrow(wear_hour_data) > 0) sum(wear_hour_data$axis3) else 0,
@@ -1234,17 +1226,17 @@ export_hourly_detailed_internal <- function(analysis_results) {
         "Steps Counts" = if(nrow(wear_hour_data) > 0) sum(wear_hour_data$steps, na.rm = TRUE) else 0,
         "Steps Average Counts" = if(nrow(wear_hour_data) > 0) round(mean(wear_hour_data$steps, na.rm = TRUE), 1) else 0,
         "Steps Max Counts" = if(nrow(wear_hour_data) > 0) max(wear_hour_data$steps, na.rm = TRUE) else 0,
-        "Steps Per Minute" = if(nrow(wear_hour_data) > 0) round(mean(wear_hour_data$steps, na.rm = TRUE), 1) else 0,
-        "Lux Average Counts" = 0,
-        "Lux Max Counts" = 0,
-        "Number of Epochs" = total_epochs,
-        Time = round(total_epochs * (epoch_sec / 60), 1),
+        "Steps Per Minute" = if(nrow(wear_hour_data) > 0) round(mean(wear_hour_data$steps, na.rm = TRUE) * (60 / epoch_sec), 1) else 0,
+        "Lux Average Counts" = .lux_stats(wear_hour_data)[1],
+        "Lux Max Counts" = .lux_stats(wear_hour_data)[2],
+        "Number of Epochs" = n_wear_epochs,
+        Time = .epoch_min(n_wear_epochs, epoch_sec),
         "Calendar Days" = 1
       )
     }
   }
 
-  hourly_data <- do.call(rbind.data.frame, c(hourly_rows, stringsAsFactors = FALSE, make.row.names = FALSE))
+  hourly_data <- .rows_to_frame(hourly_rows)
   return(hourly_data)
 }
 
@@ -1404,8 +1396,9 @@ export_sedentary_bouts <- function(analysis_results,
     if (i == 1) {
       time_since_last <- 0
     } else {
+      # The last bout ended one epoch after the start of its last epoch
       prev_end_time <- epoch_data$timestamp[bout_ends[i - 1]]
-      time_since_last <- as.numeric(difftime(bout_start_time, prev_end_time, units = "mins"))
+      time_since_last <- as.numeric(difftime(bout_start_time, prev_end_time, units = "mins")) - epoch_sec / 60
     }
 
     # Calculate number of epochs
@@ -1457,9 +1450,9 @@ export_sedentary_bouts <- function(analysis_results,
       lux_avg <- lux_max <- 0
     }
 
-    # Calendar days spanned
-    start_date <- as.Date(bout_start_time)
-    end_date <- as.Date(bout_end_time)
+    # Calendar days spanned, in the zone the start and end are written in
+    start_date <- as.Date(format(bout_start_time, "%Y-%m-%d"))
+    end_date <- as.Date(format(bout_end_time, "%Y-%m-%d"))
     calendar_days <- as.numeric(end_date - start_date) + 1
 
     rows_list[[i]] <- list(
@@ -1469,8 +1462,8 @@ export_sedentary_bouts <- function(analysis_results,
       `Weight (lbs)` = weight_lbs,
       Age = age,
       Gender = gender,
-      `Sedentary Bout Start` = format(bout_start_time, "%m/%d/%Y %I:%M:%S %p"),
-      `Sedentary Bout End` = format(bout_end_time, "%m/%d/%Y %I:%M:%S %p"),
+      `Sedentary Bout Start` = .format_english(bout_start_time, "%m/%d/%Y %I:%M:%S %p"),
+      `Sedentary Bout End` = .format_english(bout_end_time, "%m/%d/%Y %I:%M:%S %p"),
       `Time in Sedentary Bout` = round(duration_min[i], 1),
       `Time since last Sedentary Bout` = round(time_since_last, 1),
       `Axis 1 Counts` = round(axis1_counts, 1),
@@ -1501,7 +1494,7 @@ export_sedentary_bouts <- function(analysis_results,
     )
   }
 
-  bout_data <- do.call(rbind.data.frame, c(rows_list, stringsAsFactors = FALSE, make.row.names = FALSE))
+  bout_data <- .rows_to_frame(rows_list)
 
   # Write to file if output_path provided
   if (!is.null(output_path)) {
@@ -1564,7 +1557,7 @@ analyze_inter_bout_intervals <- function(bout_data) {
   ibi <- bout_data[[col_name]]
 
   # Exclude first bout (IBI = 0 or NA)
-  ibi_valid <- ibi[ibi > 0]
+  ibi_valid <- ibi[!is.na(ibi) & ibi > 0]
 
   if (length(ibi_valid) == 0) {
     return(list(

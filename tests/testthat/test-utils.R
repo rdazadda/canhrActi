@@ -1,5 +1,5 @@
 test_that("valid.days identifies valid days correctly", {
-  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00"), by = 60, length.out = 2880)
+  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00", tz = "UTC"), by = 60, length.out = 2880)
   wear.time <- c(rep(TRUE, 1440), rep(FALSE, 1440))
 
   result <- valid.days(timestamps, wear.time, min.wear.hours = 10)
@@ -9,7 +9,7 @@ test_that("valid.days identifies valid days correctly", {
 })
 
 test_that("valid.days calculates wear hours correctly", {
-  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00"), by = 60, length.out = 1440)
+  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00", tz = "UTC"), by = 60, length.out = 1440)
   wear.time <- rep(FALSE, 1440)
   wear.time[1:600] <- TRUE
 
@@ -20,7 +20,7 @@ test_that("valid.days calculates wear hours correctly", {
 })
 
 test_that("valid.days rejects days below minimum", {
-  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00"), by = 60, length.out = 1440)
+  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00", tz = "UTC"), by = 60, length.out = 1440)
   wear.time <- rep(TRUE, 1440)
   wear.time[1:900] <- FALSE
 
@@ -31,7 +31,7 @@ test_that("valid.days rejects days below minimum", {
 })
 
 test_that("valid.days handles multiple days", {
-  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00"), by = 60, length.out = 4320)
+  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00", tz = "UTC"), by = 60, length.out = 4320)
   wear.time <- c(rep(TRUE, 1440), rep(TRUE, 1440), rep(FALSE, 1440))
 
   result <- valid.days(timestamps, wear.time, min.wear.hours = 10)
@@ -41,7 +41,7 @@ test_that("valid.days handles multiple days", {
 })
 
 test_that("valid.days creates valid day index correctly", {
-  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00"), by = 60, length.out = 2880)
+  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00", tz = "UTC"), by = 60, length.out = 2880)
   wear.time <- c(rep(TRUE, 1440), rep(FALSE, 1440))
 
   result <- valid.days(timestamps, wear.time, min.wear.hours = 10)
@@ -51,7 +51,7 @@ test_that("valid.days creates valid day index correctly", {
 })
 
 test_that("valid.days validates input length", {
-  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00"), by = 60, length.out = 100)
+  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00", tz = "UTC"), by = 60, length.out = 100)
   wear.time <- rep(TRUE, 50)
 
   expect_error(valid.days(timestamps, wear.time), "same length")
@@ -73,13 +73,22 @@ test_that("valid.days handles empty input", {
 })
 
 test_that("valid.days returns correct class", {
-  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00"), by = 60, length.out = 1440)
+  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00", tz = "UTC"), by = 60, length.out = 1440)
   wear.time <- rep(TRUE, 1440)
 
   result <- valid.days(timestamps, wear.time)
 
   expect_s3_class(result, "canhrActi_valid_days")
   expect_s3_class(result, "list")
+})
+
+test_that("valid.days splits the days at midnight on the timestamps' own clock", {
+  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00", tz = "America/Anchorage"), by = 60, length.out = 2880)
+
+  result <- valid.days(timestamps, rep(TRUE, 2880))
+
+  expect_identical(result$daily_summary$date, c("2024-01-01", "2024-01-02"))
+  expect_identical(result$daily_summary$wear.minutes, c(1440, 1440))
 })
 
 test_that("sample.rate calculates frequency correctly", {
@@ -155,7 +164,7 @@ test_that("quality validates required columns", {
 })
 
 test_that("print.canhrActi_valid_days displays summary", {
-  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00"), by = 60, length.out = 1440)
+  timestamps <- seq(as.POSIXct("2024-01-01 00:00:00", tz = "UTC"), by = 60, length.out = 1440)
   wear.time <- rep(TRUE, 1440)
   result <- valid.days(timestamps, wear.time, min.wear.hours = 10)
 

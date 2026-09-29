@@ -35,8 +35,6 @@ predicting activity intensity in youth. Med Sci Sports Exerc, 43(7), 1360-1368.
 \seealso{
 Other children cut-points:
 \code{\link[=butte_preschool]{butte_preschool()}},
-\code{\link[=chandler]{chandler()}},
-\code{\link[=copeland]{copeland()}},
 \code{\link[=mattocks]{mattocks()}},
 \code{\link[=pate_preschool]{pate_preschool()}},
 \code{\link[=puyau]{puyau()}},

@@ -38,6 +38,10 @@
 NULL
 
 
+# Calendar date on the clock the hour is read on: the timestamps' own zone, or the
+# session's when they carry none. as.Date() on a POSIXct would take the UTC date.
+.circ_local_date <- function(x) as.Date(as.POSIXlt(x))
+
 # GGIR includedaycrit gate: NA out days with under min_valid_hours of wear.
 .gate_invalid_days <- function(counts, timestamps, wear_time,
                                min_valid_hours, epoch_length = NULL) {
@@ -50,7 +54,7 @@ NULL
     d <- d[d > 0]
     epoch_length <- if (length(d)) stats::median(d) else 60
   }
-  day <- as.Date(timestamps)
+  day <- .circ_local_date(timestamps)
   worn <- as.logical(wear_time)
   worn[is.na(worn)] <- FALSE
   wear_hours <- tapply(worn, day, sum) * epoch_length / 3600
@@ -76,6 +80,10 @@ NULL
 #' @param epoch_length Numeric. Epoch length in seconds (default: 60)
 #' @param calculate_sri Logical. Calculate Sleep Regularity Index? (default: TRUE if sleep_state provided)
 #' @param use_cpp Logical. Use C++ backend for faster computation? (default: TRUE)
+#' @param value_unit Character. Unit of the levels, kept on the result for print and plot (default: "counts/min")
+#' @param valid_days Optional Date vector of days to keep in \code{daily_metrics};
+#'   other days are blanked there, as under GGIR's \code{includedaycrit}, while the
+#'   rhythm metrics still use every worn epoch. Default \code{NULL} keeps every day.
 #'
 #' @return List with class 'canhrActi_circadian' containing:
 #'   \describe{
@@ -150,7 +158,9 @@ circadian.rhythm <- function(counts,
                              min_valid_hours = 10,
                              epoch_length = 60,
                              calculate_sri = TRUE,
-                             use_cpp = TRUE) {
+                             use_cpp = TRUE,
+                             value_unit = "counts/min",
+                             valid_days = NULL) {
 
   # Input validation
 
@@ -197,7 +207,8 @@ circadian.rhythm <- function(counts,
     if (epochs_per_min != 1 && epochs_per_min > 0) {
       # Aggregate to minute level for C++ functions
       # Use proper indexing that handles non-integer epochs_per_min
-      n_minutes <- floor(length(counts) / max(1, epochs_per_min))
+      # Whole minutes of data; length / max(1, epochs_per_min) is wrong for epochs over 60 s
+      n_minutes <- floor(length(counts) * epoch_length / 60)
       if (epochs_per_min >= 1) {
         # Sub-minute epochs (5s, 10s, 15s, 30s): aggregate multiple epochs per minute
         epm_int <- as.integer(round(epochs_per_min))
@@ -361,6 +372,15 @@ circadian.rhythm <- function(counts,
   hourly_profile <- .calculate.hourly.profile(counts, timestamps)
   daily_metrics <- .calculate.daily.circadian(counts, timestamps, epoch_length)
 
+  # valid_days: blank the per-day rows of the other days (GGIR's includedaycrit);
+  # the rhythm metrics above keep every worn epoch.
+  if (!is.null(valid_days) && is.data.frame(daily_metrics) && nrow(daily_metrics) > 0) {
+    keep <- as.Date(daily_metrics$date) %in% as.Date(valid_days)
+    if (any(!keep)) {
+      for (col in setdiff(names(daily_metrics), "date")) daily_metrics[[col]][!keep] <- NA
+    }
+  }
+
   # Onset timing variability (circular SD of daily L5/M10 onsets).
   otv <- .onset.timing.variability(daily_metrics)
 
@@ -377,9 +397,20 @@ circadian.rhythm <- function(counts,
   cpd_res <- composite.phase.deviation(l5_onsets)
   l5_onset_ci <- circadian.onset.ci(l5_onsets)
 
+  # M10 onset interval, as for L5 above.
+  m10_onsets <- daily_metrics$M10_start_hour
+  if (is.null(m10_onsets)) {
+    m10_onsets <- vapply(daily_metrics$M10_start, function(s) {
+      if (is.na(s) || !nzchar(as.character(s))) return(NA_real_)
+      p <- strsplit(as.character(s), ":")[[1]]
+      as.numeric(p[1]) + as.numeric(p[2]) / 60
+    }, numeric(1))
+  }
+  m10_onset_ci <- circadian.onset.ci(m10_onsets)
+
   # 
 
-  n_days <- length(unique(as.Date(timestamps)))
+  n_days <- length(unique(.circ_local_date(timestamps)))
   n_valid_days <- sum(!is.na(daily_metrics$L5))
 
   result <- list(
@@ -419,6 +450,9 @@ circadian.rhythm <- function(counts,
     L5_onset_mean = l5_onset_ci$mean_onset,
     L5_onset_ci_lower = l5_onset_ci$ci_lower,
     L5_onset_ci_upper = l5_onset_ci$ci_upper,
+    M10_onset_mean = m10_onset_ci$mean_onset,
+    M10_onset_ci_lower = m10_onset_ci$ci_lower,
+    M10_onset_ci_upper = m10_onset_ci$ci_upper,
 
     # Profiles
     hourly_profile = hourly_profile,
@@ -434,6 +468,8 @@ circadian.rhythm <- function(counts,
     n_valid_circadian_days = n_valid_days,
     valid_day_min_hours = if (is.null(wear_time) || is.null(min_valid_hours)) 0 else min_valid_hours,
     epoch_length = epoch_length,
+    # unit of L5, M10, L1, M1 and the cosinor levels; print() and plot() read it
+    value_unit = value_unit,
     analysis_method = "canhrActi_v2_circadian"
   )
 
@@ -636,7 +672,7 @@ circadian.rhythm <- function(counts,
 
   # Aggregate to hourly data for IS/IV calculation
   hours <- as.POSIXlt(timestamps)$hour
-  dates <- as.Date(timestamps)
+  dates <- .circ_local_date(timestamps)
 
   # Calculate hourly means for each unique date-hour combination
   hourly_data <- aggregate(counts, by = list(date = dates, hour = hours), FUN = mean, na.rm = TRUE)
@@ -981,8 +1017,8 @@ social.jet.lag <- function(sleep_periods, work_days = NULL) {
   }
 
   # Parse timestamps
-  in_bed <- as.POSIXct(sleep_periods$in_bed_time)
-  out_bed <- as.POSIXct(sleep_periods$out_bed_time)
+  in_bed <- .clock_time(sleep_periods$in_bed_time)
+  out_bed <- .clock_time(sleep_periods$out_bed_time)
 
   # Calculate midpoint
   midpoint_posix <- in_bed + difftime(out_bed, in_bed, units = "secs") / 2
@@ -996,8 +1032,7 @@ social.jet.lag <- function(sleep_periods, work_days = NULL) {
 
   if (is.null(work_days)) {
     # Default: Mon-Fri are work days, weekend is free
-    is_work_day <- weekdays(sleep_date) %in%
-      c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+    is_work_day <- as.POSIXlt(sleep_date)$wday %in% 1:5
   } else if (is.logical(work_days)) {
     is_work_day <- work_days
   } else {
@@ -1034,7 +1069,22 @@ social.jet.lag <- function(sleep_periods, work_days = NULL) {
   # Format times
   format_time <- function(h) {
     if (is.na(h)) return(NA_character_)
-    sprintf("%02d:%02d", floor(h), round((h %% 1) * 60))
+    m <- round(h * 60) %% 1440
+    sprintf("%02d:%02d", m %/% 60, m %% 60)
+  }
+
+  # MCTQ sleep-debt correction (Roenneberg et al. 2012): MSFsc = MSF - (SDf - SDweek) / 2,
+  # applied only when free-day sleep exceeds work-day sleep. Time in bed, like MSW and MSF.
+  sleep_dur <- as.numeric(difftime(out_bed, in_bed, units = "hours"))
+  sd_w <- mean(sleep_dur[is_work_day], na.rm = TRUE)
+  sd_f <- mean(sleep_dur[!is_work_day], na.rm = TRUE)
+  sd_week <- mean(sleep_dur, na.rm = TRUE)
+  msfsc <- if (!is.na(msf) && is.finite(sd_f) && is.finite(sd_w) && sd_f > sd_w) {
+    msf - (sd_f - sd_week) / 2
+  } else msf
+  sjlsc <- if (is.na(msw) || is.na(msfsc)) NA_real_ else {
+    d <- msfsc - msw
+    if (abs(d) > 12) d - sign(d) * 24 else d
   }
 
   list(
@@ -1042,8 +1092,13 @@ social.jet.lag <- function(sleep_periods, work_days = NULL) {
     MSW_time = format_time(msw),
     MSF = round(msf, 2),
     MSF_time = format_time(msf),
+    MSFsc = round(msfsc, 2),
+    MSFsc_time = format_time(msfsc),
     social_jet_lag_hours = round(sjl, 2),
     social_jet_lag_min = if (is.na(sjl)) NA_integer_ else as.integer(round(sjl * 60)),
+    social_jet_lag_sc_hours = round(sjlsc, 2),
+    mean_sleep_duration_work = round(sd_w, 2),
+    mean_sleep_duration_free = round(sd_f, 2),
     n_work_nights = sum(is_work_day, na.rm = TRUE),
     n_free_nights = sum(!is_work_day, na.rm = TRUE)
   )
@@ -1326,7 +1381,7 @@ cosinor.analysis <- function(counts, timestamps, period = 24, wear_time = NULL,
   percent_rhythm <- r_squared * 100
 
   # Number of days analyzed
-  n_days <- length(unique(as.Date(ts)))
+  n_days <- length(unique(.circ_local_date(ts)))
 
   result <- list(
     # Core cosinor parameters
@@ -1349,6 +1404,8 @@ cosinor.analysis <- function(counts, timestamps, period = 24, wear_time = NULL,
     r_squared = round(r_squared, 4),
     percent_rhythm = round(percent_rhythm, 1),
     f_statistic = round(f_stat, 2),
+    f_df_model = df_model,
+    f_df_resid = df_resid,
     p_value = signif(p_value, 3),
     rhythm_significant = !is.na(p_value) && p_value < 0.05,
 
@@ -1595,7 +1652,7 @@ cosinor.extended <- function(counts, timestamps, harmonics = c(24, 12),
   # Pattern classification based on harmonic contributions
   pattern_type <- .classify.rhythm.pattern(components)
 
-  n_days <- length(unique(as.Date(ts)))
+  n_days <- length(unique(.circ_local_date(ts)))
 
   result <- list(
     # Core results
@@ -1619,6 +1676,8 @@ cosinor.extended <- function(counts, timestamps, harmonics = c(24, 12),
     r_squared_improvement = r_squared_improvement,
     percent_rhythm = round(r_squared * 100, 1),
     f_statistic = round(f_stat, 2),
+    f_df_model = df_model,
+    f_df_resid = df_resid,
     p_value = signif(p_value, 3),
 
     # Pattern interpretation
@@ -1842,7 +1901,7 @@ print.canhrActi_cosinor <- function(x, ...) {
 #' @keywords internal
 .calculate.daily.circadian <- function(counts, timestamps, epoch_length) {
 
-  dates <- as.Date(timestamps)
+  dates <- .circ_local_date(timestamps)
   unique_dates <- unique(dates)
 
   # Pre-allocate results
@@ -1916,10 +1975,12 @@ print.canhrActi_circadian <- function(x, ...) {
   cat(sprintf("  Epoch length:             %d seconds\n", x$epoch_length))
 
   cat("\nNon-Parametric Metrics (van Someren et al., 1999)\n")
-  cat(sprintf("  L5 (least active 5h):     %.2f counts/min, onset %s\n", x$L5, x$L5_start))
-  cat(sprintf("  M10 (most active 10h):    %.2f counts/min, onset %s\n", x$M10, x$M10_start))
-  cat(sprintf("  L1 (least active 1h):     %.2f counts/min, onset %s\n", x$L1, x$L1_start))
-  cat(sprintf("  M1 (most active 1h):      %.2f counts/min, onset %s\n", x$M1, x$M1_start))
+  # unit of the four levels; an object without the field is a counts run
+  u <- if (is.null(x$value_unit)) "counts/min" else as.character(x$value_unit)[1]
+  cat(sprintf("  L5 (least active 5h):     %.2f %s, onset %s\n", x$L5, u, x$L5_start))
+  cat(sprintf("  M10 (most active 10h):    %.2f %s, onset %s\n", x$M10, u, x$M10_start))
+  cat(sprintf("  L1 (least active 1h):     %.2f %s, onset %s\n", x$L1, u, x$L1_start))
+  cat(sprintf("  M1 (most active 1h):      %.2f %s, onset %s\n", x$M1, u, x$M1_start))
   cat(sprintf("  Relative Amplitude (RA):  %.4f (range 0-1, higher=stronger rhythm)\n", x$RA))
   cat(sprintf("  Interdaily Stability (IS): %.4f (range 0-1, higher=more consistent)\n", x$IS))
   cat(sprintf("  Intradaily Variability (IV): %.4f (~0=sine, ~2=noise)\n", x$IV))
@@ -1971,11 +2032,13 @@ print.canhrActi_circadian <- function(x, ...) {
 #' @param x canhrActi_circadian object from circadian.rhythm()
 #' @param type Type of plot: "profile" (default), "daily", or "all"
 #' @param ... Additional arguments passed to plotting functions
+#' @param value_label Optional y-axis label; overrides the unit carried on \code{x}
 #'
 #' @return ggplot object (or list of ggplot objects if type="all")
 #'
 #' @export
-plot.canhrActi_circadian <- function(x, type = "profile", ...) {
+# value_label sits after the dots so it can only be matched by name.
+plot.canhrActi_circadian <- function(x, type = "profile", ..., value_label = NULL) {
 
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("Package 'ggplot2' is required for plotting")
@@ -2003,7 +2066,9 @@ plot.canhrActi_circadian <- function(x, type = "profile", ...) {
                           x$IS, .interpret.IS(x$IS),
                           x$IV, .interpret.IV(x$IV)),
         x = "Time of Day",
-        y = "Mean Activity (counts/min)"
+        y = if (!is.null(value_label)) value_label
+            else if (!is.null(x$value_unit)) paste0("Mean Activity (", x$value_unit, ")")
+            else "Mean Activity (counts/min)"
       ) +
       theme_canhrActi() +
       ggplot2::theme(
@@ -2040,6 +2105,8 @@ plot.canhrActi_circadian <- function(x, type = "profile", ...) {
       ggplot2::geom_line(color = "#0072B2", linewidth = 1) +
       ggplot2::geom_point(color = "#0072B2", size = 2) +
       ggplot2::geom_hline(yintercept = x$RA, linetype = "dashed", color = "red") +
+      # pretty() names the date breaks in the time locale
+      ggplot2::scale_x_date(breaks = function(x) .in_c_time(scales::breaks_pretty()(x))) +
       ggplot2::labs(
         title = "Daily Relative Amplitude",
         subtitle = sprintf("Mean RA = %.3f (dashed line)", x$RA),

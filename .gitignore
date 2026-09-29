@@ -51,6 +51,19 @@ Thumbs.db
 # macOS artifacts
 .DS_Store
 
+# Recordings are participant data; only the dashboard samples are kept
+*.gt3x
+!inst/shiny/canhrActi_dashboard/data/MOS2E39230594.gt3x
+*.agd
+!inst/shiny/canhrActi_dashboard/data/MOS2E39230594_2025-10-14_60sec.agd
+!inst/shiny/canhrActi_dashboard/data/MOS2E3923063660sec.agd
+*.cwa
+*.bin
+
+# Exported results come from participant data too
+*.csv
+*.xlsx
+
 # Compiled code (build artifacts)
 src/*.o
 src/*.so

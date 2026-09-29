@@ -1,87 +1,74 @@
 # canhrActi
 
-Comprehensive analysis of ActiGraph accelerometer data for physical activity, sleep, and circadian rhythm research. Developed by the Center for Alaska Native Health Research.
+Analysis of accelerometer data for physical activity, sleep, sedentary behavior and circadian rhythm research. It works with ActiGraph count files (.agd) and raw recordings (ActiGraph .gt3x, Axivity .cwa, GENEActiv .bin), and its raw pipeline gives the same results as GGIR. Developed by the Center for Alaska Native Health Research.
 
-<strong>Use canhrActi:</strong> &nbsp;
-[Web app](https://rdazadda-canhracti.share.connect.posit.cloud/) &nbsp;||&nbsp;
-[Windows download](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-Setup.exe) &nbsp;||&nbsp;
-[macOS download](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-mac-arm64.dmg) &nbsp;||&nbsp;
-[Linux download](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi.AppImage) &nbsp;||&nbsp;
-[R package](#r-package)
-<br/>
+**[Web app](https://rdazadda-canhracti.share.connect.posit.cloud/)** &nbsp;·&nbsp;
+**[Windows](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-Setup.exe)** &nbsp;·&nbsp;
+**[macOS (Apple silicon)](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-mac-arm64.dmg)** &nbsp;·&nbsp;
+**[macOS (Intel)](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-mac-x64.dmg)** &nbsp;·&nbsp;
+**[Linux](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi.AppImage)** &nbsp;·&nbsp;
+**[R package](#r-package)**
 
-<strong>(See installation instructions below.)</strong>
-
-canhrActi reads ActiGraph `.agd` files and computes wear time, activity intensity classifications, energy expenditure, sleep periods, and circadian rhythm metrics. Output is compatible with ActiLife software. The same analysis pipeline is available three ways: as a hosted web app, as a desktop installer that bundles R, or as an R package for scripting.
-
-## Features
-
-- Wear time detection: Troiano 2007, Choi 2011, CANHR 2025
-- Activity intensity cut-points: Freedson, Sasaki VM3, Crouter, Evenson, Puyau, and others
-- Sleep scoring: Cole-Kripke and Sadeh, with Tudor-Locke period detection
-- MET prediction: twelve published algorithms
-- Circadian metrics: L5, M10, IS, IV, RA, phi, SRI
-- Sedentary fragmentation: ASTP, SATP, Gini, Clauset power-law exponent
-- Interactive Shiny dashboard
-
-## Quick Start
-
-```r
-library(canhrActi)
-
-results <- canhrActi("participant.agd")
-print(results$daily_summary)
-
-sleep <- canhrActi.sleep("participant.agd")
-
-run_dashboard()
-```
-
-## Installation
+## Getting started
 
 ### Web app
 
-Open <https://rdazadda-canhracti.share.connect.posit.cloud/> in any modern browser. Nothing to install.
+Open the [web app](https://rdazadda-canhracti.share.connect.posit.cloud/) in any modern browser. Nothing to install.
 
-### Windows
+### Desktop app
 
-1. [Download `CANHRActi-Setup.exe`](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-Setup.exe).
-2. Double-click to install. Windows SmartScreen may show a warning the first time. Click "More info" then "Run anyway".
-3. Launch CANHRActi from the Start menu.
+The desktop app includes R, so nothing else is needed.
 
-### macOS (Apple Silicon)
+- **Windows:** download [`CANHRActi-Setup.exe`](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-Setup.exe) and run it, then open CANHRActi from the Start menu. If SmartScreen shows a warning, click **More info**, then **Run anyway**.
+- **macOS:** download the file for your Mac, [Apple silicon](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-mac-arm64.dmg) (M1 or later) or [Intel](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-mac-x64.dmg). Open the .dmg and drag CANHRActi to Applications. If macOS says the app cannot be opened, go to **System Settings > Privacy & Security** and click **Open Anyway**.
+- **Linux:** download [`CANHRActi.AppImage`](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi.AppImage), then make it executable and run it:
 
-1. [Download `CANHRActi-mac-arm64.dmg`](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-mac-arm64.dmg).
-2. Open the .dmg and drag CANHRActi to Applications.
-3. The first time you open it, right-click the icon in Applications and pick **Open**. This approves the unsigned app with Gatekeeper.
-
-### Linux
-
-1. [Download `CANHRActi.AppImage`](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi.AppImage).
-2. Make it executable: `chmod +x CANHRActi.AppImage`
-3. Run it: `./CANHRActi.AppImage`
+  ```sh
+  chmod +x CANHRActi.AppImage
+  ./CANHRActi.AppImage
+  ```
 
 ### R package
 
+For scripting canhrActi from your own R session (R 4.1 or later):
+
 ```r
+# install.packages("remotes")
 remotes::install_github("rdazadda/canhrActi")
 ```
 
-Requires R >= 4.1. The desktop installers above bundle R for you; install the package directly only if you want to script canhrActi from your own R session.
+The dashboard also runs from R:
+
+```r
+canhrActi::run_dashboard()
+```
 
 ## Citation
 
-```
-Azadda, R.D., Grogan-Kaylor, A., & Lee, K. (2026). canhrActi:
-  Comprehensive Accelerometer Data Analysis for Physical Activity and Sleep Research.
-  R package version 0.3.0. https://github.com/rdazadda/canhrActi
+If you use canhrActi in your research, please cite it:
+
+> Azadda, R. D., AK CEAL Team, & Rasmus, S. (2026). *canhrActi: Activity, sleep and circadian analysis of accelerometer data* (Version 0.4.0) [R package]. Center for Alaska Native Health Research, University of Alaska Fairbanks. https://github.com/rdazadda/canhrActi
+
+```bibtex
+@Manual{canhrActi,
+  title        = {canhrActi: Activity, Sleep and Circadian Analysis of Accelerometer Data},
+  author       = {Raymond Dacosta Azadda and {AK CEAL Team} and Stacy Rasmus},
+  organization = {Center for Alaska Native Health Research, University of Alaska Fairbanks},
+  year         = {2026},
+  note         = {R package version 0.4.0},
+  url          = {https://github.com/rdazadda/canhrActi},
+}
 ```
 
-## Contact
+## Support
 
-- Email: rdazadda@alaska.edu
-- Issues: <https://github.com/rdazadda/canhrActi/issues>
+- Questions: rdazadda@alaska.edu
+- Bug reports and feature requests: <https://github.com/rdazadda/canhrActi/issues>
+
+## License
+
+Copyright (c) 2025 CANHR, University of Alaska Fairbanks. All rights reserved. See [LICENSE](LICENSE).
 
 ---
 
-Center for Alaska Native Health Research (CANHR)
+Center for Alaska Native Health Research (CANHR), University of Alaska Fairbanks

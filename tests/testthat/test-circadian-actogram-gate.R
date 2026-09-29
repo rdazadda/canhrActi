@@ -13,7 +13,6 @@
 # ---- Actogram ----------------------------------------------------------------
 
 test_that("plot_actogram returns a ggplot raster for valid data", {
-  skip_if_not_installed("ggplot2")
   d <- .ag_signal()
   p <- plot_actogram(d$act, d$ts, epoch_length = d$epl)
   expect_s3_class(p, "ggplot")
@@ -23,7 +22,6 @@ test_that("plot_actogram returns a ggplot raster for valid data", {
 })
 
 test_that("single plot spans 24 h, double spans 48 h", {
-  skip_if_not_installed("ggplot2")
   d <- .ag_signal()
   ps <- plot_actogram(d$act, d$ts, epoch_length = d$epl, double_plot = FALSE)
   pd <- plot_actogram(d$act, d$ts, epoch_length = d$epl, double_plot = TRUE)
@@ -32,7 +30,6 @@ test_that("single plot spans 24 h, double spans 48 h", {
 })
 
 test_that("wear_time blanks non-wear epochs", {
-  skip_if_not_installed("ggplot2")
   d <- .ag_signal()
   wear <- rep(TRUE, length(d$act))
   wear[(3 * 1440):(3 * 1440 + 600)] <- FALSE
@@ -42,7 +39,6 @@ test_that("wear_time blanks non-wear epochs", {
 })
 
 test_that("plot_actogram never errors on degenerate input", {
-  skip_if_not_installed("ggplot2")
   expect_s3_class(plot_actogram(numeric(0), as.POSIXct(character(0))), "ggplot")
   d <- .ag_signal()
   expect_s3_class(plot_actogram(d$act[1:5], d$ts[1:5], epoch_length = d$epl), "ggplot")
@@ -93,7 +89,6 @@ test_that("gate is a no-op without a wear mask (backward compatible)", {
 # ---- Chi-square periodogram plot ---------------------------------------------
 
 test_that("plot_chisq returns a ggplot with Qp + significance lines", {
-  skip_if_not_installed("ggplot2")
   d <- .ag_signal()
   p <- plot_chisq(d$act, d$ts, epoch_length = d$epl)
   expect_s3_class(p, "ggplot")
@@ -101,14 +96,12 @@ test_that("plot_chisq returns a ggplot with Qp + significance lines", {
 })
 
 test_that("plot_chisq flags a strong rhythm significant", {
-  skip_if_not_installed("ggplot2")
   d <- .ag_signal()
   p <- plot_chisq(d$act, d$ts, epoch_length = d$epl)
   expect_match(p$labels$title, "\\(significant,")
 })
 
 test_that("plot_chisq never errors on degenerate input", {
-  skip_if_not_installed("ggplot2")
   expect_s3_class(plot_chisq(numeric(0), as.POSIXct(character(0))), "ggplot")
   d <- .ag_signal()
   expect_s3_class(plot_chisq(d$act[1:5], d$ts[1:5], epoch_length = d$epl), "ggplot")

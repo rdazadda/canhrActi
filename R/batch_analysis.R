@@ -5,7 +5,8 @@
 #' @param files Character vector of AGD file paths OR a folder path
 #' @param config Optional config list from batch.config(). If NULL, uses defaults.
 #' @param wear_time_algorithm Wear time algorithm: "choi", "troiano", "CANHR2025"
-#' @param intensity_algorithm Intensity algorithm: "freedson1998", "CANHR"
+#' @param intensity_algorithm Intensity algorithm: "freedson1998", "CANHR", "evenson",
+#'   "puyau", "mattocks", "pate_preschool", "troiano", "sasaki_vm3", "copeland_older", "auto"
 #' @param min_wear_hours Minimum hours for valid day (default: 10)
 #' @param axis_to_analyze Axis: "axis1" or "vector_magnitude"
 #' @param calculate_mets Calculate METs? (default: TRUE)
@@ -36,7 +37,9 @@
 canhrActi.batch <- function(files,
                          config = NULL,
                          wear_time_algorithm = c("choi", "troiano", "CANHR2025"),
-                         intensity_algorithm = c("freedson1998", "CANHR"),
+                         intensity_algorithm = c("freedson1998", "CANHR", "evenson", "puyau",
+                                                 "mattocks", "pate_preschool", "troiano",
+                                                 "sasaki_vm3", "copeland_older", "auto"),
                          min_wear_hours = 10,
                          axis_to_analyze = c("axis1", "vector_magnitude"),
                          calculate_mets = TRUE,
@@ -132,7 +135,7 @@ canhrActi.batch <- function(files,
       error = NULL
     )
 
-    tryCatch({
+    result <- tryCatch({
       # Extract subject ID
       subject_id <- .extract_subject_id(file_path, file_index)
       result$subject_id <- subject_id
@@ -147,7 +150,8 @@ canhrActi.batch <- function(files,
         participant_age = participant_age,
         calculate_fragmentation = calculate_fragmentation,
         calculate_circadian = calculate_circadian,
-        exclude_sleep = exclude_sleep
+        exclude_sleep = exclude_sleep,
+        verbose = verbose
       )
 
       # Build summary row
@@ -157,9 +161,11 @@ canhrActi.batch <- function(files,
       result$analysis <- analysis
       result$summary_row <- summary_row
       result$success <- TRUE
+      result
 
     }, error = function(e) {
       result$error <- conditionMessage(e)
+      result
     })
 
     return(result)
@@ -181,12 +187,12 @@ canhrActi.batch <- function(files,
       library(RSQLite)
     })
 
-    # Export parameters and data
-    #  Also export 'files', 'n_files', and 'process_single_file' to cluster
-    # These are needed inside the parLapply function
+    # Export every setting before process_single_file: exporting evaluates it here, so an
+    # argument given as a variable is not looked up again on a worker, where it does not exist
     parallel::clusterExport(cl, c(
       "wear_time_algorithm", "intensity_algorithm", "min_wear_hours",
       "axis_to_analyze", "calculate_mets", "mets_algorithm",
+      "sleep_algorithm", "participant_age", "exclude_sleep",
       "calculate_fragmentation", "calculate_circadian",
       "files", "n_files", "process_single_file"
     ), envir = environment())
@@ -242,17 +248,23 @@ canhrActi.batch <- function(files,
   all_results <- list()
   summary_rows <- list()
   failed_files <- character(0)
+  errors <- character(0)
   success_count <- 0
 
   for (res in results_list) {
     if (res$success) {
-      all_results[[res$subject_id]] <- res$analysis
+      # Appended, not assigned by name: two files with the same subject name must both stay
+      all_results[[length(all_results) + 1]] <- res$analysis
+      names(all_results)[length(all_results)] <- res$subject_id
       summary_rows[[length(summary_rows) + 1]] <- res$summary_row
       success_count <- success_count + 1
     } else {
       failed_files <- c(failed_files, res$file)
+      errors <- c(errors, res$error)
     }
   }
+  if (length(all_results) > 0) names(all_results) <- make.unique(names(all_results))
+  names(errors) <- failed_files
 
   # Build summary table
   if (length(summary_rows) > 0) {
@@ -285,8 +297,8 @@ canhrActi.batch <- function(files,
 
     if (nrow(summary_table) > 0) {
       cat("\nGroup Statistics:\n")
-      cat("  Mean MVPA: ", round(mean(summary_table$`Total MVPA`, na.rm = TRUE), 1), " min/day\n", sep = "")
-      cat("  Mean Sedentary: ", round(mean(summary_table$Sedentary, na.rm = TRUE) / 60, 1), " hrs/day\n", sep = "")
+      cat("  Mean Total MVPA: ", round(mean(summary_table$`Total MVPA`, na.rm = TRUE), 1), " min\n", sep = "")
+      cat("  Mean Total Sedentary: ", round(mean(summary_table$Sedentary, na.rm = TRUE) / 60, 1), " hrs\n", sep = "")
       cat("  Mean Valid Days: ", round(mean(summary_table$`Calendar Days`, na.rm = TRUE), 1), "\n", sep = "")
     }
     cat("\n")
@@ -310,10 +322,11 @@ canhrActi.batch <- function(files,
     n_participants = length(all_results),
     n_failed = length(failed_files),
     failed_files = failed_files,
+    errors = errors,
     processing_time = total_time,
     group_stats = list(
       mean_valid_days = if (nrow(summary_table) > 0) mean(summary_table$`Calendar Days`, na.rm = TRUE) else NA,
-      mean_wear_hours = if (nrow(summary_table) > 0) mean(summary_table$Time, na.rm = TRUE) else NA,
+      mean_wear_hours = if (nrow(summary_table) > 0) mean(summary_table$Time, na.rm = TRUE) / 60 else NA,
       mean_mvpa_minutes = if (nrow(summary_table) > 0) mean(summary_table$`Total MVPA`, na.rm = TRUE) else NA,
       mean_sedentary_hours = if (nrow(summary_table) > 0) mean(summary_table$Sedentary, na.rm = TRUE) / 60 else NA
     ),
@@ -335,7 +348,8 @@ canhrActi.batch <- function(files,
   tryCatch({
     ext <- tolower(tools::file_ext(file_path))
 
-    if (ext == "agd") {
+    # Connecting to a missing path would create an empty .agd there
+    if (ext == "agd" && file.exists(file_path)) {
       con <- DBI::dbConnect(RSQLite::SQLite(), file_path)
       on.exit(DBI::dbDisconnect(con), add = TRUE)
 
@@ -383,142 +397,10 @@ canhrActi.batch <- function(files,
       analysis$parameters$epoch_length
     } else 60
 
-    # Safe max function that returns 0 instead of -Inf for empty/all-NA vectors
-    safe_max <- function(x) {
-      x <- x[!is.na(x)]
-      if (length(x) == 0) return(0)
-      max(x)
-    }
-
-    # Compute the canonical ActiLife Summary via the SHARED helper so this batch
-    # summary row reports IDENTICAL intensity numbers to export_summary and
-    # export_summary_internal. The helper:
-    #   - uses the already-classified epoch_data$intensity (NOT a 3rd re-classification)
-    #   - restricts to VALID-DAY & WEAR epochs (excludes non-wear / invalid days)
-    #   - uses ONE percentage denominator = wear-epoch count
-    s <- .build_actilife_summary(analysis)
-
-    if (is.null(s)) {
-      # No valid days/epochs: emit zeroed intensity numbers but still report file
-      epoch_sec <- epoch_len
-      n_wear_epochs <- 0
-      wear_data <- analysis$epoch_data[0, , drop = FALSE]
-      sedentary_min <- light_min <- moderate_min <- vigorous_min <- 0
-      very_vigorous_min <- mvpa_min <- 0
-      sed_pct_str <- light_pct_str <- mod_pct_str <- "0.00%"
-      vig_pct_str <- vvig_pct_str <- mvpa_pct_str <- "0.00%"
-      calendar_days <- 1
-    } else {
-      epoch_sec <- s$epoch_sec
-      n_wear_epochs <- s$n_wear_epochs
-      wear_data <- s$wear_valid_epochs
-      # Epoch counts -> minutes (consistent with the helper's epoch length)
-      sedentary_min     <- s$sedentary     * (epoch_sec / 60)
-      light_min         <- s$light         * (epoch_sec / 60)
-      moderate_min      <- s$moderate      * (epoch_sec / 60)
-      vigorous_min      <- s$vigorous      * (epoch_sec / 60)
-      very_vigorous_min <- s$very_vigorous * (epoch_sec / 60)
-      mvpa_min          <- s$total_mvpa    * (epoch_sec / 60)
-      sed_pct_str   <- s$sed_pct_str
-      light_pct_str <- s$light_pct_str
-      mod_pct_str   <- s$mod_pct_str
-      vig_pct_str   <- s$vig_pct_str
-      vvig_pct_str  <- s$vvig_pct_str
-      mvpa_pct_str  <- s$mvpa_pct_str
-      calendar_days <- s$n_valid_days
-    }
-
-    # Axis/VM/steps statistics computed over the SAME valid-day wear epochs the
-    # ActiLife Summary export uses, so all reported columns share one epoch universe.
-    if (is.null(wear_data) || nrow(wear_data) == 0) {
-      wear_data <- data.frame(axis1 = numeric(0), axis2 = numeric(0),
-                              axis3 = numeric(0))
-    }
-    has_rows <- nrow(wear_data) > 0
-
-    axis1_total <- if (has_rows) sum(wear_data$axis1, na.rm = TRUE) else 0
-    axis2_total <- if (has_rows && "axis2" %in% names(wear_data)) sum(wear_data$axis2, na.rm = TRUE) else 0
-    axis3_total <- if (has_rows && "axis3" %in% names(wear_data)) sum(wear_data$axis3, na.rm = TRUE) else 0
-    axis1_avg <- if (has_rows) mean(wear_data$axis1, na.rm = TRUE) else 0
-    axis2_avg <- if (has_rows && "axis2" %in% names(wear_data)) mean(wear_data$axis2, na.rm = TRUE) else 0
-    axis3_avg <- if (has_rows && "axis3" %in% names(wear_data)) mean(wear_data$axis3, na.rm = TRUE) else 0
-    axis1_max <- if (has_rows) safe_max(wear_data$axis1) else 0
-    axis2_max <- if (has_rows && "axis2" %in% names(wear_data)) safe_max(wear_data$axis2) else 0
-    axis3_max <- if (has_rows && "axis3" %in% names(wear_data)) safe_max(wear_data$axis3) else 0
-
-    # Vector magnitude
-    if (has_rows && all(c("axis1", "axis2", "axis3") %in% names(wear_data))) {
-      vm <- sqrt(wear_data$axis1^2 + wear_data$axis2^2 + wear_data$axis3^2)
-    } else if (has_rows) {
-      vm <- wear_data$axis1
-    } else {
-      vm <- numeric(0)
-    }
-    vm_total <- if (length(vm) > 0) sum(vm, na.rm = TRUE) else 0
-    vm_avg <- if (length(vm) > 0) mean(vm, na.rm = TRUE) else 0
-    vm_max <- safe_max(vm)
-
-    # Steps
-    steps_total <- if (has_rows && "steps" %in% names(wear_data)) sum(wear_data$steps, na.rm = TRUE) else 0
-    steps_avg <- if (has_rows && "steps" %in% names(wear_data)) mean(wear_data$steps, na.rm = TRUE) else 0
-    steps_max <- if (has_rows && "steps" %in% names(wear_data)) safe_max(wear_data$steps) else 0
-
-    # Lux
-    lux_avg <- if (has_rows && "lux" %in% names(wear_data)) mean(wear_data$lux, na.rm = TRUE) else NA
-    lux_max <- if (has_rows && "lux" %in% names(wear_data)) safe_max(wear_data$lux) else NA
-
-    total_hours <- (n_wear_epochs * (epoch_sec / 60)) / 60
-    avg_mvpa_per_day <- mvpa_min / max(calendar_days, 1)
-
-    # Build row
-    data.frame(
-      Subject = subject_id,
-      Filename = basename(file_path),
-      Epoch = epoch_len,
-      "Weight (lbs)" = weight_lbs,
-      Age = age_val,
-      Gender = gender_val,
-      Sedentary = round(sedentary_min),
-      Light = round(light_min),
-      Moderate = round(moderate_min),
-      Vigorous = round(vigorous_min),
-      "Very Vigorous" = round(very_vigorous_min),
-      "% in Sedentary" = sed_pct_str,
-      "% in Light" = light_pct_str,
-      "% in Moderate" = mod_pct_str,
-      "% in Vigorous" = vig_pct_str,
-      "% in Very Vigorous" = vvig_pct_str,
-      "Total MVPA" = round(mvpa_min),
-      "% in MVPA" = mvpa_pct_str,
-      "Average MVPA Per day" = round(avg_mvpa_per_day, 1),
-      "Axis 1 Counts" = axis1_total,
-      "Axis 2 Counts" = axis2_total,
-      "Axis 3 Counts" = axis3_total,
-      "Axis 1 Average Counts" = round(axis1_avg, 1),
-      "Axis 2 Average Counts" = round(axis2_avg, 1),
-      "Axis 3 Average Counts" = round(axis3_avg, 1),
-      "Axis 1 Max Counts" = axis1_max,
-      "Axis 2 Max Counts" = axis2_max,
-      "Axis 3 Max Counts" = axis3_max,
-      "Axis 1 CPM" = round(axis1_avg * (60 / epoch_sec), 1),
-      "Axis 2 CPM" = round(axis2_avg * (60 / epoch_sec), 1),
-      "Axis 3 CPM" = round(axis3_avg * (60 / epoch_sec), 1),
-      "Vector Magnitude Counts" = round(vm_total, 1),
-      "Vector Magnitude Average Counts" = round(vm_avg, 1),
-      "Vector Magnitude Max Counts" = round(vm_max, 1),
-      "Vector Magnitude CPM" = round(vm_avg * (60 / epoch_sec), 1),
-      "Steps Counts" = steps_total,
-      "Steps Average Counts" = round(steps_avg, 1),
-      "Steps Max Counts" = steps_max,
-      "Steps Per Minute" = round(steps_avg, 1),
-      "Lux Average Counts" = if (is.na(lux_avg)) NA else round(lux_avg, 1),
-      "Lux Max Counts" = if (is.na(lux_max)) NA else round(lux_max, 1),
-      "Number of Epochs" = n_wear_epochs,
-      Time = round(total_hours, 1),
-      "Calendar Days" = calendar_days,
-      check.names = FALSE,
-      stringsAsFactors = FALSE
-    )
+    # The row export_summary() writes, from the same helper; zeros when no day
+    # is valid. Times are minutes, as in every other table.
+    .summary_frame(.build_actilife_summary(analysis), subject_id, basename(file_path),
+                   weight_lbs, age_val, gender_val, epoch_sec = epoch_len)
   }, error = function(e) {
     # Return minimal row on error
     data.frame(
@@ -570,8 +452,8 @@ print.canhrActi_batch <- function(x, ...) {
   cat("Group Statistics:\n")
   cat("  Mean Valid Days: ", round(x$group_stats$mean_valid_days, 1), "\n", sep = "")
   cat("  Mean Wear Time: ", round(x$group_stats$mean_wear_hours, 1), " hours\n", sep = "")
-  cat("  Mean MVPA: ", round(x$group_stats$mean_mvpa_minutes, 1), " min/day\n", sep = "")
-  cat("  Mean Sedentary: ", round(x$group_stats$mean_sedentary_hours, 1), " hours/day\n\n", sep = "")
+  cat("  Mean Total MVPA: ", round(x$group_stats$mean_mvpa_minutes, 1), " min\n", sep = "")
+  cat("  Mean Total Sedentary: ", round(x$group_stats$mean_sedentary_hours, 1), " hours\n\n", sep = "")
 
   cat("Settings:\n")
   cat("  Wear time algorithm: ", x$settings$wear_time_algorithm, "\n", sep = "")
@@ -594,7 +476,8 @@ print.canhrActi_batch <- function(x, ...) {
 #' Only specify parameters you want to change from defaults.
 #'
 #' @param wear Wear time algorithm: "choi", "troiano", "CANHR2025"
-#' @param intensity Intensity algorithm: "freedson1998", "CANHR"
+#' @param intensity Intensity algorithm: "freedson1998", "CANHR", "evenson", "puyau",
+#'   "mattocks", "pate_preschool", "troiano", "sasaki_vm3", "copeland_older", "auto"
 #' @param min_wear Minimum wear hours (default: 10)
 #' @param axis Axis: "axis1", "vector_magnitude"
 #' @param mets Calculate METs? (default: TRUE)

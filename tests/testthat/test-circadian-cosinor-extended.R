@@ -80,20 +80,16 @@ test_that("cosinor.antilogistic F_pseudo is positive for non-sinusoidal shape", 
 # cosinor.antilogistic: numeric validation against ActCR::ActExtendCosinor
 # -----------------------------------------------------------------------------
 
-# EXACT-GRID validation. cosinor.antilogistic summarizes data on the package's
-# 24 hourly bins (centers H + 0.5), whereas ActExtendCosinor consumes a
-# 1440-minute profile on its own time grid (minutes 1:1440 / 60). When the SAME
-# 24-bin profile is presented to ActCR on the SAME bin-center grid, the
-# hand-coded Levenberg-style least-squares fit and ActCR's nls.lm agree to
-# (essentially) machine precision -- proving the model math is identical and the
-# only difference is the profile discretization choice.
-test_that("cosinor.antilogistic fit matches ActCR on the SAME profile grid", {
+# Model maths check. cosinor.antilogistic fits the package's 24 hourly bins and
+# ActExtendCosinor a 1440-minute profile, so here a copy of the model is fitted on
+# ActCR's own grid and both fits see identical input. cosinor.antilogistic itself
+# is compared with ActCR end to end in the next test.
+test_that("the extended cosinor model maths matches ActCR on the same profile grid", {
   skip_if_not_installed("ActCR")
 
   omega <- 2 * pi / 24
 
-  # Re-fit the extended cosinor exactly as cosinor.antilogistic does, but on an
-  # arbitrary (t, y) grid, so we can hand ActCR an identical grid for comparison.
+  # The extended cosinor model fitted on an arbitrary (t, y) grid.
   fit_on_grid <- function(t, y) {
     X <- cbind(1, cos(omega * t), sin(omega * t))
     b <- stats::lm.fit(X, y)$coefficients
@@ -194,7 +190,8 @@ test_that("cosinor.antilogistic handles short / NA / flat input gracefully", {
   expect_false(f_flat$converged)
 
   # Mismatched length errors
-  expect_error(cosinor.antilogistic(1:10, ts))
+  expect_error(cosinor.antilogistic(1:10, ts),
+               "counts and timestamps must have same length")
 })
 
 test_that("cosinor.antilogistic tolerates gaps (some missing hours)", {
@@ -282,7 +279,8 @@ test_that("confidence ellipse handles bad input gracefully", {
   bad <- fake_cosinor(amplitude = NA_real_, acrophase = NA_real_,
                       se_amplitude = NA_real_)
   expect_true(is.na(cosinor.confidence.ellipse(bad)$excludes_origin))
-  expect_error(cosinor.confidence.ellipse(fake_cosinor(80, 14, 3), level = 2))
+  expect_error(cosinor.confidence.ellipse(fake_cosinor(80, 14, 3), level = 2),
+               "level must be a single number")
 })
 
 

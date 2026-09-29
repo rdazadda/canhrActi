@@ -27,8 +27,8 @@ The dashboard includes:
 \item Cut-point overlay options
 \item Inclinometer/posture visualization
 \item Light exposure plots
-\item Sleep period overlay
-\item Wear time visualization
-\item Export options for all plots
+\item Daily summary bars and table
+\item Export of the current plot, or of all plots as a zip file (needs the
+zip package)
 }
 }

@@ -11,8 +11,8 @@ composite.phase.deviation(onset_hours, reference_phase = NULL)
 decimal hours (e.g. daily L5 onsets).}
 
 \item{reference_phase}{Optional reference phase in decimal hours (e.g. a
-scheduled/expected time, or a group mean). Default \code{NULL} uses the
-individual's own mean phase (accuracy term = 0).}
+scheduled/expected time, or a group mean). Default \code{NULL} leaves
+accuracy and CPD \code{NA}.}
 }
 \value{
 List with \code{CPD}, \code{precision} (mean absolute deviation from
@@ -22,11 +22,9 @@ reference, hours), \code{reference_phase}, and \code{n_days}.
 \description{
 Combines, for each day, the deviation of the phase marker from the
 individual's own mean phase (precision) and from a reference phase
-(accuracy) as \code{CPD = mean(sqrt(precision^2 + accuracy^2))}. When no
-external reference phase is supplied, accuracy is taken relative to the
-individual's own mean phase (accuracy = 0), so CPD reduces to the mean
-absolute phase deviation - still a valid, published measure of phase
-instability, and distinct from the circular SD reported by
+(accuracy) as \code{CPD = mean(sqrt(precision^2 + accuracy^2))}. Without an
+external reference phase, accuracy and CPD are \code{NA} and only precision
+is reported; precision is distinct from the circular SD reported by
 \code{onset_timing_variability}.
 }
 \references{

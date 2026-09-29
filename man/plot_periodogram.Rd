@@ -20,7 +20,7 @@ timestamps before estimation.}
 \item{to}{Numeric. Upper bound of the period search window, in hours
 (default \code{30}).}
 
-\item{ofac}{Integer oversampling factor passed to \code{lomb::lsp}. Higher
+\item{ofac}{Integer oversampling factor of the Lomb-Scargle scan. Higher
 values give a finer period grid (default \code{4}).}
 }
 \value{
@@ -39,10 +39,10 @@ dashed reference line is drawn at 24 hours so the deviation of the biological
 clock from exactly one solar day is visible at a glance.
 }
 \details{
-The full spectrum is obtained from
-\code{lomb::lsp(x, times, from, to, type = "period", ofac, plot = FALSE)},
-whose \code{$scanned} component holds the trial periods (hours) and
-\code{$power} the corresponding normalized Lomb-Scargle power. The peak period
+The full spectrum is the standard-normalized Lomb-Scargle periodogram over the
+period window, computed in the package the same way as
+\code{lomb::lsp(x, times, from, to, type = "period", ofac)}: the trial periods
+(hours) against their normalized power. The peak period
 \code{tau} and its \code{p_value} come from \code{\link{circadian.period}} so
 that the highlighted peak is exactly the value reported by the analytic
 function. The Lomb-Scargle periodogram is the least-squares spectral estimator

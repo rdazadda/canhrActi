@@ -9,7 +9,8 @@
   xmin,
   empirical_ks,
   gof_bootstrap_n = 200,
-  xmin_candidates = NULL
+  xmin_candidates = NULL,
+  step = 1
 )
 }
 \arguments{
@@ -22,9 +23,11 @@
 \item{gof_bootstrap_n}{Number of synthetic datasets (default 200)}
 
 \item{xmin_candidates}{xmin grid reused when re-fitting each synthetic dataset}
+
+\item{step}{Spacing of the durations in minutes, one epoch (default 1)}
 }
 \value{
-Numeric p-value in \link{0, 1}, or NA if it cannot be computed
+Numeric p-value between 0 and 1, or NA if it cannot be computed
 }
 \description{
 Implements the Clauset et al. (2009, Section 4.2) semiparametric Monte-Carlo

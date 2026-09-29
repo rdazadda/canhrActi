@@ -50,6 +50,14 @@ canhrActi.sleep <- function(agd_file_path,
 
   sleep_algorithm <- match.arg(sleep_algorithm)
 
+  if (!is.character(agd_file_path) || length(agd_file_path) == 0) {
+    stop("agd_file_path must be an .agd file, several .agd files or a folder")
+  }
+  # A missing file in a list is recorded as failed like any other
+  if (length(agd_file_path) == 1 && !file.exists(agd_file_path)) {
+    stop("File or folder not found: ", agd_file_path)
+  }
+
   # Handle folder or multiple files
   if (length(agd_file_path) == 1 && dir.exists(agd_file_path)) {
     files <- list.files(agd_file_path, pattern = "\\.agd$", full.names = TRUE, ignore.case = TRUE)
@@ -104,7 +112,7 @@ canhrActi.sleep <- function(agd_file_path,
       error = NULL
     )
 
-    tryCatch({
+    result <- tryCatch({
       analysis <- .canhrActi.sleep.single(
         agd_file_path = file_path,
         sleep_algorithm = sleep_algorithm,
@@ -114,7 +122,8 @@ canhrActi.sleep <- function(agd_file_path,
         wake_time_end = wake_time_end,
         min_sleep_period = min_sleep_period,
         max_sleep_period = max_sleep_period,
-        min_nonzero_epochs = min_nonzero_epochs
+        min_nonzero_epochs = min_nonzero_epochs,
+        verbose = verbose
       )
 
       # Build summary row
@@ -140,17 +149,20 @@ canhrActi.sleep <- function(agd_file_path,
       result$analysis <- analysis
       result$summary_row <- summary_row
       result$success <- TRUE
+      result
 
     }, error = function(e) {
+      # NA metrics keep a failed file out of the group statistics
       result$error <- conditionMessage(e)
       result$summary_row <- data.frame(
         file_name = basename(file_path),
         algorithm = sleep_algorithm,
         total_epochs = NA, raw_sleep_epochs_24h = NA, raw_wake_epochs_24h = NA,
-        sleep_periods_detected = 0, total_sleep_time_min = 0,
-        avg_sleep_efficiency = 0, avg_awakenings = 0,
+        sleep_periods_detected = NA, total_sleep_time_min = NA,
+        avg_sleep_efficiency = NA, avg_awakenings = NA,
         stringsAsFactors = FALSE
       )
+      result
     })
 
     return(result)
@@ -223,6 +235,7 @@ canhrActi.sleep <- function(agd_file_path,
   all_results <- list()
   summary_rows <- list()
   failed_files <- character(0)
+  errors <- character(0)
   success_count <- 0
 
   for (res in results_list) {
@@ -231,9 +244,11 @@ canhrActi.sleep <- function(agd_file_path,
       success_count <- success_count + 1
     } else {
       failed_files <- c(failed_files, res$file)
+      errors <- c(errors, res$error)
     }
     summary_rows[[length(summary_rows) + 1]] <- res$summary_row
   }
+  names(errors) <- failed_files
 
   summary_df <- do.call(rbind, summary_rows)
   total_time <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
@@ -247,7 +262,7 @@ canhrActi.sleep <- function(agd_file_path,
     cat("  Total time: ", .format_time(total_time), "\n", sep = "")
     cat("  Avg per file: ", round(total_time / n_files, 1), " seconds\n", sep = "")
 
-    if (nrow(summary_df) > 0) {
+    if (!is.null(summary_df) && nrow(summary_df) > 0) {
       valid_rows <- summary_df[!is.na(summary_df$total_sleep_time_min), ]
       if (nrow(valid_rows) > 0) {
         cat("\nGroup Statistics:\n")
@@ -262,7 +277,7 @@ canhrActi.sleep <- function(agd_file_path,
   # Export
   if (export && length(all_results) > 0) {
     if (verbose) cat("Exporting results to: ", output_dir, "\n", sep = "")
-    .export.actilife.sleep(all_results, output_dir)
+    .export.actilife.sleep(all_results, output_dir, verbose = verbose)
   }
 
   # Build result
@@ -273,6 +288,7 @@ canhrActi.sleep <- function(agd_file_path,
     n_success = success_count,
     n_failed = length(failed_files),
     failed_files = failed_files,
+    errors = errors,
     processing_time = total_time,
     parameters = list(
       sleep_algorithm = sleep_algorithm,
@@ -306,9 +322,10 @@ canhrActi.sleep <- function(agd_file_path,
                                     wake_time_end,
                                     min_sleep_period,
                                     max_sleep_period,
-                                    min_nonzero_epochs) {
+                                    min_nonzero_epochs,
+                                    verbose = TRUE) {
 
-  agd_data <- read.agd(agd_file_path)
+  agd_data <- read.agd(agd_file_path, verbose = verbose)
   counts_data <- agd.counts(agd_data)
   subject_info <- extract.subject.info(agd_data)
 
@@ -342,7 +359,7 @@ canhrActi.sleep <- function(agd_file_path,
   epoch_data <- data.frame(
     epoch = 1:nrow(counts_data),
     timestamp = counts_data$timestamp,
-    date = as.Date(counts_data$timestamp),
+    date = .clock_date(counts_data$timestamp),
     axis1 = counts_data$axis1,
     sleep_wake = sleep_wake,
     stringsAsFactors = FALSE
@@ -395,7 +412,7 @@ print.canhrActi_sleep_batch <- function(x, ...) {
   cat("Processing time: ", .format_time(x$processing_time), "\n", sep = "")
   cat("Algorithm: ", x$parameters$sleep_algorithm, "\n\n", sep = "")
 
-  if (nrow(x$summary) > 0) {
+  if (!is.null(x$summary) && nrow(x$summary) > 0) {
     valid <- x$summary[!is.na(x$summary$total_sleep_time_min), ]
     if (nrow(valid) > 0) {
       cat("Group Statistics:\n")

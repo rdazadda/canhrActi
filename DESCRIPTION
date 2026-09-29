@@ -1,27 +1,26 @@
 Package: canhrActi
-Title: CANHR Accelerometer Physical Activity and Sleep Analysis
+Title: Activity, Sleep and Circadian Analysis of Accelerometer Data
 Version: 0.4.0
+Date: 2026-09-28
 Authors@R: c(
     person("Raymond Dacosta", "Azadda",
            email = "rdazadda@alaska.edu",
-           role = c("aut", "cre")),
-    person("Andrew", "Grogan-Kaylor",
-           email = "agrogan@umich.edu",
+           role = c("aut", "cre"),
+           comment = c(ORCID = "0009-0002-4384-4556")),
+    person("AK CEAL Team",
            role = "aut"),
-    person("KyungSook", "Lee",
-           email = "klee98@alaska.edu",
+    person("Stacy", "Rasmus",
            role = "aut"))
-Author: Raymond Dacosta Azadda [aut, cre], Andrew Grogan-Kaylor [aut], KyungSook Lee [aut]
+Author: Raymond Dacosta Azadda [aut, cre] (ORCID: <https://orcid.org/0009-0002-4384-4556>),
+    AK CEAL Team [aut], Stacy Rasmus [aut]
 Maintainer: Raymond Dacosta Azadda <rdazadda@alaska.edu>
-Description: Comprehensive accelerometer data analysis suite developed by the Center
-    for Alaska Native Health Research (CANHR). Implements scientifically validated
-    algorithms including Choi (2011) and Troiano (2007) wear time detection, Freedson (1998)
-    intensity cut points, Cole-Kripke and Sadeh sleep scoring, and 12 METs prediction
-    algorithms. Features unique wake period inversion (sleepwaker methodology) for
-    separating sleep from waking sedentary behavior. Includes circadian rhythm analysis
-    (L5, M10, IS, IV, RA, phi) and sedentary fragmentation metrics. Supports ActiGraph
-    AGD files with pre-processed activity counts. Produces results compatible with
-    ActiLife software.
+Description: Accelerometer analysis for physical activity, sleep, sedentary
+    behavior and circadian rhythm research, from the Center for Alaska Native
+    Health Research (CANHR). Reads 'ActiGraph' count files (.agd) and raw
+    recordings ('ActiGraph' .gt3x, 'Axivity' .cwa, 'GENEActiv' .bin). Count
+    results are compatible with 'ActiLife', the raw pipeline gives the same
+    results as 'GGIR', and an interactive dashboard runs the full analysis
+    without writing code.
 License: file LICENSE
 URL: https://github.com/rdazadda/canhrActi
 BugReports: https://github.com/rdazadda/canhrActi/issues
@@ -35,13 +34,24 @@ Imports:
     ggplot2,
     scales,
     tidyr,
-    Rcpp (>= 1.0.0)
+    Rcpp (>= 1.0.0),
+    read.gt3x (>= 1.2.0),
+    zoo,
+    lubridate
 LinkingTo: Rcpp
-SystemRequirements: C++17
 Suggests:
     knitr,
     rmarkdown,
     testthat (>= 3.0.0),
+    withr,
+    GGIRread (>= 1.0.4),
+    signal,
+    actilifecounts,
+    data.table,
+    unisensR,
+    GGIR,
+    pdftools,
+    png,
     patchwork,
     plotly,
     gridExtra,
@@ -49,11 +59,7 @@ Suggests:
     ggrepel,
     ggridges,
     shiny (>= 1.7.0),
-    bslib (>= 0.5.0),
-    bsicons,
-    DT,
     shinyjs,
-    shinycssloaders,
     shinydashboard,
     openxlsx,
     future,
@@ -62,12 +68,13 @@ Suggests:
     zip,
     ActCR,
     pracma,
-    cosinor2,
     nonlinearTseries,
     lomb,
     nparACT,
     cosinor,
-    agcounts
+    agcounts,
+    gsignal,
+    ineq
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Config/roxygen2/version: 8.0.0

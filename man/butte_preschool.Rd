@@ -4,37 +4,29 @@
 \alias{butte_preschool}
 \title{Apply Butte (2014) Preschooler Cut Points}
 \usage{
-butte_preschool(counts_per_minute, age = 4)
+butte_preschool(counts_per_minute)
 }
 \arguments{
-\item{counts_per_minute}{Numeric vector of CPM}
-
-\item{age}{Age in years (3-6)}
+\item{counts_per_minute}{Numeric vector of vertical-axis CPM}
 }
 \value{
 Ordered factor with intensity levels
 }
 \description{
-Cut-points for preschoolers validated against room calorimetry in the
-VIVA project. Provides age-specific thresholds.
+Cut-points for preschoolers (mean age 4.5) validated against room calorimetry,
+for the ActiGraph vertical axis.
 }
 \details{
-Butte (2014) provides age-specific regression equations. This implementation
-is a COUNT-THRESHOLD APPROXIMATION of those equations: it varies only the
-single MVPA cut by age and applies fixed sedentary/light cuts for all ages.
-Approximate cutpoints:
-Age 3-4:
+Butte (2014) cutpoints, ActiGraph x-axis:
 \itemize{
 \item Sedentary: 0-239 CPM
 \item Light: 240-2119 CPM
-\item Moderate-Vigorous: >= 2120 CPM
+\item Moderate: 2120-4449 CPM
+\item Vigorous: >= 4450 CPM
 }
-Age 5-6:
-\itemize{
-\item Sedentary: 0-239 CPM
-\item Light: 240-2295 CPM
-\item Moderate-Vigorous: >= 2296 CPM
-}
+
+The paper gives one set for preschoolers, with no cut by age; for school-age
+children see \code{\link{evenson}}.
 }
 \references{
 Butte NF, Wong WW, Lee JS, Adolph AL, Puyau MR, Zakeri IF. (2014). Prediction
@@ -43,8 +35,6 @@ Exerc, 46(7), 1216-1226.
 }
 \seealso{
 Other children cut-points:
-\code{\link[=chandler]{chandler()}},
-\code{\link[=copeland]{copeland()}},
 \code{\link[=evenson]{evenson()}},
 \code{\link[=mattocks]{mattocks()}},
 \code{\link[=pate_preschool]{pate_preschool()}},

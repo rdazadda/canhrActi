@@ -1,6 +1,6 @@
-// Removes PDF manuals, non-English locales, and per-package help/HTML from
-// the bundled R tree. All targeted paths are safe to delete for a runtime
-// embed (R itself does not require them).
+// Removes R's manuals and per-package help, HTML and vignettes from the bundled
+// R tree, and on macOS the tcltk package, whose library needs XQuartz and a Tcl
+// under /opt/R that no user Mac has. share/, translations and fonts stay.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -13,47 +13,48 @@ if (!fs.existsSync(R_DIR)) {
   process.exit(1);
 }
 
-function delTree(p) {
-  if (!fs.existsSync(p)) return 0;
-  const stat = fs.statSync(p);
-  if (stat.isFile()) {
-    const size = stat.size;
-    fs.unlinkSync(p);
-    return size;
-  }
+// R_HOME is resources/R on Windows and macOS and resources/R/lib/R on Linux.
+const R_HOME = [path.join(R_DIR, 'lib', 'R'), path.join(R_DIR, 'R.framework', 'Resources'), R_DIR]
+  .find((p) => fs.existsSync(path.join(p, 'library', 'base')));
+if (!R_HOME) {
+  console.error(`No R library found under ${R_DIR}`);
+  process.exit(1);
+}
+
+function treeSize(p) {
+  const stat = fs.lstatSync(p);
+  if (!stat.isDirectory()) return stat.size;
   let bytes = 0;
-  for (const entry of fs.readdirSync(p)) {
-    bytes += delTree(path.join(p, entry));
-  }
-  fs.rmdirSync(p);
+  for (const entry of fs.readdirSync(p)) bytes += treeSize(path.join(p, entry));
   return bytes;
 }
 
-let saved = 0;
+function delTree(p) {
+  if (!fs.existsSync(p)) return 0;
+  const bytes = treeSize(p);
+  fs.rmSync(p, { recursive: true, force: true });
+  return bytes;
+}
 
-const topLevel = ['doc/manual', 'share/locale'];
+const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+const start = treeSize(R_DIR);
+console.log(`R home: ${R_HOME}`);
+
+const topLevel = ['doc/manual'];
+if (process.platform === 'darwin') topLevel.push('library/tcltk');
 for (const rel of topLevel) {
-  const full = path.join(R_DIR, rel);
-  if (fs.existsSync(full)) {
-    const bytes = delTree(full);
-    saved += bytes;
-    console.log(`  removed ${rel} (${(bytes / 1024 / 1024).toFixed(1)} MB)`);
-  }
+  const full = path.join(R_HOME, rel);
+  if (fs.existsSync(full)) console.log(`  removed ${rel} (${mb(delTree(full))})`);
 }
 
-const libDir = path.join(R_DIR, 'library');
-if (fs.existsSync(libDir)) {
-  let perPkg = 0;
-  for (const pkg of fs.readdirSync(libDir)) {
-    for (const sub of ['help', 'html', 'doc']) {
-      const target = path.join(libDir, pkg, sub);
-      if (fs.existsSync(target)) {
-        perPkg += delTree(target);
-      }
-    }
+const libDir = path.join(R_HOME, 'library');
+let perPkg = 0;
+for (const pkg of fs.readdirSync(libDir)) {
+  for (const sub of ['help', 'html', 'doc']) {
+    perPkg += delTree(path.join(libDir, pkg, sub));
   }
-  saved += perPkg;
-  console.log(`  removed per-package help/html/doc (${(perPkg / 1024 / 1024).toFixed(1)} MB)`);
 }
+console.log(`  removed per-package help/html/doc (${mb(perPkg)})`);
 
-console.log(`Total saved: ${(saved / 1024 / 1024).toFixed(1)} MB`);
+const end = treeSize(R_DIR);
+console.log(`R bundle: ${mb(start)} -> ${mb(end)} (saved ${mb(start - end)})`);

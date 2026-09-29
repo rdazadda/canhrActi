@@ -4,8 +4,9 @@
 #'
 #' @param results.list List of individual sleep results
 #' @param output_dir Output directory
+#' @param verbose Print the paths written? (default: TRUE)
 #' @keywords internal
-.export.actilife.sleep <- function(results.list, output_dir) {
+.export.actilife.sleep <- function(results.list, output_dir, verbose = TRUE) {
 
   if (!dir.exists(output_dir)) {
     dir.create(output_dir, recursive = TRUE)
@@ -15,13 +16,13 @@
   details.file <- file.path(output_dir, "BatchSleepExportDetails.csv")
   details.data <- .create.actilife.batch.details(results.list)
   write.csv(details.data, details.file, row.names = FALSE)
-  cat("Exported:", details.file, "\n")
+  if (verbose) cat("Exported:", details.file, "\n")
 
   # Export 2: BatchSleepExportSummary.csv (one row per participant)
   summary.file <- file.path(output_dir, "BatchSleepExportSummary.csv")
   summary.data <- .create.actilife.batch.summary(results.list)
   write.csv(summary.data, summary.file, row.names = FALSE)
-  cat("Exported:", summary.file, "\n")
+  if (verbose) cat("Exported:", summary.file, "\n")
 }
 
 
@@ -34,6 +35,8 @@
 #' @keywords internal
 .read.agd.participant.metadata <- function(file_path) {
   tryCatch({
+    # Connecting to a missing path would create an empty .agd there
+    if (!file.exists(file_path)) stop("File not found: ", file_path)
     con <- DBI::dbConnect(RSQLite::SQLite(), file_path)
     on.exit(DBI::dbDisconnect(con), add = TRUE)
     settings <- DBI::dbReadTable(con, "settings")
@@ -159,7 +162,7 @@
 
       # Period-start to first scored sleep (ActiLife-style); ~0 for accelerometer-
       # only scoring - a true SOL needs a lights-out/diary marker, not used here.
-      latency <- as.numeric(difftime(period$onset, period$in_bed_time, units = "mins"))
+      latency <- as.numeric(difftime(period$onset, period$in_bed_time, tz = "UTC", units = "mins"))
 
       # Calculate Sleep Fragmentation Index
       sleep.frag.index <- period$movement_index + period$fragmentation_index
@@ -258,7 +261,7 @@
 
     # Average latency
     latencies <- sapply(1:nrow(periods), function(i) {
-      as.numeric(difftime(periods$onset[i], periods$in_bed_time[i], units = "mins"))
+      as.numeric(difftime(periods$onset[i], periods$in_bed_time[i], tz = "UTC", units = "mins"))
     })
     avg.latency <- round(mean(latencies, na.rm = TRUE), 0)
 
@@ -328,15 +331,17 @@
 
   # Ensure it's a POSIXct object
   if (!inherits(dt, "POSIXt")) {
-    dt <- as.POSIXct(dt)
+    # Text is read in UTC, which has no daylight saving gap to move a clock time
+    dt <- as.POSIXct(dt, tz = "UTC")
   }
 
   # Format as M/D/YYYY H:MM:SS AM/PM
-  formatted <- format.POSIXct(dt, format = "%m/%d/%Y %I:%M:%S %p")
+  formatted <- .format_english(dt, "%m/%d/%Y %I:%M:%S %p")
 
-  # Remove leading zeros from month and day
+  # Remove leading zeros from month, day and hour
   formatted <- gsub("^0", "", formatted)  # Month
   formatted <- gsub("/0", "/", formatted)  # Day
+  formatted <- sub(" 0", " ", formatted, fixed = TRUE)  # Hour
 
   return(formatted)
 }
@@ -355,7 +360,8 @@
 
   # Ensure times are POSIXct
   if (!inherits(times, "POSIXt")) {
-    times <- as.POSIXct(times)
+    # Text is read in UTC, which has no daylight saving gap to move a clock time
+    times <- as.POSIXct(times, tz = "UTC")
   }
 
   # Extract hour and minute components

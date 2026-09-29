@@ -4,7 +4,7 @@
 \alias{plot.canhrActi_circadian}
 \title{Plot Circadian Rhythm Profile}
 \usage{
-\method{plot}{canhrActi_circadian}(x, type = "profile", ...)
+\method{plot}{canhrActi_circadian}(x, type = "profile", ..., value_label = NULL)
 }
 \arguments{
 \item{x}{canhrActi_circadian object from circadian.rhythm()}
@@ -12,6 +12,8 @@
 \item{type}{Type of plot: "profile" (default), "daily", or "all"}
 
 \item{...}{Additional arguments passed to plotting functions}
+
+\item{value_label}{Optional y-axis label; overrides the unit carried on \code{x}}
 }
 \value{
 ggplot object (or list of ggplot objects if type="all")

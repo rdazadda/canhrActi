@@ -1,19 +1,9 @@
 # 
-# CANHR ACTIGRAPH DASHBOARD - COMPONENT LIBRARY
+# CANHR ACTIGRAPH DASHBOARD - SHARED HELPERS
 # University of Alaska Fairbanks
 #
-# This file provides a consistent, reusable component API to replace
-# shinydashboard defaults with cleaner, more modern components.
-#
-# Components:
-#   1. metric_display() - Replaces valueBox() with cleaner metrics
-#   2. data_card() - Replaces box() with modern card design
-#   3. chart_panel() - Specialized for charts with controls
-#   4. control_group() - Groups related form controls
-#   5. page_layout() - Consistent page structure
-#   6. empty_state() - When no data/results available
-#   7. status_pill() - Small status indicators
-#   8. workflow_header() - Progress through workflow steps
+# Helpers the modules share: formatting, icons, the plot theme, the run
+# button state and focus between tabs.
 #
 # Usage: Source this file BEFORE other modules in app.R
 # 
@@ -22,837 +12,8 @@
 `%||%` <- function(a, b) if (is.null(a) || (length(a) == 1 && is.na(a))) b else a
 
 # 
-# 1. METRIC DISPLAY
-# 
-#' Metric Display Component
-#'
-#' A clean, modern metric display that replaces shinydashboard::valueBox().
-#' Provides better visual hierarchy and optional trend indicators.
-#'
-#' @param value The main metric value (string or number)
-#' @param label Primary label below the value
-#' @param subtitle Optional secondary label/description
-#' @param trend Optional trend indicator: list(direction = "up"|"down"|"flat", value = "5%")
-#' @param size Size variant: "sm", "md", "lg" (default: "md")
-#' @param color_accent Optional accent color: "primary", "success", "warning", "info" (default: "primary")
-#' @param icon_name Optional FontAwesome icon name (without "fa-" prefix)
-#'
-#' @return A Shiny tag object
-#'
-#' @examples
-#' metric_display("14.2h", "Avg Wear Time", "Per valid day", size = "lg")
-#' metric_display("85%", "Data Quality", trend = list(direction = "up", value = "+3%"))
-#' metric_display(72, "MVPA Minutes", icon_name = "running")
-#'
-metric_display <- function(value,
-                           label,
-                           subtitle = NULL,
-                           trend = NULL,
-                           size = c("md", "sm", "lg"),
-                           color_accent = c("primary", "success", "warning", "info"),
-                           icon_name = NULL) {
-  size <- match.arg(size)
-  color_accent <- match.arg(color_accent)
-
-  # Size-based CSS classes
-  size_class <- paste0("canhr-metric-", size)
-
-  # Build trend indicator if provided
-  trend_html <- NULL
-  if (!is.null(trend) && is.list(trend)) {
-    trend_icon <- switch(trend$direction %||% "flat",
-      "up" = "arrow-up",
-      "down" = "arrow-down",
-      "caret-right"
-    )
-    trend_class <- switch(trend$direction %||% "flat",
-      "up" = "canhr-trend-up",
-      "down" = "canhr-trend-down",
-      "canhr-trend-flat"
-    )
-    trend_html <- tags$span(
-      class = paste("canhr-trend", trend_class),
-      icon(trend_icon),
-      trend$value %||% ""
-    )
-  }
-
-  # Build icon if provided
-  icon_html <- NULL
-  if (!is.null(icon_name)) {
-    icon_html <- tags$div(
-      class = "canhr-metric-icon",
-      icon(icon_name)
-    )
-  }
-
-  # Assemble the component
-  tags$div(
-    class = paste("canhr-metric", size_class, paste0("canhr-accent-", color_accent)),
-    if (!is.null(icon_html)) icon_html,
-    tags$div(
-      class = "canhr-metric-content",
-      tags$div(class = "canhr-metric-value", value),
-      tags$div(class = "canhr-metric-label", label),
-      if (!is.null(subtitle)) tags$div(class = "canhr-metric-subtitle", subtitle),
-      if (!is.null(trend_html)) trend_html
-    )
-  )
-}
-
-#' Metric Display Output (Server-side rendering)
-#'
-#' Use this to render metric_display() from server side
-#'
-#' @param outputId Output ID for the metric
-#' @param ... Additional arguments passed to uiOutput
-#'
-metric_display_output <- function(outputId, ...) {
-  tags$div(
-    class = "canhr-metric-placeholder",
-    uiOutput(outputId, ...)
-  )
-}
-
-# 
-# 2. DATA CARD
-# 
-#' Data Card Component
-#'
-#' A cleaner replacement for shinydashboard::box() with modern styling,
-#' optional status indicators, and better header/footer handling.
-#'
-#' @param title Card title (can include icons via tagList)
-#' @param ... Card body content
-#' @param status Optional status: "primary", "success", "warning", "info" (adds colored top border)
-#' @param collapsible Logical, whether card can be collapsed (default: FALSE)
-#' @param collapsed Logical, whether card starts collapsed (default: FALSE)
-#' @param footer Optional footer content (for action buttons, etc.)
-#' @param width Bootstrap column width (1-12, or NULL for full width)
-#' @param header_extra Extra content in header (right side)
-#' @param id Optional ID for the card element
-#' @param fill Logical, whether to fill available height (default: FALSE)
-#'
-#' @return A Shiny tag object
-#'
-#' @examples
-#' data_card("Settings", status = "primary",
-#'           selectInput("algo", "Algorithm", choices = c("A", "B")),
-#'           footer = actionButton("run", "Run"))
-#'
-data_card <- function(title = NULL,
-                      ...,
-                      status = NULL,
-                      collapsible = FALSE,
-                      collapsed = FALSE,
-                      footer = NULL,
-                      width = NULL,
-                      header_extra = NULL,
-                      id = NULL,
-                      fill = FALSE) {
-
-  # Status class
-  status_class <- if (!is.null(status)) paste0("canhr-card-", status) else ""
-
-  # Collapsible handling
-  collapse_class <- if (collapsible && collapsed) "canhr-card-collapsed" else ""
-
-  # Build header if title provided
-  header_html <- NULL
-  if (!is.null(title)) {
-    header_content <- tags$div(
-      class = "canhr-card-title",
-      if (is.character(title)) title else title
-    )
-
-    collapse_btn <- NULL
-    if (collapsible) {
-      collapse_btn <- tags$button(
-        class = "canhr-card-collapse-btn",
-        type = "button",
-        onclick = "$(this).closest('.canhr-card').toggleClass('canhr-card-collapsed');",
-        icon(if (collapsed) "chevron-down" else "chevron-up")
-      )
-    }
-
-    header_html <- tags$div(
-      class = "canhr-card-header",
-      header_content,
-      if (!is.null(header_extra)) tags$div(class = "canhr-card-header-extra", header_extra),
-      collapse_btn
-    )
-  }
-
-  # Build footer if provided
-  footer_html <- NULL
-  if (!is.null(footer)) {
-    footer_html <- tags$div(class = "canhr-card-footer", footer)
-  }
-
-  # Assemble card
-  card <- tags$div(
-    id = id,
-    class = paste("canhr-card", status_class, collapse_class,
-                  if (fill) "canhr-card-fill" else ""),
-    header_html,
-    tags$div(class = "canhr-card-body", ...),
-    footer_html
-  )
-
-  # Wrap in column if width specified
-  if (!is.null(width)) {
-    column(width = width, card)
-  } else {
-    card
-  }
-}
-
-# 
-# 3. CHART PANEL
-# 
-#' Chart Panel Component
-#'
-#' A specialized panel for displaying charts with optional controls.
-#' Handles proper aspect ratios and provides a clean container for plots.
-#'
-#' @param title Panel title
-#' @param chart_output The chart output (e.g., plotOutput(ns("plot")))
-#' @param controls Optional controls (displayed in header or collapsible sidebar)
-#' @param controls_position Where to show controls: "header", "sidebar", "none" (default: "none")
-#' @param height Chart height in pixels or CSS units (default: "400px")
-#' @param status Optional status: "primary", "success", "warning", "info"
-#' @param subtitle Optional subtitle below chart
-#' @param download_btn Optional download button ID (will render downloadButton)
-#'
-#' @return A Shiny tag object
-#'
-#' @examples
-#' chart_panel("Activity Timeline",
-#'             plotOutput(ns("timeline_plot")),
-#'             height = "350px",
-#'             controls = selectInput(ns("metric"), "Metric", c("VM", "Axis1")),
-#'             controls_position = "header")
-#'
-chart_panel <- function(title,
-                        chart_output,
-                        controls = NULL,
-                        controls_position = c("none", "header", "sidebar"),
-                        height = "400px",
-                        status = NULL,
-                        subtitle = NULL,
-                        download_btn = NULL) {
-
-  controls_position <- match.arg(controls_position)
-  status_class <- if (!is.null(status)) paste0("canhr-chart-", status) else ""
-
-  # Build controls section based on position
-  controls_html <- NULL
-  if (!is.null(controls) && controls_position != "none") {
-    if (controls_position == "header") {
-      controls_html <- tags$div(class = "canhr-chart-controls-header", controls)
-    } else if (controls_position == "sidebar") {
-      controls_html <- tags$div(
-        class = "canhr-chart-controls-sidebar",
-        tags$div(class = "canhr-chart-controls-inner", controls)
-      )
-    }
-  }
-
-  # Download button
-  download_html <- NULL
-  if (!is.null(download_btn)) {
-    download_html <- tags$div(
-      class = "canhr-chart-download",
-      downloadButton(download_btn, label = "", class = "btn-sm canhr-btn-icon")
-    )
-  }
-
-  # Build header
-  header_html <- tags$div(
-    class = "canhr-chart-header",
-    tags$div(
-      class = "canhr-chart-title-area",
-      tags$h4(class = "canhr-chart-title", title),
-      if (!is.null(subtitle)) tags$p(class = "canhr-chart-subtitle", subtitle)
-    ),
-    if (controls_position == "header" && !is.null(controls_html)) controls_html,
-    download_html
-  )
-
-  # Chart wrapper with proper sizing
-  chart_wrapper <- tags$div(
-    class = "canhr-chart-wrapper",
-    style = paste0("height: ", height, ";"),
-    chart_output
-  )
-
-  # Assemble the panel
-  tags$div(
-    class = paste("canhr-chart-panel", status_class),
-    header_html,
-    tags$div(
-      class = "canhr-chart-content",
-      if (controls_position == "sidebar" && !is.null(controls_html)) controls_html,
-      chart_wrapper
-    )
-  )
-}
-
-# 
-# 4. CONTROL GROUP
-# 
-#' Control Group Component
-#'
-#' Groups related form controls with consistent label styling and optional help text.
-#' Use this to organize settings and parameters.
-#'
-#' @param label Group label (displayed above controls)
-#' @param ... Form controls (inputs, selects, etc.)
-#' @param help_text Optional help text displayed below controls
-#' @param inline Logical, arrange controls horizontally (default: FALSE)
-#' @param background Add subtle background (default: FALSE)
-#' @param icon_name Optional icon for the label
-#'
-#' @return A Shiny tag object
-#'
-#' @examples
-#' control_group("Algorithm Settings",
-#'               selectInput("algo", "Algorithm", c("A", "B")),
-#'               numericInput("threshold", "Threshold", 100),
-#'               help_text = "Select the scoring algorithm for activity classification")
-#'
-control_group <- function(label,
-                          ...,
-                          help_text = NULL,
-                          inline = FALSE,
-                          background = FALSE,
-                          icon_name = NULL) {
-
-  # Build label with optional icon
-  label_html <- if (!is.null(icon_name)) {
-    tags$label(class = "canhr-control-group-label", icon(icon_name), " ", label)
-  } else {
-    tags$label(class = "canhr-control-group-label", label)
-  }
-
-  # Controls container
-  controls_class <- if (inline) "canhr-controls-inline" else "canhr-controls-stacked"
-
-  # Help text
-  help_html <- if (!is.null(help_text)) {
-    tags$p(class = "canhr-control-help", icon("info-circle"), help_text)
-  }
-
-  # Container class
-  container_class <- paste("canhr-control-group",
-                           if (background) "canhr-control-group-bg" else "")
-
-  tags$div(
-    class = container_class,
-    label_html,
-    tags$div(class = controls_class, ...),
-    help_html
-  )
-}
-
-# 
-# 5. PAGE LAYOUT
-# 
-#' Page Layout Component
-#'
-#' Provides consistent page structure with title, subtitle, optional metrics strip,
-#' and main content area. Use this as the top-level wrapper for each tab/page.
-#'
-#' @param title Page title
-#' @param subtitle Page subtitle/description
-#' @param icon_name Icon for the page header
-#' @param metrics_area Optional row of metric displays at the top
-#' @param main_content The main page content
-#' @param status_output_id Optional output ID for a status badge in the header
-#' @param header_actions Optional action buttons in header (right side)
-#'
-#' @return A Shiny tag object
-#'
-#' @examples
-#' page_layout(
-#'   title = "Physical Activity",
-#'   subtitle = "Analyze activity intensity and MVPA",
-#'   icon_name = "running",
-#'   metrics_area = fluidRow(
-#'     metric_display("72m", "MVPA", size = "lg"),
-#'     metric_display("8.5h", "Sedentary", size = "lg")
-#'   ),
-#'   main_content = tagList(
-#'     data_card("Settings", ...)
-#'   )
-#' )
-#'
-page_layout <- function(title,
-                        subtitle = NULL,
-                        icon_name = NULL,
-                        metrics_area = NULL,
-                        main_content,
-                        status_output_id = NULL,
-                        header_actions = NULL) {
-
-  # Page header
-  header_html <- tags$div(
-    class = "canhr-page-header",
-    tags$div(
-      class = "canhr-page-header-content",
-      if (!is.null(icon_name)) tags$div(class = "canhr-page-header-icon", icon(icon_name)),
-      tags$div(
-        class = "canhr-page-header-text",
-        tags$h2(class = "canhr-page-title", title),
-        if (!is.null(subtitle)) tags$p(class = "canhr-page-subtitle", subtitle)
-      )
-    ),
-    tags$div(
-      class = "canhr-page-header-actions",
-      if (!is.null(status_output_id)) tags$div(class = "canhr-page-status", uiOutput(status_output_id)),
-      if (!is.null(header_actions)) header_actions
-    )
-  )
-
-  # Metrics strip if provided
-  metrics_html <- NULL
-  if (!is.null(metrics_area)) {
-    metrics_html <- tags$div(
-      class = "canhr-metrics-strip",
-      metrics_area
-    )
-  }
-
-  # Assemble the page
-  tagList(
-    header_html,
-    metrics_html,
-    tags$div(class = "canhr-page-content", main_content)
-  )
-}
-
-#' Page Header (Standalone)
-#'
-#' A simpler standalone header for pages that don't need full page_layout
-#'
-#' @param icon_name FontAwesome icon name
-#' @param title Page title
-#' @param subtitle Page subtitle
-#' @param status_output_id Optional output ID for status badge
-#'
-page_header <- function(icon_name, title, subtitle, status_output_id = NULL) {
-  tagList(
-    fluidRow(
-      column(
-        width = 12,
-        div(
-          class = "page-header",
-          fluidRow(
-            column(
-              width = if (!is.null(status_output_id)) 8 else 12,
-              h3(icon(icon_name), title),
-              p(subtitle)
-            ),
-            if (!is.null(status_output_id)) {
-              column(
-                width = 4,
-                div(class = "header-status", uiOutput(status_output_id))
-              )
-            }
-          )
-        )
-      )
-    )
-  )
-}
-
-# 
-# 6. EMPTY STATE
-# 
-#' Empty State Component
-#'
-#' Display a friendly message when no data or results are available.
-#' Includes optional icon, title, message, and call-to-action button.
-#'
-#' @param icon_name Optional FontAwesome icon name (use NULL to omit)
-#' @param title Optional main message (e.g., "No Data Available")
-#' @param message Optional secondary message with more detail
-#' @param action_button Optional action button (use actionButton())
-#' @param small Use smaller variant (default: FALSE)
-#' @param show_icon Whether to render the icon (default: TRUE when icon_name is set)
-#' @param include_base Whether to include the base empty-state container styles
-#' @param extra_class Additional class names to apply to the container
-#'
-#' @return A Shiny tag object
-#'
-#' @examples
-#' empty_state("chart-bar", "No Activity Data",
-#'             "Run 'Score Physical Activity' to see charts",
-#'             action_button = actionButton("run", "Run Analysis", class = "btn-primary"))
-#'
-empty_state <- function(icon_name = NULL,
-                        title = NULL,
-                        message = NULL,
-                        action_button = NULL,
-                        small = FALSE,
-                        show_icon = !is.null(icon_name),
-                        include_base = TRUE,
-                        extra_class = NULL) {
-  classes <- c(
-    if (include_base) "empty-state",
-    if (small) "empty-state-sm",
-    extra_class
-  )
-  classes <- paste(classes[!is.null(classes) & nzchar(classes)], collapse = " ")
-
-  tags$div(
-    class = classes,
-    if (show_icon && !is.null(icon_name)) {
-      tags$div(class = "empty-state-icon", icon(icon_name))
-    },
-    if (!is.null(title)) tags$div(class = "empty-state-title", title),
-    if (!is.null(message)) tags$div(class = "empty-state-description", message),
-    if (!is.null(action_button)) tags$div(class = "empty-state-action", action_button)
-  )
-}
-
-# 
-# 7. STATUS PILL
-# 
-#' Status Pill Component
-#'
-#' Small, colored status indicators for inline display.
-#'
-#' @param label Status text
-#' @param status Status type: "pending", "processing", "success", "warning", "error"
-#' @param icon_name Optional icon (default based on status)
-#'
-#' @return A Shiny tag object
-#'
-#' @examples
-#' status_pill("Complete", "success")
-#' status_pill("Processing...", "processing")
-#' status_pill("Needs Review", "warning")
-#'
-status_pill <- function(label,
-                        status = c("pending", "processing", "success", "warning", "error")) {
-  status <- match.arg(status)
-
-  # Default icons per status
-  icon_map <- list(
-    pending = "clock",
-    processing = "spinner",
-    success = "check-circle",
-    warning = "exclamation-triangle",
-    error = "times-circle"
-  )
-
-  # Icon with animation for processing
-  icon_class <- if (status == "processing") "fa-spin" else ""
-
-  tags$span(
-    class = paste("canhr-status-pill", paste0("canhr-status-", status)),
-    icon(icon_map[[status]], class = icon_class),
-    label
-  )
-}
-
-#' Status Badge (Legacy compatibility)
-#'
-#' Compatible with existing status_badge usage
-#'
-#' @param text Badge text
-#' @param status Status type: "success", "pending", "caution"
-#'
-status_badge <- function(text, status = "pending") {
-  valid_statuses <- c("success", "pending", "caution")
-  status <- match.arg(status, valid_statuses)
-
-  icon_name <- switch(status,
-    "success" = "check-circle",
-    "pending" = "info-circle",
-    "caution" = "exclamation-triangle"
-  )
-
-  span(
-    class = paste("status-badge", paste0("status-", status)),
-    icon(icon_name), text
-  )
-}
-
-# 
-# 8. WORKFLOW HEADER
-# 
-#' Workflow Header Component
-#'
-#' Shows progress through a multi-step workflow (e.g., Upload -> Analyze -> Export).
-#' Highlights the current step and shows completion status.
-#'
-#' @param current_step Index of current step (1-based)
-#' @param steps Character vector of step names
-#' @param completed_steps Integer vector of completed step indices
-#'
-#' @return A Shiny tag object
-#'
-#' @examples
-#' workflow_header(
-#'   current_step = 2,
-#'   steps = c("Upload", "Configure", "Analyze", "Export"),
-#'   completed_steps = c(1)
-#' )
-#'
-workflow_header <- function(current_step,
-                            steps,
-                            completed_steps = integer(0)) {
-
-  step_items <- lapply(seq_along(steps), function(i) {
-    is_current <- i == current_step
-    is_completed <- i %in% completed_steps
-    is_future <- i > current_step && !is_completed
-
-    step_class <- paste(
-      "canhr-workflow-step",
-      if (is_current) "canhr-workflow-current" else "",
-      if (is_completed) "canhr-workflow-completed" else "",
-      if (is_future) "canhr-workflow-future" else ""
-    )
-
-    # Step indicator (number or check)
-    indicator <- if (is_completed) {
-      tags$span(class = "canhr-workflow-indicator", icon("check"))
-    } else {
-      tags$span(class = "canhr-workflow-indicator", i)
-    }
-
-    tags$div(
-      class = step_class,
-      indicator,
-      tags$span(class = "canhr-workflow-label", steps[i]),
-      if (i < length(steps)) tags$span(class = "canhr-workflow-connector")
-    )
-  })
-
-  tags$div(
-    class = "canhr-workflow-header",
-    tags$div(class = "canhr-workflow-steps", step_items)
-  )
-}
-
-#' Workflow Header Output (Server-side rendering)
-#'
-#' Use this for dynamically updating workflow state
-#'
-#' @param outputId Output ID for the workflow header
-#'
-workflow_header_output <- function(outputId) {
-  uiOutput(outputId, class = "canhr-workflow-container")
-}
-
-# 
-# ADDITIONAL HELPER COMPONENTS
-# 
-
-#' Info Note
-#'
-#' Small informational text with icon
-#'
-#' @param text The info text
-#'
-info_note <- function(text) {
-  p(class = "info-note", icon("info-circle"), text)
-}
-
-#' Tip Box
-#'
-#' Highlighted tip/hint box
-#'
-#' @param text Tip text
-#'
-tip_box <- function(text) {
-  div(class = "tip-box", icon("lightbulb"), text)
-}
-
-#' Box with Icon (Legacy compatibility)
-#'
-#' Creates a box with icon in the title
-#'
-#' @param icon_name FontAwesome icon name
-#' @param title Box title
-#' @param ... Content and additional arguments passed to box()
-#' @param status Box status
-#' @param solidHeader Whether to use solid header
-#'
-box_with_icon <- function(icon_name, title, ..., status = NULL, solidHeader = FALSE) {
-  box_title <- span(icon(icon_name), title)
-  shinydashboard::box(
-    title = box_title,
-    status = status,
-    solidHeader = solidHeader,
-    ...
-  )
-}
-
-#' Metric Card (Legacy compatibility)
-#'
-#' Simple metric card for quick displays
-#'
-#' @param value Metric value
-#' @param label Metric label
-#' @param sublabel Optional sublabel
-#'
-metric_card <- function(value, label, sublabel = NULL) {
-  div(
-    class = "metric-card",
-    div(class = "metric-value", value),
-    div(class = "metric-label", label),
-    if (!is.null(sublabel)) div(class = "metric-sublabel", sublabel)
-  )
-}
-
-#' Score Card
-#'
-#' Colored score display card
-#'
-#' @param value Score value
-#' @param label Score label
-#' @param status Status: "good", "moderate", "caution"
-#'
-score_card <- function(value, label, status = "moderate") {
-  valid_statuses <- c("good", "moderate", "caution")
-  status <- match.arg(status, valid_statuses)
-
-  div(
-    class = paste("score-card", paste0("score-", status)),
-    div(class = "score-value", value),
-    div(class = "score-label", label)
-  )
-}
-
-#' Quality Badge
-#'
-#' Badge showing data quality level
-#'
-#' @param percent Quality percentage
-#'
-quality_badge <- function(percent) {
-  status <- if (percent >= 80) "good"
-            else if (percent >= 50) "moderate"
-            else "needs-attention"
-
-  label <- if (percent >= 80) "Good"
-           else if (percent >= 50) "Moderate"
-           else "Needs Attention"
-
-  span(
-    class = paste("quality-badge", paste0("quality-", status)),
-    paste0(round(percent), "% - ", label)
-  )
-}
-
-#' Action Button with Icon
-#'
-#' Styled action button with icon
-#'
-#' @param id Button input ID
-#' @param label Button label
-#' @param icon_name FontAwesome icon name
-#' @param class CSS classes (default: "btn-primary btn-block btn-lg")
-#'
-action_btn <- function(id, label, icon_name, class = "btn-primary btn-block btn-lg") {
-  actionButton(id, span(icon(icon_name), label), class = class)
-}
-
-#' Download Button with Icon
-#'
-#' Styled download button with icon
-#'
-#' @param id Button output ID
-#' @param label Button label
-#' @param icon_name FontAwesome icon name
-#' @param class CSS classes
-#'
-download_btn <- function(id, label, icon_name, class = "btn-default btn-block btn-sm") {
-  downloadButton(id, span(icon(icon_name), label), class = class)
-}
-
-#' File Info Table
-#'
-#' Displays file information in a table format
-#'
-#' @param info_list Named list of info key-value pairs
-#'
-file_info_table <- function(info_list) {
-  div(
-    class = "file-info-box",
-    tags$table(
-      class = "info-table",
-      lapply(names(info_list), function(key) {
-        tags$tr(
-          tags$td(key),
-          tags$td(info_list[[key]])
-        )
-      })
-    )
-  )
-}
-
-#' Chart Container
-#'
-#' Container for plot outputs
-#'
-#' @param content Plot output or other content
-#' @param large Use large variant (default: FALSE)
-#'
-chart_container <- function(content, large = FALSE) {
-  div(
-    class = if (large) "chart-container-lg" else "chart-container",
-    content
-  )
-}
-
-#' Processing Indicator
-#'
-#' Shows a spinner during processing
-#'
-#' @param id Element ID for showing/hiding
-#' @param message Processing message
-#'
-processing_indicator <- function(id, message = "Processing...") {
-  shinyjs::hidden(
-    div(
-      id = id,
-      class = "processing-indicator",
-      icon("spinner", class = "fa-spin fa-2x"),
-      p(class = "processing-text", message),
-      p(class = "processing-detail", "Please wait")
-    )
-  )
-}
-
-# 
 # FORMATTING UTILITIES
 # 
-
-#' Format Duration
-#'
-#' Format seconds into human-readable duration (D H M format)
-#'
-#' @param total_seconds Duration in seconds
-#'
-format_duration <- function(total_seconds) {
-  if (is.na(total_seconds) || total_seconds == 0) return("0d 0h 0m")
-  days <- floor(total_seconds / 86400)
-  hours <- floor((total_seconds %% 86400) / 3600)
-  mins <- floor((total_seconds %% 3600) / 60)
-
-  if (days > 0) {
-    paste0(days, "d ", hours, "h ", mins, "m")
-  } else if (hours > 0) {
-    paste0(hours, "h ", mins, "m")
-  } else {
-    paste0(mins, "m")
-  }
-}
 
 #' Format ETA
 #'
@@ -867,294 +28,182 @@ format_eta <- function(seconds) {
   return(paste0(round(seconds / 3600, 1), "h"))
 }
 
-# 
-# CONSTANTS
-# 
+# APP STANDARD HELPERS
 
-#' Dashboard Constants
-#'
-#' Commonly used constants for the dashboard
-#'
-DASHBOARD_CONSTANTS <- list(
-  # Default values
-  DEFAULT_EPOCH = 60,
-  DEFAULT_AGE = 35,
-  DEFAULT_BODY_MASS = 70,
-  DEFAULT_MIN_WEAR_HOURS = 10,
-  DEFAULT_MIN_VALID_DAYS = 3,
-  DEFAULT_MVPA_GOAL = 30,
+#' A count with its noun: "1 file", "2 files"
+pluralize <- function(n, word, plural = paste0(word, "s")) {
+  n <- as.integer(n)
+  paste(format(n, big.mark = ","), if (identical(n, 1L)) word else plural)
+}
 
-  # Timestamp conversion constants
-  TICKS_PER_SECOND = 10000000,
-  EPOCH_DIFF = 62135596800,
-
-  # Messages
-  MSG_NO_FILES = "No files loaded. Go to Upload tab.",
-  MSG_RUN_ANALYSIS = "Run Analysis to see results.",
-  MSG_NO_DATA = "No data available."
+#' Sidebar icons: 20 px line drawings, one per tab
+# Material Symbols Outlined glyphs from google/material-design-icons, carried
+# as markup so nothing loads over the network. Every path must come from a
+# file with viewBox "0 -960 960 960", which msym() wraps them in; the legacy
+# 0-24 icons in that repo render as a speck.
+msym_paths <- list(
+    dataset = 'M280-280h160v-160H280v160Zm240 0h160v-160H520v160ZM280-520h160v-160H280v160Zm240 0h160v-160H520v160ZM200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v560q0 33-23.5 56.5T760-120H200Zm0-80h560v-560H200v560Zm0-560v560-560Z',
+    note_add = 'M440-240h80v-120h120v-80H520v-120h-80v120H320v80h120v120ZM240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H240Zm280-520v-200H240v640h480v-440H520ZM240-800v200-200 640-640Z',
+    create_new_folder = 'M560-320h80v-80h80v-80h-80v-80h-80v80h-80v80h80v80ZM160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h240l80 80h320q33 0 56.5 23.5T880-640v400q0 33-23.5 56.5T800-160H160Zm0-80h640v-400H447l-80-80H160v480Zm0 0v-480 480Z',
+    folder_open = 'M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h240l80 80h320q33 0 56.5 23.5T880-640H447l-80-80H160v480l96-320h684L837-217q-8 26-29.5 41.5T760-160H160Zm84-80h516l72-240H316l-72 240Zm0 0 72-240-72 240Zm-84-400v-80 80Z',
+    swap_horiz = 'M280-160 80-360l200-200 56 57-103 103h287v80H233l103 103-56 57Zm400-240-56-57 103-103H440v-80h287L624-743l56-57 200 200-200 200Z',
+    watch = 'm360-80-54-182q-48-38-77-95t-29-123q0-66 29-123t77-95l54-182h240l54 182q48 38 77 95t29 123q0 66-29 123t-77 95L600-80H360Zm120-200q83 0 141.5-58.5T680-480q0-83-58.5-141.5T480-680q-83 0-141.5 58.5T280-480q0 83 58.5 141.5T480-280Zm-76-470q20-5 38.5-8t37.5-3q19 0 37.5 3t38.5 8l-16-50H420l-16 50Zm16 590h120l16-50q-20 5-38.5 7.5T480-200q-19 0-37.5-2.5T404-210l16 50Zm-16-640h152-152Zm16 640h-16 152-136Z',
+    directions_run = 'M520-40v-240l-84-80-40 176-276-56 16-80 192 40 64-324-72 28v136h-80v-188l158-68q35-15 51.5-19.5T480-720q21 0 39 11t29 29l40 64q26 42 70.5 69T760-520v80q-66 0-123.5-27.5T540-540l-24 120 84 80v300h-80Zm20-700q-33 0-56.5-23.5T460-820q0-33 23.5-56.5T540-900q33 0 56.5 23.5T620-820q0 33-23.5 56.5T540-740Z',
+    bedtime = 'M524-40q-84 0-157.5-32t-128-86.5Q184-213 152-286.5T120-444q0-146 93-257.5T450-840q-18 99 11 193.5T561-481q71 71 165.5 100T920-370q-26 144-138 237T524-40Zm0-80q88 0 163-44t118-121q-86-8-163-43.5T504-425q-61-61-97-138t-43-163q-77 43-120.5 118.5T200-444q0 135 94.5 229.5T524-120Zm-20-305Z',
+    schedule = 'm612-292 56-56-148-148v-184h-80v216l172 172ZM480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-400Zm0 320q133 0 226.5-93.5T800-480q0-133-93.5-226.5T480-800q-133 0-226.5 93.5T160-480q0 133 93.5 226.5T480-160Z',
+    chair = 'M200-120q-17 0-28.5-11.5T160-160v-40q-50 0-85-35t-35-85v-200q0-50 35-85t85-35v-80q0-50 35-85t85-35h400q50 0 85 35t35 85v80q50 0 85 35t35 85v200q0 50-35 85t-85 35v40q0 17-11.5 28.5T760-120q-17 0-28.5-11.5T720-160v-40H240v40q0 17-11.5 28.5T200-120Zm-40-160h640q17 0 28.5-11.5T840-320v-200q0-17-11.5-28.5T800-560q-17 0-28.5 11.5T760-520v160H200v-160q0-17-11.5-28.5T160-560q-17 0-28.5 11.5T120-520v200q0 17 11.5 28.5T160-280Zm120-160h400v-80q0-27 11-49t29-39v-112q0-17-11.5-28.5T680-760H280q-17 0-28.5 11.5T240-720v112q18 17 29 39t11 49v80Zm200 0Zm0 160Zm0-80Z',
+    show_chart = 'm140-220-60-60 300-300 160 160 284-320 56 56-340 384-160-160-240 240Z',
+    search = 'M784-120 532-372q-30 24-69 38t-83 14q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l252 252-56 56ZM380-400q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z',
+    menu = 'M120-240v-80h720v80H120Zm0-200v-80h720v80H120Zm0-200v-80h720v80H120Z',
+    expand_less = 'm296-345-56-56 240-240 240 240-56 56-184-184-184 184Z',
+    monitoring = 'M120-120v-80l80-80v160h-80Zm160 0v-240l80-80v320h-80Zm160 0v-320l80 81v239h-80Zm160 0v-239l80-80v319h-80Zm160 0v-400l80-80v480h-80ZM120-327v-113l280-280 160 160 280-280v113L560-447 400-607 120-327Z',
+    open_in_new = 'M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h280v80H200v560h560v-280h80v280q0 33-23.5 56.5T760-120H200Zm188-212-56-56 372-372H560v-80h280v280h-80v-144L388-332Z'
 )
 
-#' Plot Color Palette
-#'
-#' Consistent colors for plots throughout the dashboard
-#'
-PLOT_COLORS <- list(
-  # Intensity colors
-  sedentary = "#94a3b8",
-  light = "#3a7ab0",
-  moderate = "#FFCD00",
-  vigorous = "#17a589",
-  very_vigorous = "#236192",
-
-  # Status colors
-  valid = "#17a589",
-  invalid = "#94a3b8",
-
-  # Brand colors
-  primary = "#236192",
-  primary_dark = "#1a4a6f",
-  accent = "#FFCD00",
-  success = "#17a589",
-  caution = "#f4b942",
-
-  # Chart colors
-  line = "#236192",
-  fill = "#3a7ab0",
-  grid = "#e2e8f0"
-)
-
-# 
-# ACCESSIBILITY & UI UTILITIES
-# 
-
-#' Chart Empty State
-#'
-#' A specialized empty state component for chart panels.
-#' Displays when no data is available to visualize.
-#'
-#' @param icon_name FontAwesome icon name (default: "chart-bar")
-#' @param title Title text
-#' @param message Description text
-#' @param action_label Optional action button label
-#' @param action_id Optional action button ID (for Shiny observer)
-#' @param ns Namespace function for Shiny modules
-#' @param show_icon Whether to render the icon (default: TRUE when icon_name is set)
-#' @param extra_class Additional class names to apply to the container
-#'
-#' @return A Shiny tag object
-#'
-chart_empty_state <- function(icon_name = "chart-bar",
-                              title = "No Data Available",
-                              message = "Run Analysis to see visualizations",
-                              action_label = NULL,
-                              action_id = NULL,
-                              ns = identity,
-                              show_icon = !is.null(icon_name),
-                              extra_class = NULL) {
-  classes <- c("chart-empty-state", extra_class)
-  classes <- paste(classes[!is.null(classes) & nzchar(classes)], collapse = " ")
-
-  tags$div(
-    class = classes,
-    role = "status",
-    `aria-live` = "polite",
-    if (show_icon && !is.null(icon_name)) {
-      tags$div(class = "empty-state-icon", icon(icon_name), `aria-hidden` = "true")
-    },
-    if (!is.null(title)) tags$div(class = "empty-state-title", title),
-    if (!is.null(message)) tags$div(class = "empty-state-description", message),
-    if (!is.null(action_label) && !is.null(action_id)) {
-      tags$div(
-        class = "empty-state-action",
-        actionButton(
-          ns(action_id),
-          action_label,
-          class = "btn btn-primary"
-        )
-      )
-    }
+msym <- function(name, class = "sh-ico") {
+  tags$i(
+    class = class, `aria-hidden` = "true",
+    HTML(paste0('<svg viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true"><path d="', msym_paths[[name]], '"></path></svg>'))
   )
 }
 
-#' Loading Overlay
-#'
-#' A full-panel loading overlay for use during async operations.
-#' Can be shown/hidden with shinyjs::show()/hide().
-#'
-#' @param id Element ID for show/hide control
-#' @param message Loading message to display
-#'
-#' @return A Shiny tag object
-#'
-loading_overlay <- function(id, message = "Loading...") {
-  shinyjs::hidden(
-    tags$div(
-      id = id,
-      class = "loading-overlay",
-      role = "status",
-      `aria-live` = "polite",
-      tags$div(class = "loading-spinner", `aria-hidden` = "true"),
-      tags$div(class = "loading-text", message),
-      tags$span(class = "sr-only", message)
-    )
+# The tabs name their icon by what they do
+sidebar_icon <- function(name) {
+  msym(switch(
+    name,
+    overview  = "monitoring",
+    wear_time = "watch",
+    activity  = "directions_run",
+    sleep     = "bedtime",
+    circadian = "schedule",
+    sedentary = "chair",
+    graphing  = "show_chart",
+    name
+  ))
+}
+
+# Theme patch for charts drawn in dark mode. The shell reports the theme
+# (www/shell.js) and app.R puts it on `shared`; in light mode this returns
+# NULL and `p + NULL` is `p`.
+gg_theme_app <- function(dark = FALSE) {
+  if (!isTRUE(dark)) return(NULL)
+  # The chart keeps white paper in both themes: the colours inside the plots
+  # (titles, reference lines, annotations) were picked to sit on white
+  paper <- "#ffffff"
+  ggplot2::theme(
+    plot.background       = ggplot2::element_rect(fill = paper, colour = NA),
+    panel.background      = ggplot2::element_rect(fill = paper, colour = NA),
+    legend.background     = ggplot2::element_rect(fill = paper, colour = NA),
+    legend.box.background = ggplot2::element_rect(fill = paper, colour = NA),
+    legend.key            = ggplot2::element_rect(fill = paper, colour = NA)
   )
 }
 
-#' Metric with Tooltip
-#'
-#' A metric display with an info tooltip for explanation.
-#'
-#' @param value The metric value
-#' @param label The metric label
-#' @param tooltip Tooltip text explaining the metric
-#' @param icon_name Optional icon name
-#'
-#' @return A Shiny tag object
-#'
-metric_with_tooltip <- function(value, label, tooltip, icon_name = NULL) {
-  tags$div(
-    class = "metric",
-    if (!is.null(icon_name)) {
-      tags$div(class = "metric-icon", icon(icon_name), `aria-hidden` = "true")
-    },
-    tags$div(
-      class = "metric-content",
-      tags$div(
-        class = "metric-value-row",
-        tags$span(class = "metric-value", value),
-        tags$span(
-          class = "metric-info-icon tooltip-trigger",
-          `data-tooltip` = tooltip,
-          tabindex = "0",
-          role = "button",
-          `aria-label` = paste("Info about", label),
-          icon("info-circle")
-        )
-      ),
-      tags$div(class = "metric-label", label)
-    )
-  )
+# Wrap a plot expression so the theme reaches it; NULL or a non-ggplot passes through
+gg_app <- function(dark, p) {
+  if (inherits(p, "ggplot")) p + gg_theme_app(dark) else p
 }
 
-#' Accessible Button
-#'
-#' An action button with proper ARIA attributes.
-#'
-#' @param inputId Button input ID
-#' @param label Button label
-#' @param icon Icon to display (optional)
-#' @param class CSS class(es)
-#' @param disabled Whether button is disabled
-#' @param aria_label Accessible label (defaults to label text)
-#' @param ... Additional attributes
-#'
-#' @return A Shiny tag object
-#'
-accessible_button <- function(inputId,
-                               label,
-                               icon = NULL,
-                               class = "btn-primary",
-                               disabled = FALSE,
-                               aria_label = NULL,
-                               ...) {
-  btn <- actionButton(
-    inputId = inputId,
-    label = label,
-    icon = icon,
-    class = class,
-    ...
-  )
+# Ink for base-R plots, which take colours per call rather than from a theme.
+base_ink <- function(dark = FALSE) {
+  # one set, since base plots keep their paper too
+  list(ink = "#333333", muted = "#75797c", grid = "#e0e0e0")
+}
 
- # Add accessibility attributes
-  btn$attribs$`aria-label` <- aria_label %||% as.character(label)
-  if (disabled) {
-    btn$attribs$disabled <- "disabled"
-    btn$attribs$`aria-disabled` <- "true"
+# Whether a page's controls have moved since its run. `params` is the
+# parameter list the run stored and `spec` maps an input id to the name it
+# was stored under; a key the run never recorded is skipped.
+settings_moved_from <- function(params, input, spec) {
+  if (is.null(params) || !length(spec)) return(FALSE)
+  same_num <- function(a, b) {
+    a <- suppressWarnings(as.numeric(a)); b <- suppressWarnings(as.numeric(b))
+    (is.na(a) && is.na(b)) || (!is.na(a) && !is.na(b) && abs(a - b) < 1e-9)
   }
-
-  btn
+  for (id in names(spec)) {
+    key <- spec[[id]]
+    if (!key %in% names(params)) next
+    ran <- params[[key]]
+    now <- input[[id]]
+    if (is.null(now)) next            # the control has not rendered yet
+    ok <- if (is.logical(ran) || is.logical(now)) {
+      identical(isTRUE(ran), isTRUE(now))
+    } else if (is.numeric(ran) || suppressWarnings(!is.na(as.numeric(now)))) {
+      same_num(ran, now)
+    } else {
+      identical(as.character(ran), as.character(now))
+    }
+    if (!ok) return(TRUE)
+  }
+  FALSE
 }
 
-#' Skeleton Loader
-#'
-#' Creates placeholder content while data is loading.
-#'
-#' @param type Type of skeleton: "text", "chart", "card", "metric"
-#' @param lines Number of text lines (for type="text")
-#'
-#' @return A Shiny tag object
-#'
-skeleton_loader <- function(type = c("text", "chart", "card", "metric"),
-                             lines = 3) {
-  type <- match.arg(type)
-
-  switch(type,
-    "text" = tags$div(
-      class = "skeleton-container",
-      `aria-hidden` = "true",
-      lapply(seq_len(lines), function(i) {
-        width <- if (i == lines) "short" else if (i %% 2 == 0) "medium" else ""
-        tags$div(class = paste("skeleton skeleton-text", width))
-      })
-    ),
-    "chart" = tags$div(
-      class = "skeleton skeleton-chart",
-      `aria-hidden` = "true"
-    ),
-    "card" = tags$div(
-      class = "skeleton-container",
-      `aria-hidden` = "true",
-      tags$div(class = "skeleton skeleton-text short"),
-      tags$div(class = "skeleton skeleton-text"),
-      tags$div(class = "skeleton skeleton-text medium")
-    ),
-    "metric" = tags$div(
-      class = "skeleton-container",
-      `aria-hidden` = "true",
-      tags$div(class = "skeleton skeleton-text short", style = "height: 2em; margin-bottom: 0.5em;"),
-      tags$div(class = "skeleton skeleton-text medium", style = "height: 1em;")
-    )
-  )
+# The wording every page uses
+stale_note <- function(class_prefix) {
+  tags$span(class = paste0(class_prefix, "-stale"), "changed since the run below")
 }
 
-#' Screen Reader Only Text
-#'
-#' Creates text that is only visible to screen readers.
-#'
-#' @param text The text content
-#'
-#' @return A Shiny tag object
-#'
-sr_only <- function(text) {
-  tags$span(class = "sr-only", text)
+# SHARED PANEL SYSTEM
+
+# The Run button's classes, one rule on every page: filled while there is
+# something to run (no results yet, or the settings moved since the run),
+# outlined once the results match the settings. prefix is the page's button
+# prefix ("wt", "ac", "sl", "cr", "sd", or "gr" for Visualization).
+run_button_class <- function(prefix, has_results, stale = FALSE) {
+  has_results <- isTRUE(has_results)
+  stale <- isTRUE(stale)
+  primary <- !has_results || stale
+  variant <- if (identical(prefix, "gr")) {
+    if (primary) "gr-btn--go" else "gr-btn--quiet"
+  } else {
+    paste0(prefix, "-btn--", if (primary) "primary" else "secondary")
+  }
+  paste(c(paste0(prefix, "-btn"), variant, if (has_results && stale) "is-stale"),
+        collapse = " ")
 }
 
-#' Validation Message
-#'
-#' Displays a validation message below form fields.
-#'
-#' @param id Element ID
-#' @param message The validation message
-#' @param type Message type: "error", "warning", "success"
-#'
-#' @return A Shiny tag object
-#'
-validation_message <- function(id, message = "", type = c("error", "warning", "success")) {
-  type <- match.arg(type)
+# The text of a string, a tag or a tag list, as a title attribute reads it
+plain_text <- function(x) {
+  if (is.null(x)) return("")
+  if (inherits(x, "shiny.tag")) return(plain_text(x$children))
+  if (inherits(x, "html")) {
+    s <- gsub("<[^>]*>", "", as.character(x))
+    ents <- c("&middot;" = "·", "&nbsp;" = " ", "&ndash;" = "–",
+              "&lt;" = "<", "&gt;" = ">", "&amp;" = "&")
+    for (e in names(ents)) s <- gsub(e, ents[[e]], s, fixed = TRUE)
+    m <- gregexpr("&#[0-9]+;", s)
+    regmatches(s, m) <- lapply(regmatches(s, m), function(v)
+      vapply(v, function(e) intToUtf8(as.integer(gsub("[^0-9]", "", e))), character(1)))
+    return(s)
+  }
+  if (is.list(x)) return(paste(vapply(x, plain_text, character(1)), collapse = ""))
+  paste(as.character(x), collapse = "")
+}
 
-  icon_name <- switch(type,
-    error = "times-circle",
-    warning = "exclamation-triangle",
-    success = "check-circle"
-  )
+# A title for a cell whose text can be cut, or NULL so no attribute is written.
+# Plain cut text already gets one from www/shell.js on hover; this is for a
+# cell whose shown text is shorter than the value it stands for.
+cell_title <- function(x) {
+  txt <- trimws(gsub("\\s+", " ", plain_text(x)))
+  if (!nzchar(txt) || txt %in% c("–", "-", "NA")) NULL else txt
+}
 
-  shinyjs::hidden(
-    tags$div(
-      id = id,
-      class = paste("validation-message", type),
-      role = "alert",
-      icon(icon_name),
-      tags$span(message)
-    )
-  )
+# One recording choice that follows the user across tabs, as a Grafana
+# dashboard variable does. id is a key of shared$files ("file_3") or of
+# shared$raw ("raw_2"); NULL, "" or "all" means all recordings.
+focus_set <- function(shared, id) {
+  id <- if (length(id) == 0 || is.na(id[[1]]) || !nzchar(id[[1]]) ||
+            identical(as.character(id[[1]]), "all")) NULL else as.character(id[[1]])
+  shared$focus <- id
+  invisible(id)
+}
+
+# The focused recording if it is one of among (the ids the page can show), else NULL
+focus_get <- function(shared, among = NULL) {
+  id <- shared$focus
+  if (is.null(id) || (!is.null(among) && !id %in% among)) NULL else id
+}
+
+# Runs fn() each time the tab named in app.R's tabItems is opened
+on_tab_shown <- function(shared, tab, fn) {
+  observeEvent(shared$tab, if (identical(shared$tab, tab)) fn())
 }

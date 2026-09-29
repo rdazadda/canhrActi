@@ -12,7 +12,9 @@ circadian.rhythm(
   min_valid_hours = 10,
   epoch_length = 60,
   calculate_sri = TRUE,
-  use_cpp = TRUE
+  use_cpp = TRUE,
+  value_unit = "counts/min",
+  valid_days = NULL
 )
 }
 \arguments{
@@ -33,6 +35,12 @@ given; default \code{10}. Set \code{0}/\code{NULL} to disable.}
 \item{calculate_sri}{Logical. Calculate Sleep Regularity Index? (default: TRUE if sleep_state provided)}
 
 \item{use_cpp}{Logical. Use C++ backend for faster computation? (default: TRUE)}
+
+\item{value_unit}{Character. Unit of the levels, kept on the result for print and plot (default: "counts/min")}
+
+\item{valid_days}{Optional Date vector of days to keep in \code{daily_metrics};
+other days are blanked there, as under GGIR's \code{includedaycrit}, while the
+rhythm metrics still use every worn epoch. Default \code{NULL} keeps every day.}
 }
 \value{
 List with class 'canhrActi_circadian' containing:

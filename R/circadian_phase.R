@@ -6,18 +6,16 @@
 #'
 #' Combines, for each day, the deviation of the phase marker from the
 #' individual's own mean phase (precision) and from a reference phase
-#' (accuracy) as \code{CPD = mean(sqrt(precision^2 + accuracy^2))}. When no
-#' external reference phase is supplied, accuracy is taken relative to the
-#' individual's own mean phase (accuracy = 0), so CPD reduces to the mean
-#' absolute phase deviation - still a valid, published measure of phase
-#' instability, and distinct from the circular SD reported by
+#' (accuracy) as \code{CPD = mean(sqrt(precision^2 + accuracy^2))}. Without an
+#' external reference phase, accuracy and CPD are \code{NA} and only precision
+#' is reported; precision is distinct from the circular SD reported by
 #' \code{onset_timing_variability}.
 #'
 #' @param onset_hours Numeric vector of daily phase-marker onset times in
 #'   decimal hours (e.g. daily L5 onsets).
 #' @param reference_phase Optional reference phase in decimal hours (e.g. a
-#'   scheduled/expected time, or a group mean). Default \code{NULL} uses the
-#'   individual's own mean phase (accuracy term = 0).
+#'   scheduled/expected time, or a group mean). Default \code{NULL} leaves
+#'   accuracy and CPD \code{NA}.
 #'
 #' @return List with \code{CPD}, \code{precision} (mean absolute deviation from
 #'   own mean phase, hours), \code{accuracy} (mean absolute deviation from the
@@ -41,13 +39,21 @@ composite.phase.deviation <- function(onset_hours, reference_phase = NULL) {
   mean_phase <- (atan2(mean(sin(rad)), mean(cos(rad))) %% (2 * pi)) * 24 / (2 * pi)
 
   precision_i <- circ_diff(onset_hours, mean_phase)
-  ref <- if (is.null(reference_phase)) mean_phase else reference_phase
-  accuracy_i <- circ_diff(onset_hours, ref)
-
-  out$CPD <- round(mean(sqrt(precision_i^2 + accuracy_i^2)), 3)
   out$precision <- round(mean(abs(precision_i)), 3)
+
+  # Without an external reference, accuracy would equal precision and CPD
+  # sqrt(2) * precision, so both are left undefined.
+  if (is.null(reference_phase)) {
+    out$CPD <- NA_real_
+    out$accuracy <- NA_real_
+    out$reference_phase <- NA_real_
+    return(out)
+  }
+
+  accuracy_i <- circ_diff(onset_hours, reference_phase)
+  out$CPD <- round(mean(sqrt(precision_i^2 + accuracy_i^2)), 3)
   out$accuracy <- round(mean(abs(accuracy_i)), 3)
-  out$reference_phase <- round(ref, 3)
+  out$reference_phase <- round(reference_phase, 3)
   out
 }
 
@@ -112,7 +118,8 @@ circadian.is.multiscale <- function(counts, timestamps, bin_minutes = c(60, 30, 
   }
   lt <- as.POSIXlt(timestamps)
   sec_of_day <- lt$hour * 3600 + lt$min * 60 + lt$sec
-  day_index <- as.integer(as.Date(timestamps) - min(as.Date(timestamps)))
+  day <- .circ_local_date(timestamps)
+  day_index <- as.integer(day - min(day))
 
   is_at <- function(bin_min) {
     p <- 1440L %/% bin_min                 # bins per day

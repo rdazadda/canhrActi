@@ -240,7 +240,11 @@ summarize.energy.expenditure <- function(kcal_per_epoch, intensity, wear_time) {
 
   total_kcal <- sum(kcal_wear, na.rm = TRUE)
 
-  ee_summary <- aggregate(kcal_wear ~ intensity_wear, FUN = sum, na.rm = TRUE)
+  ee_summary <- if (any(!is.na(kcal_wear) & !is.na(intensity_wear))) {
+    aggregate(kcal_wear ~ intensity_wear, FUN = sum, na.rm = TRUE)
+  } else {
+    data.frame(intensity_wear = character(0), kcal_wear = numeric(0))
+  }
   names(ee_summary) <- c("intensity", "total_kcal")
 
   # Guard against division by zero
@@ -273,15 +277,20 @@ calculate.average.mets <- function(mets, wear_time, timestamp) {
   wear_epochs <- wear_time == TRUE
   mets_wear <- mets[wear_epochs]
 
-  average_mets <- mean(mets_wear, na.rm = TRUE)
+  # A recording never worn has no METs to average and no rows to aggregate
+  average_mets <- if (any(!is.na(mets_wear))) mean(mets_wear, na.rm = TRUE) else NA_real_
 
-  dates <- as.Date(timestamp)
+  dates <- .clock_date(timestamp)
   daily_mets <- data.frame(
     date = dates[wear_epochs],
     mets = mets_wear
   )
 
-  daily_average <- aggregate(mets ~ date, data = daily_mets, FUN = mean, na.rm = TRUE)
+  daily_average <- if (any(!is.na(daily_mets$mets) & !is.na(daily_mets$date))) {
+    aggregate(mets ~ date, data = daily_mets, FUN = mean, na.rm = TRUE)
+  } else {
+    data.frame(date = as.Date(character(0)), mets = numeric(0))
+  }
   names(daily_average) <- c("date", "average_mets")
   daily_average$average_mets <- round(daily_average$average_mets, 2)
 

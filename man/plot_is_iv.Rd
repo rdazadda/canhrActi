@@ -11,7 +11,8 @@ plot_is_iv(
   is_value = NULL,
   iv_value = NULL,
   title = "Interdaily Stability / Intradaily Variability",
-  subtitle = NULL
+  subtitle = NULL,
+  value_label = "Activity (counts/min)"
 )
 }
 \arguments{
@@ -28,6 +29,9 @@ plot_is_iv(
 \item{title}{Character. Plot title (default: "Interdaily Stability / Intradaily Variability")}
 
 \item{subtitle}{Character. Optional plot subtitle (default: NULL)}
+
+\item{value_label}{Character. Axis label naming the value and its unit
+(default: "Activity (counts/min)")}
 }
 \value{
 A ggplot2 object showing hourly profiles and IS/IV values

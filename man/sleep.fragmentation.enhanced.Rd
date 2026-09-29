@@ -7,18 +7,20 @@
 sleep.fragmentation.enhanced(sleep_state, timestamps, epoch_length = 60)
 }
 \arguments{
-\item{sleep_state}{Character vector of sleep states ("S" or "W")}
+\item{sleep_state}{Character vector of sleep states ("S" or "W"). NA marks an
+epoch that was not scored, such as non-wear, and is neither sleep nor wake.}
 
 \item{timestamps}{POSIXt vector of timestamps corresponding to sleep_state}
 
-\item{epoch_length}{Epoch length in seconds (default: 60). Used to convert the
-epoch count to hours when computing the per-hour transition rate.}
+\item{epoch_length}{Epoch length in seconds (default: 60). Used to convert
+epoch counts to time for the per-hour transition rate and the 10 minute
+short sleep bout threshold.}
 }
 \value{
 List containing:
 \itemize{
 \item basic_metrics: Standard fragmentation metrics
-\item bout_analysis: Sleep and wake bout duration statistics
+\item bout_analysis: Sleep and wake bout duration statistics, in epochs
 \item temporal_pattern: Hourly fragmentation profile
 \item sleep_fragmentation_index: Composite fragmentation score
 }
@@ -35,6 +37,10 @@ Enhanced fragmentation analysis provides:
 \item Temporal pattern showing which hours have most fragmentation
 \item Sleep Fragmentation Index (SFI) combining multiple metrics
 }
+
+NA epochs split bouts, a change of state across them is not counted as a
+transition (as in GGIR's g.fragmentation), and the rates, proportions and
+sleep efficiency are taken over the scored epochs only.
 
 Note: the Sleep Fragmentation Index returned here is a custom composite metric
 (a weighted blend of transition rate, short-sleep-bout proportion, and wake

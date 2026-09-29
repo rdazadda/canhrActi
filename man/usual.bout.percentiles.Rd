@@ -16,7 +16,7 @@ Named numeric vector with W25, W50, W75, W90 (monotonically increasing)
 }
 \description{
 Time-weighted percentiles of the bout-duration distribution. WX is the bout
-duration at which X\\% of total sedentary time has accumulated when bouts are
+duration at which X\% of total sedentary time has accumulated when bouts are
 considered from SHORTEST to LONGEST. Defined this way the percentiles are
 monotonically INCREASING (W25 <= W50 <= W75 <= W90), so larger W corresponds
 to a longer-bout cutoff, matching the "25th/75th/90th weighted percentile"

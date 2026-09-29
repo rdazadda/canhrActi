@@ -2,10 +2,10 @@
 
 test_that("canhrActi.sleep validates input parameters", {
   # Should error with non-existent path
-  expect_error(canhrActi.sleep("/nonexistent/path"))
+  expect_error(canhrActi.sleep("/nonexistent/path"), "File or folder not found: /nonexistent/path")
 
   # Should error with NULL input
-  expect_error(canhrActi.sleep(NULL))
+  expect_error(canhrActi.sleep(NULL), "agd_file_path must be an .agd file")
 })
 
 test_that("canhrActi.sleep handles empty directory", {
@@ -13,71 +13,60 @@ test_that("canhrActi.sleep handles empty directory", {
   empty_dir <- file.path(temp_dir, "empty_sleep_test")
   dir.create(empty_dir, showWarnings = FALSE)
 
-  expect_error(canhrActi.sleep(empty_dir))
+  expect_error(canhrActi.sleep(empty_dir), "No .agd files found in")
 
   unlink(empty_dir, recursive = TRUE)
 })
 
-test_that("sleep algorithm parameter validation works", {
-  valid_algorithms <- c("cole.kripke", "sadeh")
+test_that("a file that fails stays in the batch next to one that succeeds", {
+  bad <- withr::local_tempfile(fileext = ".agd")
+  file.create(bad)
+  good <- example_agd(1)
+  invisible(capture.output(res <- canhrActi.sleep(c(bad, good), export = FALSE, verbose = FALSE)))
 
-  expect_true("cole.kripke" %in% valid_algorithms)
-  expect_true("sadeh" %in% valid_algorithms)
+  expect_s3_class(res, "canhrActi_sleep_batch")
+  expect_equal(c(res$n_files, res$n_success, res$n_failed), c(2, 1, 1))
+  expect_identical(res$failed_files, basename(bad))
+  expect_identical(names(res$results), basename(good))
+
+  expect_identical(res$summary$file_name, basename(c(bad, good)))
+  failed <- res$summary[res$summary$file_name == basename(bad), ]
+  expect_true(all(is.na(failed[, c("total_epochs", "sleep_periods_detected", "total_sleep_time_min")])))
+  ok <- res$summary[res$summary$file_name == basename(good), ]
+  expect_equal(c(ok$total_epochs, ok$sleep_periods_detected, ok$total_sleep_time_min), c(9919, 4, 1470))
+
+  expect_identical(names(res$errors), basename(bad))
+  expect_match(res$errors[[1]], "Could not find 'data' or 'epochs' table")
 })
 
-test_that("sleep period detection parameters are valid", {
-  # Default parameters
-  default_min_period <- 20
-  default_max_period <- 1440
+test_that("a missing file in a list is recorded as failed and the rest still run", {
+  missing <- file.path(tempdir(), "no_such_recording.agd")
+  good <- example_agd(1)
+  invisible(capture.output(res <- canhrActi.sleep(c(good, missing), export = FALSE, verbose = FALSE)))
 
-  expect_true(default_min_period > 0)
-  expect_true(default_max_period > default_min_period)
-  expect_true(default_max_period <= 1440)  # Max 24 hours
+  expect_equal(c(res$n_files, res$n_success, res$n_failed), c(2, 1, 1))
+  expect_identical(res$failed_files, basename(missing))
+  expect_match(res$errors[[basename(missing)]], "File not found")
+  expect_false(file.exists(missing))
 })
 
-test_that("batch sleep result structure is correct", {
-  expected_names <- c(
-    "results", "summary", "processing_time", "n_files",
-    "n_successful", "n_failed", "failed_files", "settings"
-  )
+test_that("a batch where every file fails returns n_failed", {
+  bad <- withr::local_tempfile(fileext = ".agd")
+  file.create(bad)
 
-  mock_result <- list(
-    results = list(),
-    summary = data.frame(),
-    processing_time = 0,
-    n_files = 0,
-    n_successful = 0,
-    n_failed = 0,
-    failed_files = character(0),
-    settings = list(algorithm = "cole.kripke")
-  )
-  class(mock_result) <- "canhrActi_batch_sleep"
-
-  expect_s3_class(mock_result, "canhrActi_batch_sleep")
-  expect_true(all(expected_names %in% names(mock_result)))
+  expect_output(res <- canhrActi.sleep(bad, export = FALSE), "Failed: 1 files")
+  expect_equal(c(res$n_success, res$n_failed), c(0, 1))
+  expect_identical(res$failed_files, basename(bad))
+  expect_equal(nrow(res$summary), 1)
+  expect_output(print(res), "Files processed: 0/1")
 })
 
-test_that("sleep metrics aggregation works", {
-  # Create mock sleep period data
-  periods1 <- data.frame(
-    sleep_efficiency = 85.5,
-    sleep_time = 420,
-    wake_time = 30,
-    number_of_awakenings = 3
-  )
-
-  periods2 <- data.frame(
-    sleep_efficiency = 90.0,
-    sleep_time = 450,
-    wake_time = 20,
-    number_of_awakenings = 2
-  )
-
-  combined <- rbind(periods1, periods2)
-
-  expect_equal(mean(combined$sleep_efficiency), 87.75)
-  expect_equal(mean(combined$sleep_time), 435)
-  expect_equal(mean(combined$number_of_awakenings), 2.5)
+test_that("canhrActi.sleep prints nothing with verbose = FALSE", {
+  f <- example_agd(1)
+  expect_silent(quiet <- canhrActi.sleep(f, export = FALSE, verbose = FALSE))
+  invisible(capture.output(loud <- canhrActi.sleep(f, export = FALSE)))
+  same <- setdiff(names(quiet), "processing_time")
+  expect_identical(quiet[same], loud[same])
 })
 
 test_that("sleep scoring integration works", {
@@ -110,42 +99,4 @@ test_that("Tudor-Locke period detection works", {
     expect_true("sleep_efficiency" %in% names(result))
     expect_true("in_bed_time" %in% names(result))
   }
-})
-
-test_that("sleep export format validation works", {
-  valid_formats <- c("csv", "xlsx", "both")
-
-  export_format <- "csv"
-  expect_true(export_format %in% valid_formats)
-})
-
-test_that("parallel sleep processing parameters work", {
-  available_cores <- parallel::detectCores(logical = FALSE)
-  n_files <- 10
-
-  n_cores <- min(available_cores - 1, 8, n_files)
-
-  expect_true(n_cores >= 1)
-  expect_true(n_cores <= 8)
-  expect_true(n_cores <= n_files)
-})
-
-test_that("sleep summary statistics calculation works", {
-  # Mock sleep periods
-  sleep_data <- data.frame(
-    file = rep(c("file1", "file2"), each = 2),
-    sleep_efficiency = c(85, 90, 88, 92),
-    sleep_time = c(400, 420, 380, 450),
-    wake_time = c(40, 30, 50, 25)
-  )
-
-  # Per-file aggregation
-  by_file <- aggregate(
-    cbind(sleep_efficiency, sleep_time) ~ file,
-    data = sleep_data,
-    FUN = mean
-  )
-
-  expect_equal(nrow(by_file), 2)
-  expect_equal(by_file$sleep_efficiency[by_file$file == "file1"], 87.5)
 })

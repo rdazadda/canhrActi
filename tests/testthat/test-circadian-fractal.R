@@ -57,12 +57,10 @@ test_that("fractal.dfa matches nonlinearTseries::dfa numerically", {
   ref_white <- tryCatch(ref_alpha(white), error = function(e) NA_real_)
   ref_brown <- tryCatch(ref_alpha(brown), error = function(e) NA_real_)
 
-  if (!is.na(ref_white)) {
-    expect_equal(ours_white, ref_white, tolerance = 0.1)
-  }
-  if (!is.na(ref_brown)) {
-    expect_equal(ours_brown, ref_brown, tolerance = 0.1)
-  }
+  skip_if(!is.finite(ref_white), "reference call failed")
+  expect_equal(ours_white, ref_white, tolerance = 0.1)
+  skip_if(!is.finite(ref_brown), "reference call failed")
+  expect_equal(ours_brown, ref_brown, tolerance = 0.1)
 })
 
 test_that("fractal.dfa: alpha1/alpha2 split obeys the breakpoint", {
@@ -174,9 +172,8 @@ test_that("multiscale.entropy scale-1 matches pracma::sample_entropy", {
     pracma::sample_entropy(x, edim = 2, r = 0.15 * stats::sd(x), tau = 1),
     error = function(e) NA_real_
   )
-  if (is.finite(ref)) {
-    expect_equal(res$mse[1], as.numeric(ref), tolerance = 0.05)
-  }
+  skip_if(!is.finite(ref), "reference call failed")
+  expect_equal(res$mse[1], as.numeric(ref), tolerance = 0.05)
 })
 
 test_that("multiscale.entropy uses fixed r based on original SD across scales", {

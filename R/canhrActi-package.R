@@ -1,5 +1,3 @@
-#' canhrActi: CANHR ActiGraph Physical Activity Analysis
-#'
 #' @importFrom utils flush.console head
 #' @keywords internal
 "_PACKAGE"

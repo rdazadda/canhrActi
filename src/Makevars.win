@@ -1,6 +1,0 @@
-# Makevars.win for Windows compilation
-CXX_STD = CXX17
-
-# Windows-specific flags (RcppArmadillo/LAPACK/BLAS no longer needed - pure Rcpp)
-PKG_CXXFLAGS =
-PKG_LIBS =

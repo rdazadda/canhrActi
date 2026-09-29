@@ -7,13 +7,13 @@
 example_agd(file = 1)
 }
 \arguments{
-\item{file}{Character. Name of the example file or "list" to see available files.}
+\item{file}{Index, part of a file name, or "list" to see available files.}
 }
 \value{
 Character. Full path to the example AGD file.
 }
 \description{
-Get Path to Example AGD Files
+The example recordings are the dashboard's sample files.
 }
 \examples{
 example_agd()

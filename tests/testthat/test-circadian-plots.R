@@ -2,10 +2,7 @@
 #
 # Each function must return a ggplot object on valid data, return an annotated
 # (still-ggplot) empty plot on degenerate / insufficient input rather than
-# erroring, and produce plots that build cleanly. The periodogram test is
-# guarded with skip_if_not_installed("lomb") because it depends on lomb::lsp.
-
-skip_if_not_installed("ggplot2")
+# erroring, and produce plots that build cleanly.
 
 
 # --- Shared synthetic fixture: 7 days of minute data, clear 24h rhythm -------
@@ -25,7 +22,6 @@ make_circadian_data <- function(days = 7, seed = 42, noise = 15) {
 # plot_periodogram()
 # =============================================================================
 test_that("plot_periodogram returns a ggplot on valid data", {
-  skip_if_not_installed("lomb")
   d <- make_circadian_data()
 
   expect_no_error(p <- plot_periodogram(d$counts, d$timestamps))

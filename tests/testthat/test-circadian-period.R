@@ -59,23 +59,29 @@ test_that("circadian.period recovers tau ~= 25.5 from a forced 25.5h rhythm", {
 })
 
 
-# --- matches a direct lomb::lsp call ----------------------------------------
+# --- power equals the least-squares variance explained ----------------------
+#
+# Normalised power is the fraction of variance a two-term sinusoid explains at
+# that period, so least squares is the reference; lomb::lsp is not, since it
+# carries the single-angle time offset.
 
-test_that("circadian.period matches a direct lomb::lsp call (24h and 25.5h)", {
-  testthat::skip_if_not_installed("lomb")
-
+test_that("circadian.period power equals the least-squares variance explained", {
   for (per in c(24, 25.5)) {
     d <- .make_rhythm(period_h = per, seed = if (per == 24) 1 else 2)
     res <- circadian.period(d$counts, d$timestamps, ofac = 4)
 
-    direct <- lomb::lsp(
-      x = d$counts, times = d$t_hours,
-      from = 18, to = 30, type = "period", ofac = 4, plot = FALSE
-    )
+    y <- d$counts - mean(d$counts)
+    tss <- sum(y^2)
+    oracle <- vapply(res$scanned, function(ph) {
+      w <- 2 * pi / ph
+      m <- stats::.lm.fit(cbind(cos(w * d$t_hours), sin(w * d$t_hours)), y)
+      1 - sum(m$residuals^2) / tss
+    }, numeric(1))
 
-    expect_equal(res$tau, as.numeric(direct$peak.at[1]), tolerance = 1e-8)
-    expect_equal(res$peak_power, as.numeric(direct$peak), tolerance = 1e-8)
-    expect_equal(res$p_value, as.numeric(direct$p.value), tolerance = 1e-8)
+    expect_equal(res$power, oracle, tolerance = 1e-9)
+    expect_equal(res$scanned[which.max(res$power)],
+                 res$scanned[which.max(oracle)], tolerance = 1e-12)
+    expect_lte(res$peak_power, 1 + 1e-9)
   }
 })
 
@@ -160,7 +166,6 @@ test_that("Lomb-Scargle peak agrees with an independent spectral check", {
   # pracma::findpeaks on a manually-built Lomb-Scargle spectrum is overkill;
   # instead cross-validate the dominant period against a coarse FFT on the
   # (here regularly-sampled) clean signal as an independent sanity check.
-  testthat::skip_if_not_installed("lomb")
 
   d <- .make_rhythm(period_h = 24, noise_sd = 0, seed = 7)
   res <- circadian.period(d$counts, d$timestamps)

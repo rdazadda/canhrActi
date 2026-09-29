@@ -2,15 +2,16 @@
 # Center for Alaska Native Health Research (CANHR)
 # University of Alaska Fairbanks
 
-# Increase file upload limit to 500MB (default is 5MB)
+# Increase file upload limit (default is 5MB)
 # Configuration constants
-MAX_UPLOAD_SIZE_MB <- 500
+# 16 GB, the browser upload cap. Large recordings should come in through
+# Open from disk, which hands the pipeline the path with no copy.
+MAX_UPLOAD_SIZE_MB <- 16 * 1024
 options(shiny.maxRequestSize = MAX_UPLOAD_SIZE_MB * 1024^2)
 
 library(shiny)
 library(shinydashboard)
 library(ggplot2)
-library(DT)
 library(shinyjs)
 
 # Load canhrActi package
@@ -19,16 +20,6 @@ library(canhrActi)
 # Run raw .gt3x -> counts conversions off the main session (else they block the UI).
 if (requireNamespace("future", quietly = TRUE) && requireNamespace("promises", quietly = TRUE)) {
   future::plan(future::multisession, workers = 2)
-}
-
-# Optional: loading spinners
-if (requireNamespace("shinycssloaders", quietly = TRUE)) {
-
-  library(shinycssloaders)
-  has_spinners <- TRUE
-} else {
-  has_spinners <- FALSE
-  withSpinner <- function(x, ...) x
 }
 
 # Source components and modules
@@ -40,81 +31,105 @@ for (file in list.files("R", pattern = "^mod_.*\\.R$", full.names = TRUE)) {
 ui <- dashboardPage(
   skin = "blue",
 
+  # The brand block is the sidebar's top row: shinydashboard sizes .logo to
+  # the sidebar width
   dashboardHeader(
     title = tags$span(
       class = "header-brand",
-      tags$img(src = paste0("logo.png?v=", as.integer(file.info(file.path("www","logo.png"))$mtime)), alt = "", class = "brand-logo-img"),
-      tags$span(class = "brand-name", "CANHRActi")
+      tags$img(src = paste0("logo.png?v=", as.integer(file.info(file.path("www","logo.png"))$mtime)),
+               alt = "", class = "brand-logo-img"),
+      tags$span(class = "brand-name", "CANHRActi"),
+      tags$a(href = "#", class = "sidebar-toggle brand-toggle", role = "button",
+             `aria-expanded` = "true", `aria-label` = "Toggle sidebar",
+             title = "Toggle sidebar",
+             msym("menu", class = "sh-ico"))
     ),
-    titleWidth = 260,
+    titleWidth = 230,
 
+    # Omnibox. It filters the sidebar's own rows, with no server round trip
     tags$li(
-      class = "dropdown header-page-title",
-      uiOutput("header_page_title")
-    ),
-
-    tags$li(
-      class = "dropdown header-file-info",
-      uiOutput("header_file_info")
-    ),
-
-    # Help/Documentation link
-    tags$li(
-      class = "dropdown",
-      tags$a(
-        href = "https://github.com/rdazadda/canhrActi/issues",
-        target = "_blank",
-        class = "header-link",
-        title = "Report issues or request features",
-        icon("question-circle"),
-        tags$span(class = "header-link-text", "Support")
+      class = "dropdown header-omnibox",
+      tags$div(
+        class = "omnibox",
+        msym("search", class = "omnibox-ico"),
+        tags$input(type = "text", id = "omnibox", class = "omnibox-input",
+                   autocomplete = "off", spellcheck = "false",
+                   placeholder = "Find a page or action"),
+        # Shortcut hint, hidden while the field is in use
+        tags$span(class = "omnibox-hint", `aria-hidden` = "true",
+                  tags$kbd("Ctrl"), tags$kbd("P")),
+        tags$div(class = "omnibox-results", role = "listbox")
       )
     )
   ),
 
   dashboardSidebar(
-    width = 260,
-
-    tags$div(
-      class = "sidebar-brand-section",
-      title = "Center for Alaska Native Health Research",
-      tags$div(class = "sidebar-brand-mark", "CANHR"),
-      tags$div(
-        class = "sidebar-brand-descriptor",
-        "Center for Alaska Native Health Research"
-      )
-    ),
+    width = 230,
 
     sidebarMenu(
       id = "tabs",
 
-      menuItem(text = "Overview", tabName = "overview"),
 
-      tags$div(class = "sidebar-section-header", "Workflow"),
-      menuItem(text = "Upload",    tabName = "upload"),
-      menuItem(text = "Wear Time", tabName = "wear_time"),
+      # Data upload. Add file(s) and Add folder are labels for the app-level
+      # file inputs, so they open from any tab; the extension picks the pipeline.
+      tags$li(class = "sh-head", tags$span("Data upload"), msym("expand_less", class = "sh-chev")),
+      menuItem(text = "Overview", tabName = "overview", icon = sidebar_icon("overview")),
+      tags$li(
+        class = "sh-act",
+        actionLink("overview-side_demo", class = "sh-a",
+                   label = tagList(msym("dataset"), tags$span("Try sample files")))
+      ),
+      tags$li(
+        class = "sh-act",
+        tags$label(class = "sh-a", `for` = "overview-files",
+                   msym("note_add"), tags$span("Add file(s)"))
+      ),
+      tags$li(
+        class = "sh-act",
+        tags$label(class = "sh-a", `for` = "overview-dir_files",
+                   msym("create_new_folder"), tags$span("Add folder"))
+      ),
+      # Open from disk hands the pipeline the path, as GGIR takes a datadir;
+      # nothing is copied through the browser
+      tags$li(
+        class = "sh-act",
+        actionLink("overview-side_inplace", class = "sh-a",
+                   label = tagList(msym("folder_open"), tags$span("Open from disk")))
+      ),
+      tags$li(
+        class = "sh-act",
+        actionLink("overview-side_convert", class = "sh-a",
+                   label = tagList(msym("swap_horiz"), tags$span("Convert .gt3x to .agd")))
+      ),
 
-      tags$div(class = "sidebar-section-header", "Analysis"),
-      menuItem(text = "Activity",  tabName = "activity"),
-      menuItem(text = "Sleep",     tabName = "sleep"),
-      menuItem(text = "Circadian", tabName = "circadian"),
-      menuItem(text = "Sedentary", tabName = "sedentary"),
-      menuItem(
-        text = "Visualization",
-        tabName = "graphing"
+      # The analyses, wear time first because it runs first
+      tags$li(class = "sh-head", tags$span("Analysis"), msym("expand_less", class = "sh-chev")),
+      menuItem(text = "Wear time", tabName = "wear_time", icon = sidebar_icon("wear_time")),
+      menuItem(text = "Activity",  tabName = "activity",  icon = sidebar_icon("activity")),
+      menuItem(text = "Sleep",     tabName = "sleep",     icon = sidebar_icon("sleep")),
+      menuItem(text = "Circadian", tabName = "circadian", icon = sidebar_icon("circadian")),
+      menuItem(text = "Sedentary", tabName = "sedentary", icon = sidebar_icon("sedentary")),
+
+      # Output: figures drawn from the analyses' results
+      tags$li(class = "sh-head", tags$span("Output"), msym("expand_less", class = "sh-chev")),
+      menuItem(text = "Visualization", tabName = "graphing", icon = sidebar_icon("graphing")),
+
+      # Support: a header and one plain line, no row chrome
+      tags$li(class = "sh-head", tags$span("Support"), msym("expand_less", class = "sh-chev")),
+      tags$li(
+        class = "sh-support",
+        tags$a(href = "https://github.com/rdazadda/canhrActi", target = "_blank",
+               "Documentation & Bugs")
       )
     ),
 
-    # Sidebar footer with version info
     tags$div(
       class = "sidebar-footer",
+      tags$div(class = "sidebar-attrib", "CANHR · University of Alaska Fairbanks"),
       tags$div(
-        class = "sidebar-version",
-        paste0("Version ", packageVersion("canhrActi"))
-      ),
-      tags$div(
-        class = "sidebar-copyright",
-        "\u00A9 CANHR | UAF"
+        class = "sidebar-foot-row",
+        uiOutput("sidebar_status", inline = TRUE),
+        tags$span(class = "sidebar-version", paste0("v", packageVersion("canhrActi")))
       )
     )
   ),
@@ -126,15 +141,15 @@ ui <- dashboardPage(
       tags$title("CANHRActi"),
       tags$script(HTML("document.title = 'CANHRActi';")),
       tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", as.integer(file.info(file.path("www","styles.css"))$mtime))),
-      # Favicon - add uaf_logo.png to www/ folder to enable
-      # tags$link(rel = "icon", type = "image/png", href = "uaf_logo.png"),
       tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
+      tags$script(src = paste0("shell.js?v=", as.integer(file.info(file.path("www","shell.js"))$mtime))),
       tags$script(HTML("
 (function() {
   'use strict';
   const STORAGE_KEY = 'canhrActi.sidebar.collapsed';
   const BREAKPOINT = 992;
-  const body = document.body;
+  // The script runs from <head>; the body exists once init() runs.
+  let body = null;
   let toggleBtn;
 
   function isWide() { return window.innerWidth >= BREAKPOINT; }
@@ -161,14 +176,16 @@ ui <- dashboardPage(
   }
 
   function init() {
-    toggleBtn = document.querySelector('.sidebar-toggle');
-    if (!toggleBtn) return;
+    body = document.body;
+    const toggles = document.querySelectorAll('.sidebar-toggle');
+    if (!toggles.length) return;
+    toggleBtn = toggles[0];
 
     if (isWide()) {
       setCollapsed(localStorage.getItem(STORAGE_KEY) === 'true', false);
     }
 
-    toggleBtn.addEventListener('click', onToggleClick, true);
+    toggles.forEach(function(t) { t.addEventListener('click', onToggleClick, true); });
 
     document.addEventListener('click', function(e) {
       if (!isWide() && body.classList.contains('sidebar-open')) {
@@ -201,9 +218,12 @@ ui <- dashboardPage(
     ),
 
     # Tab content
+    # Outside tabItems: a label can only open an input that is in the DOM, and
+    # an inactive tab is display:none
+    mod_overview_inputs("overview"),
+
     tabItems(
       tabItem(tabName = "overview", mod_overview_ui("overview")),
-      tabItem(tabName = "upload", mod_upload_ui("upload")),
       tabItem(tabName = "wear_time", mod_wear_time_ui("wear_time")),
       tabItem(tabName = "activity", mod_activity_ui("activity")),
       tabItem(tabName = "sedentary", mod_sedentary_ui("sedentary")),
@@ -221,87 +241,52 @@ server <- function(input, output, session) {
   # Shared reactive values across all modules
   shared <- reactiveValues(
     files = list(),
+    # Raw pipeline results, keyed like files
+    raw = list(),
+    # GGIR part 5 by shared$raw id, published by the Activity page and read by
+    # Visualization. Kept outside results, which removing every counts file
+    # clears wholesale.
+    raw_timeuse = list(),
+    # GGIR's report per raw recording, from the Activity page. $dir is the
+    # milestone tree in the session's temp space, so it lasts as long as the app.
+    raw_report = list(),
     file_count = 0,
     selected_file = NULL,
-    epoch_length = 60,
-    cut_points = "freedson",
+    # The recording last picked on any page, NULL for all (focus_set, focus_get)
+    focus = NULL,
+    # The open tab (on_tab_shown)
+    tab = NULL,
     data_loaded = FALSE,
-    visualization_complete = FALSE,
-    # Parameters for expanded analysis options
-    data_type = "axis1",
-    auto_cutpoints = FALSE,
-    participant_age = NULL,
-    sleep_algorithm = "cole.kripke",
-    # Workflow completion tracking
-    workflow = list(
-      data_uploaded = FALSE,
-      wear_validated = FALSE,
-      analysis_complete = FALSE
-    ),
     # Results storage
     results = list(
       wear_time = list(),
       sleep = list(),
       activity = list(),
       sedentary = list(),
-      circadian = list(),
-      energy = list(),
-      graphing = list()
+      circadian = list()
     )
   )
 
-  output$header_file_info <- renderUI({
+  # Theme, reported by www/shell.js on connect and on every toggle; the charts
+  # are drawn on the server
+  observeEvent(input$app_theme, {
+    shared$dark <- identical(input$app_theme, "dark")
+  }, ignoreNULL = FALSE)
+
+  observeEvent(input$tabs, shared$tab <- input$tabs)
+
+  # Sidebar footer: what is loaded
+  output$sidebar_status <- renderUI({
     if (shared$file_count == 0) {
-      tags$div(
-        class = "file-badge file-badge-empty",
-        icon("folder-open"),
-        "Ready to analyze"
-      )
+      tags$span(class = "sidebar-badge", "NO DATA")
     } else {
-      file_text <- if (shared$file_count == 1) "1 file loaded" else paste0(shared$file_count, " files loaded")
-      tags$div(
-        class = "file-badge file-badge-active",
-        icon("database"),
-        file_text
-      )
+      tags$span(class = "sidebar-badge is-loaded",
+                toupper(pluralize(shared$file_count, "file")))
     }
-  })
-
-  output$header_page_title <- renderUI({
-    labels <- c(
-      overview  = "Overview",
-      upload    = "Upload",
-      wear_time = "Wear Time",
-      activity  = "Activity",
-      sleep     = "Sleep",
-      circadian = "Circadian",
-      sedentary = "Sedentary",
-      graphing  = "Visualization"
-    )
-    current <- input$tabs
-    if (is.null(current) || !current %in% names(labels)) return(NULL)
-    tags$div(class = "page-title", labels[[current]])
-  })
-
-  # Update workflow tracking
-  observe({
-    shared$workflow$data_uploaded <- shared$file_count > 0
-  })
-
-  observe({
-    shared$workflow$wear_validated <- length(shared$results$wear_time) > 0
-  })
-
-  observe({
-    shared$workflow$analysis_complete <-
-      length(shared$results$activity) > 0 ||
-      length(shared$results$sleep) > 0 ||
-      length(shared$results$circadian) > 0
   })
 
   # Module servers
   mod_overview_server("overview", shared, parent_session = session)
-  mod_upload_server("upload", shared)
   mod_wear_time_server("wear_time", shared)
   mod_sleep_server("sleep", shared)
   mod_activity_server("activity", shared)

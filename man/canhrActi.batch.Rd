@@ -8,7 +8,8 @@ canhrActi.batch(
   files,
   config = NULL,
   wear_time_algorithm = c("choi", "troiano", "CANHR2025"),
-  intensity_algorithm = c("freedson1998", "CANHR"),
+  intensity_algorithm = c("freedson1998", "CANHR", "evenson", "puyau", "mattocks",
+    "pate_preschool", "troiano", "sasaki_vm3", "copeland_older", "auto"),
   min_wear_hours = 10,
   axis_to_analyze = c("axis1", "vector_magnitude"),
   calculate_mets = TRUE,
@@ -34,7 +35,8 @@ canhrActi.batch(
 
 \item{wear_time_algorithm}{Wear time algorithm: "choi", "troiano", "CANHR2025"}
 
-\item{intensity_algorithm}{Intensity algorithm: "freedson1998", "CANHR"}
+\item{intensity_algorithm}{Intensity algorithm: "freedson1998", "CANHR", "evenson",
+"puyau", "mattocks", "pate_preschool", "troiano", "sasaki_vm3", "copeland_older", "auto"}
 
 \item{min_wear_hours}{Minimum hours for valid day (default: 10)}
 

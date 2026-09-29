@@ -32,6 +32,38 @@
   }
 }
 
+# The per-epoch series for one recording, whichever kind it is, from the same
+# adapter the Circadian tab scores with. $kind says which store it came from:
+# an .agd carries three axes, steps and lux, a .gt3x one metric.
+.cw_epoch_series <- function(shared, fid, r, metric) {
+  f <- shared$files[[fid]]
+  if (!is.null(f) && !is.null(f$data) && !is.null(f$data$timestamp)) {
+    d <- f$data
+    return(list(kind = "counts", timestamp = d$timestamp,
+                value = .cw_activity(d, metric), data = d,
+                epoch_length = f$epoch_length,
+                wear = shared$results$wear_time[[fid]]$wear,
+                sleep = shared$results$sleep[[fid]]$sleep_state))
+  }
+  if (is.null(shared$raw[[fid]])) return(NULL)
+  # The metric is passed in because not every run records one; the epoch is
+  # the run's, which the bout indices were computed against.
+  b <- tryCatch(circ_series_for(shared, fid, list(
+         metric = metric, epoch_length = r$parameters$epoch_length)),
+       error = function(e) NULL)
+  if (is.null(b) || length(b$activity) == 0) return(NULL)
+  list(kind = "raw", timestamp = b$timestamps, value = b$activity, data = NULL,
+       epoch_length = b$epoch_length, wear = b$wear_time, sleep = b$sleep_state)
+}
+
+# Calendar date in the recording's own clock. as.Date() on a POSIXct defaults
+# to UTC, which would date a raw file's evenings on the next day.
+.cw_date <- function(x) {
+  tz <- attr(x, "tzone")
+  if (is.null(tz) || !nzchar(tz[1])) tz <- "UTC"
+  as.Date(x, tz = tz[1])
+}
+
 # Per-epoch logical: TRUE where the epoch's day passed the wear-validity gate.
 .cw_valid_day <- function(shared, fid, timestamps) {
   d <- shared$results$wear_time[[fid]]$daily
@@ -47,10 +79,10 @@
   epoch_length_s = "Epoch Length (s)", n_days_analyzed = "Days Analyzed",
   n_valid_circadian_days = "Valid Circadian Days", coverage_percent = "Coverage (%)",
   n_valid_epochs = "Valid Epochs", n_total_epochs = "Total Epochs",
-  L5 = "L5 Activity (counts)", L5_start = "L5 Onset (clock)", L5_start_hour = "L5 Onset (hours)",
-  M10 = "M10 Activity (counts)", M10_start = "M10 Onset (clock)", M10_start_hour = "M10 Onset (hours)",
-  L1 = "L1 Activity (counts)", L1_start = "L1 Onset (clock)",
-  M1 = "M1 Activity (counts)", M1_start = "M1 Onset (clock)",
+  L5 = "L5 Activity ({unit})", L5_start = "L5 Onset (clock)", L5_start_hour = "L5 Onset (hours)",
+  M10 = "M10 Activity ({unit})", M10_start = "M10 Onset (clock)", M10_start_hour = "M10 Onset (hours)",
+  L1 = "L1 Activity ({unit})", L1_start = "L1 Onset (clock)",
+  M1 = "M1 Activity ({unit})", M1_start = "M1 Onset (clock)",
   RA = "Relative Amplitude", IS = "Interdaily Stability", IV = "Intradaily Variability",
   phi = "Phi (Lag 1 Autocorrelation)",
   IS_60min = "Interdaily Stability (60 min bins)", IS_30min = "Interdaily Stability (30 min bins)",
@@ -63,16 +95,29 @@
   onset_timing_variability = "Onset Timing Variability (hours)",
   L5_variability_hours = "L5 Onset Variability (hours)",
   M10_variability_hours = "M10 Onset Variability (hours)",
-  CPD = "Composite Phase Deviation (hours)",
-  CPD_precision = "Composite Phase Deviation Precision (hours)",
-  CPD_accuracy = "Composite Phase Deviation Accuracy (hours)",
+  # CPD and accuracy need an external reference phase, which this analysis
+  # does not supply, so they are left out
+  chisq_Qp_peak = "Chi-square Periodogram Peak Qp Statistic",
+  chisq_p_value = "Chi-square Periodogram P Value (Sidak-corrected, family-wise)",
+  M10_onset_mean = "M10 Onset Mean (hours)",
+  M10_onset_ci_lower = "M10 Onset 95% CI Lower (hours, percentile bootstrap)",
+  M10_onset_ci_upper = "M10 Onset 95% CI Upper (hours, percentile bootstrap)",
+  MSFsc = "Sleep-Corrected Mid-Sleep on Free Days (hours, Roenneberg 2012)",
+  social_jet_lag_sc_hours = "Sleep-Corrected Social Jet Lag (hours, MSFsc - MSW)",
+  mean_sleep_duration_work = "Mean Time in Bed, Work Nights (hours)",
+  mean_sleep_duration_free = "Mean Time in Bed, Free Nights (hours)",
+  cosinor_f_df_model = "Cosinor F-Test Numerator df (2: cosine + sine)",
+  cosinor_f_df_resid = "Cosinor F-Test Denominator df (fit is on 24 hourly means, so 21)",
+  CPD = "Composite Phase Deviation (hours) - empty: needs an external reference phase",
+  CPD_precision = "Onset precision, mean absolute deviation from the individual's own mean onset (hours)",
+  CPD_accuracy = "Phase accuracy (hours) - empty: needs an external reference phase",
   L5_onset_mean = "L5 Onset Mean (hours)",
   L5_onset_ci_lower = "L5 Onset 95% CI Lower (hours)",
   L5_onset_ci_upper = "L5 Onset 95% CI Upper (hours)",
   social_jet_lag_hours = "Social Jet Lag (hours)", social_jet_lag_min = "Social Jet Lag (min)",
   MSW = "Mid-Sleep Workdays (hours)", MSF = "Mid-Sleep Free Days (hours)",
   n_work_nights = "Workday Nights (n)", n_free_nights = "Free-Day Nights (n)",
-  cosinor_mesor = "Cosinor MESOR (counts)", cosinor_amplitude = "Cosinor Amplitude (counts)",
+  cosinor_mesor = "Cosinor MESOR ({unit})", cosinor_amplitude = "Cosinor Amplitude ({unit})",
   cosinor_acrophase = "Cosinor Acrophase (hours)", cosinor_acrophase_time = "Cosinor Acrophase (clock)",
   cosinor_se_mesor = "Cosinor MESOR Standard Error", cosinor_se_amplitude = "Cosinor Amplitude Standard Error",
   cosinor_se_acrophase = "Cosinor Acrophase Standard Error",
@@ -82,17 +127,18 @@
   cosinor_r_squared = "Cosinor R Squared", cosinor_percent_rhythm = "Cosinor Percent Rhythm (%)",
   cosinor_f_statistic = "Cosinor F Statistic", cosinor_p_value = "Cosinor P Value",
   cosinor_rhythm_significant = "Cosinor Rhythm Significant",
-  ext_mesor = "Extended Cosinor MESOR (counts)", ext_amplitude = "Extended Cosinor Amplitude (counts)",
-  ext_acrophase = "Extended Cosinor Acrophase (hours)", ext_r_squared = "Extended Cosinor R Squared",
+  ext_mesor = "Extended Cosinor MESOR ({unit})", ext_amplitude = "Extended Cosinor Amplitude ({unit})",
+  ext_acrophase = "Extended Cosinor Acrophase (hours)",
+  ext_acrophase_time = "Extended Cosinor Acrophase (clock time)", ext_r_squared = "Extended Cosinor R Squared",
   ext_r_squared_single = "Single Component R Squared",
   ext_r_squared_improvement = "Multi Harmonic R Squared Improvement",
-  h12_amplitude = "12 Hour Harmonic Amplitude (counts)", h12_power = "12 Hour Harmonic Relative Power (%)",
+  h12_amplitude = "12 Hour Harmonic Amplitude ({unit})", h12_power = "12 Hour Harmonic Relative Power (%)",
   ext_is_bimodal = "Bimodal Rhythm", ext_pattern_type = "Rhythm Pattern Type",
-  cosinorExt_minimum = "Antilogistic Minimum (counts)", cosinorExt_amplitude = "Antilogistic Amplitude (counts)",
+  cosinorExt_minimum = "Antilogistic Minimum ({unit})", cosinorExt_amplitude = "Antilogistic Amplitude ({unit})",
   cosinorExt_alpha = "Antilogistic Alpha", cosinorExt_beta = "Antilogistic Beta",
-  cosinorExt_acrotime = "Antilogistic Acrophase (hours)", cosinorExt_peak = "Antilogistic Peak (counts)",
+  cosinorExt_acrotime = "Antilogistic Acrophase (hours)", cosinorExt_peak = "Antilogistic Peak ({unit})",
   cosinorExt_UpMesor = "Antilogistic Up Mesor (hours)", cosinorExt_DownMesor = "Antilogistic Down Mesor (hours)",
-  cosinorExt_MESOR = "Antilogistic MESOR (counts)", cosinorExt_F_pseudo = "Antilogistic Pseudo F",
+  cosinorExt_MESOR = "Antilogistic MESOR ({unit})", cosinorExt_F_pseudo = "Antilogistic Pseudo F",
   cosinorExt_rss_cosinor = "Antilogistic Residual Sum of Squares (cosinor)",
   cosinorExt_rss_extended = "Antilogistic Residual Sum of Squares (extended)",
   cosinorExt_converged = "Antilogistic Converged",
@@ -102,41 +148,55 @@
   rhythm_detected = "Rhythm Detected", ellipse_distance_stat = "Confidence Ellipse Distance",
   ellipse_critical_value = "Confidence Ellipse Critical Value",
   # Profile / raw / periodogram / fractal sheet columns
-  date = "Date", hour = "Hour of Day", mean_counts = "Mean Counts",
-  sd_counts = "Standard Deviation (counts)", se_counts = "Standard Error (counts)",
-  n = "Epochs (n)", cosinor_fitted = "Cosinor Fitted (counts)",
+  date = "Date", hour = "Hour of Day", mean_counts = "Mean {value}",
+  sd_counts = "Standard Deviation ({unit})", se_counts = "Standard Error ({unit})",
+  n = "Epochs (n)", cosinor_fitted = "Cosinor Fitted ({unit})",
   minute_of_day = "Minute of Day", clock_time = "Clock Time", n_days = "Days (n)",
   period_h = "Period (hours)", power = "Periodogram Power",
   window_n = "Window Size (epochs)", fluctuation_Fn = "Fluctuation F(n)",
   log10_n = "Log10 Window Size", log10_Fn = "Log10 Fluctuation", segment = "Segment",
   scale_tau = "Scale (tau)", sample_entropy = "Sample Entropy",
-  timestamp = "Timestamp", counts = "Counts", axis1 = "Axis 1", axis2 = "Axis 2",
+  timestamp = "Timestamp", counts = "{value}", axis1 = "Axis 1", axis2 = "Axis 2",
   axis3 = "Axis 3", VM = "Vector Magnitude", wear_flag = "Wear (1 = worn)",
   valid_day = "Valid Day (1 = valid)", sleep_state = "Sleep State",
   column = "Column", definition = "Definition", unit = "Unit", note = "Note"
 )
 
+# Units. Levels (L5, M10, L1, M1, MESOR, amplitude, the harmonic terms, the
+# per-hour mean, SD, SE and fitted values) carry the input unit; everything
+# else is dimensionless or a time. Labels carry two tokens:
+#   {unit}   counts | mg
+#   {value}  Counts | ENMO (mg)
+.cw_unit_token <- function(metric) if (circ_is_raw_metric(metric)) "mg" else "counts"
+.cw_value_token <- function(metric) {
+  if (circ_is_raw_metric(metric)) paste0(circ_metric_name(metric), " (mg)") else "Counts"
+}
+
 # Rename a data frame's columns to clean display headers for export.
-.cw_relabel <- function(df) {
+.cw_relabel <- function(df, metric = "vm") {
   if (is.null(df) || ncol(df) == 0) return(df)
+  u <- .cw_unit_token(metric); v <- .cw_value_token(metric)
   names(df) <- vapply(names(df), function(n) {
-    if (n %in% names(.CW_LABELS)) .CW_LABELS[[n]]
-    else tools::toTitleCase(gsub("_", " ", n))
+    lab <- if (n %in% names(.CW_LABELS)) .CW_LABELS[[n]]
+           else tools::toTitleCase(gsub("_", " ", n))
+    lab <- gsub("{unit}", u, lab, fixed = TRUE)
+    gsub("{value}", v, lab, fixed = TRUE)
   }, character(1))
   df
 }
 
 #' Short data dictionary (column | definition | unit) for the workbook.
 #' @keywords internal
-circadian_data_dictionary <- function() {
+circadian_data_dictionary <- function(metric = "vm") {
+  u <- .cw_unit_token(metric)
   d <- function(column, definition, unit) {
     data.frame(column = column, definition = definition, unit = unit,
                stringsAsFactors = FALSE)
   }
   rbind(
-    d("L5 / M10", "Mean activity of the least-active 5 hours / most-active 10 hours", "counts"),
+    d("L5 / M10", "Mean activity of the least-active 5 hours / most-active 10 hours", u),
     d("L5 Onset / M10 Onset", "Clock time the L5 / M10 window starts", "HH:MM or hours"),
-    d("L1 / M1", "Least-active 1 hour / most-active 1 hour mean", "counts"),
+    d("L1 / M1", "Least-active 1 hour / most-active 1 hour mean", u),
     d("Relative Amplitude", "(M10 - L5) / (M10 + L5)", "0 to 1"),
     d("Interdaily Stability", "Day-to-day regularity of the rhythm", "0 to 1"),
     d("Intradaily Variability", "Fragmentation of the rest-activity rhythm", "about 0 to 2"),
@@ -150,7 +210,7 @@ circadian_data_dictionary <- function() {
     d("Onset Timing Variability", "Circular standard deviation of daily L5 / M10 onsets", "hours"),
     d("L5 Onset Mean + 95% CI", "Mean L5 onset with bootstrap confidence interval", "hours"),
     d("Social Jet Lag", "Weekday vs weekend mid-sleep difference (MSF - MSW; Wittmann/Roenneberg). MSW = mid-sleep on workdays, MSF = mid-sleep on free days", "hours"),
-    d("Cosinor MESOR / Amplitude / Acrophase", "Single 24 hour cosinor fit", "counts / counts / hours"),
+    d("Cosinor MESOR / Amplitude / Acrophase", "Single 24 hour cosinor fit", paste0(u, " / ", u, " / hours")),
     d("Cosinor R Squared / Percent Rhythm", "Cosinor goodness of fit", "0 to 1 / %"),
     d("Extended Cosinor", "Multi-harmonic (24 hour + 12 hour) cosinor fit", "mixed"),
     d("Antilogistic Cosinor", "Marler antilogistic extended cosinor (minimum, amplitude, alpha, beta, acrophase, peak, up / down mesor, MESOR, pseudo-F)", "mixed"),
@@ -159,7 +219,13 @@ circadian_data_dictionary <- function() {
     d("Multiscale Entropy Area / Slope", "Multiscale sample entropy complexity", "unitless"),
     d("Rhythm Detected", "Cosinor joint confidence-ellipse rhythm test", "TRUE / FALSE"),
     d("Valid Day", "Day met the Wear Time tab's minimum-wear-per-day threshold (GGIR-style includedaycrit). Recording-level metrics, averaged profiles, and the DFA / Multiscale Entropy metrics all use valid (worn) days only; DFA/MSE analyse the longest continuous worn run", "1 = valid / 0"),
-    d("Counts", "ActiGraph activity counts (not GGIR mg / ENMO; shape metrics are comparable, absolute levels are not)", "counts"),
+    # The comparability caveat, stated from whichever side the run was on
+    if (circ_is_raw_metric(metric))
+      d(circ_metric_name(metric),
+        paste0("GGIR-style raw acceleration in milligravity (not ActiGraph counts; ",
+               "shape metrics are comparable, absolute levels are not)"), u)
+    else
+      d("Counts", "ActiGraph activity counts (not GGIR mg / ENMO; shape metrics are comparable, absolute levels are not)", u),
     stringsAsFactors = FALSE
   )
 }
@@ -198,6 +264,8 @@ circadian_data_dictionary <- function() {
     tau = .cw_get(fr$tau), period_power = .cw_get(fr$period_power),
     period_p_value = .cw_get(fr$period_p_value),
     chisq_period = .cw_get(r$chisq$period),
+    chisq_Qp_peak = .cw_get(r$chisq$Qp_peak),
+    chisq_p_value = .cw_get(r$chisq$p_value),
     chisq_significant = .cw_get(r$chisq$significant, NA),
     SRI = .cw_get(fr$SRI), SRI_n_valid_pairs = .cw_get(fr$SRI_n_valid_pairs),
     onset_timing_variability = .cw_get(fr$onset_timing_variability),
@@ -208,10 +276,18 @@ circadian_data_dictionary <- function() {
     L5_onset_mean = .cw_get(fr$L5_onset_mean),
     L5_onset_ci_lower = .cw_get(fr$L5_onset_ci_lower),
     L5_onset_ci_upper = .cw_get(fr$L5_onset_ci_upper),
+    M10_onset_mean = .cw_get(fr$M10_onset_mean),
+    M10_onset_ci_lower = .cw_get(fr$M10_onset_ci_lower),
+    M10_onset_ci_upper = .cw_get(fr$M10_onset_ci_upper),
     # Social jet lag (weekday vs weekend mid-sleep)
     social_jet_lag_hours = .cw_get(r$social_jet_lag$social_jet_lag_hours),
     social_jet_lag_min = .cw_get(r$social_jet_lag$social_jet_lag_min),
     MSW = .cw_get(r$social_jet_lag$MSW), MSF = .cw_get(r$social_jet_lag$MSF),
+    # Sleep-debt corrected pair (Roenneberg 2012)
+    MSFsc = .cw_get(r$social_jet_lag$MSFsc),
+    social_jet_lag_sc_hours = .cw_get(r$social_jet_lag$social_jet_lag_sc_hours),
+    mean_sleep_duration_work = .cw_get(r$social_jet_lag$mean_sleep_duration_work),
+    mean_sleep_duration_free = .cw_get(r$social_jet_lag$mean_sleep_duration_free),
     n_work_nights = .cw_get(r$social_jet_lag$n_work_nights),
     n_free_nights = .cw_get(r$social_jet_lag$n_free_nights),
     # Single-component cosinor
@@ -224,11 +300,16 @@ circadian_data_dictionary <- function() {
     cosinor_ci_amplitude_lo = .cw_idx(ca$ci_amplitude, 1), cosinor_ci_amplitude_hi = .cw_idx(ca$ci_amplitude, 2),
     cosinor_ci_acrophase_lo = .cw_idx(ca$ci_acrophase, 1), cosinor_ci_acrophase_hi = .cw_idx(ca$ci_acrophase, 2),
     cosinor_r_squared = .cw_get(ca$r_squared), cosinor_percent_rhythm = .cw_get(ca$percent_rhythm),
-    cosinor_f_statistic = .cw_get(ca$f_statistic), cosinor_p_value = .cw_get(ca$p_value),
+    cosinor_f_statistic = .cw_get(ca$f_statistic),
+    # The df say the fit is on 24 hourly means, not epochs
+    cosinor_f_df_model = .cw_get(ca$f_df_model),
+    cosinor_f_df_resid = .cw_get(ca$f_df_resid),
+    cosinor_p_value = .cw_get(ca$p_value),
     cosinor_rhythm_significant = .cw_get(ca$rhythm_significant, NA),
     # Multi-harmonic (extended) cosinor
     ext_mesor = .cw_get(r$mesor), ext_amplitude = .cw_get(r$amplitude),
     ext_acrophase = .cw_get(r$acrophase),
+    ext_acrophase_time = .cw_get(r$acrophase_time, NA_character_),
     ext_r_squared = .cw_get(r$r_squared), ext_r_squared_single = .cw_get(r$r_squared_single),
     ext_r_squared_improvement = .cw_get(r$r_squared_improvement),
     h12_amplitude = .cw_get(r$h12_amplitude), h12_power = .cw_get(r$h12_power),
@@ -273,14 +354,13 @@ circadian_data_dictionary <- function() {
 .cw_minute_profile <- function(results, shared, metric) {
   parts <- lapply(names(results), function(fid) {
     r <- results[[fid]]
-    f <- shared$files[[fid]]
-    if (is.null(f) || is.null(f$data) || is.null(f$data$timestamp)) return(NULL)
-    data <- f$data
-    counts <- .cw_activity(data, metric)
-    wt <- shared$results$wear_time[[fid]]$wear
+    s <- .cw_epoch_series(shared, fid, r, metric)
+    if (is.null(s)) return(NULL)
+    counts <- s$value
+    wt <- s$wear
     wear <- if (!is.null(wt) && length(wt) == length(counts)) as.logical(wt) else rep(TRUE, length(counts))
-    counts[!(wear & .cw_valid_day(shared, fid, data$timestamp))] <- NA
-    lt <- as.POSIXlt(data$timestamp)
+    counts[!(wear & .cw_valid_day(shared, fid, s$timestamp))] <- NA
+    lt <- as.POSIXlt(s$timestamp)
     mod <- lt$hour * 60L + lt$min
     agg <- data.frame(minute_of_day = 0:1439)
     m <- tapply(counts, factor(mod, levels = 0:1439), mean, na.rm = TRUE)
@@ -302,30 +382,33 @@ circadian_data_dictionary <- function() {
 .cw_raw_epochs <- function(results, shared, metric) {
   parts <- lapply(names(results), function(fid) {
     r <- results[[fid]]
-    f <- shared$files[[fid]]
-    if (is.null(f) || is.null(f$data) || is.null(f$data$timestamp)) return(NULL)
-    data <- f$data
-    n <- nrow(data)
-    vm <- if (all(c("axis1", "axis2", "axis3") %in% names(data))) {
-      sqrt(data$axis1^2 + data$axis2^2 + data$axis3^2)
-    } else rep(NA_real_, n)
-    wt <- shared$results$wear_time[[fid]]$wear
-    ss <- shared$results$sleep[[fid]]$sleep_state
+    s <- .cw_epoch_series(shared, fid, r, metric)
+    if (is.null(s)) return(NULL)
+    n <- length(s$value)
+    wt <- s$wear; ss <- s$sleep
     df <- data.frame(
       subject_id = .cw_get(r$subject_id, NA_character_),
       file_name  = .cw_get(r$name, NA_character_),
-      timestamp  = format(data$timestamp, "%Y-%m-%d %H:%M:%S"),
-      date       = format(as.Date(data$timestamp)),
-      counts     = round(.cw_activity(data, metric), 2),
-      axis1 = if ("axis1" %in% names(data)) data$axis1 else NA_real_,
-      axis2 = if ("axis2" %in% names(data)) data$axis2 else NA_real_,
-      axis3 = if ("axis3" %in% names(data)) data$axis3 else NA_real_,
-      VM = round(vm, 2),
-      wear_flag = if (!is.null(wt) && length(wt) == n) as.integer(as.logical(wt)) else NA_integer_,
-      valid_day = as.integer(.cw_valid_day(shared, fid, data$timestamp)),
-      sleep_state = if (!is.null(ss) && length(ss) == n) as.character(ss) else NA_character_,
+      timestamp  = format(s$timestamp, "%Y-%m-%d %H:%M:%S"),
+      date       = format(.cw_date(s$timestamp)),
+      counts     = round(s$value, 2),
       stringsAsFactors = FALSE
     )
+    # Axis columns exist only on a counts export; a raw export has one metric column
+    if (identical(s$kind, "counts")) {
+      data <- s$data
+      vm <- if (all(c("axis1", "axis2", "axis3") %in% names(data))) {
+        sqrt(data$axis1^2 + data$axis2^2 + data$axis3^2)
+      } else rep(NA_real_, n)
+      df$axis1 <- if ("axis1" %in% names(data)) data$axis1 else NA_real_
+      df$axis2 <- if ("axis2" %in% names(data)) data$axis2 else NA_real_
+      df$axis3 <- if ("axis3" %in% names(data)) data$axis3 else NA_real_
+      df$VM <- round(vm, 2)
+    }
+    df$wear_flag   <- if (!is.null(wt) && length(wt) == n) as.integer(as.logical(wt)) else NA_integer_
+    df$valid_day   <- as.integer(if (!is.null(r$valid_days)) .cw_date(s$timestamp) %in% as.Date(r$valid_days)
+                                 else .cw_valid_day(shared, fid, s$timestamp))
+    df$sleep_state <- if (!is.null(ss) && length(ss) == n) as.character(ss) else NA_character_
     df
   })
   parts <- parts[!vapply(parts, is.null, logical(1))]
@@ -392,7 +475,10 @@ circadian_data_dictionary <- function() {
     dm$L5_start_hour <- .cw_hhmm(dm$L5_start)
     dm$M10_start_hour <- .cw_hhmm(dm$M10_start)
     wd <- shared$results$wear_time[[fid]]$daily
-    if (!is.null(wd) && all(c("date", "valid") %in% names(wd))) {
+    if (!is.null(r$valid_days)) {
+      # raw: GGIR's includedaycrit decision, carried on the run by the adapter
+      dm$valid_day <- as.integer(as.Date(dm$date) %in% as.Date(r$valid_days))
+    } else if (!is.null(wd) && all(c("date", "valid") %in% names(wd))) {
       vmap <- stats::setNames(as.integer(wd$valid), as.character(as.Date(wd$date)))
       dm$valid_day <- unname(vmap[as.character(as.Date(dm$date))])
     } else {
@@ -416,6 +502,29 @@ circadian_data_dictionary <- function() {
   })
 }
 
+# What produced this file, read off the run itself and never off the live inputs
+.cw_provenance <- function(results, shared, metric = "vm") {
+  p <- if (length(results)) results[[1]]$parameters else NULL
+  na <- function(x) if (is.null(x) || length(x) != 1 || is.na(x)) "not recorded" else as.character(x)
+  rows <- list(
+    c("Exported",              format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
+    c("Analysis run at",       na(p$run_at)),
+    c("Package version",       na(p$package_version)),
+    c("Recordings in export",  as.character(length(results))),
+    c("Metric",                circ_metric_provenance(metric)),
+    c("Unit",                  .cw_unit_token(metric)),
+    c("Epoch length (s)",      na(p$epoch_length)),
+    c("Wear time filter",      if (isTRUE(p$use_wear_time)) "on" else "off"),
+    c("Wear algorithm",        na(p$wear_algorithm)),
+    c("A day counts at (min worn)", na(p$min_wear_day_min)),
+    c("A subject counts at (valid days)", na(p$min_valid_days)),
+    c("Sleep source",          na(p$sleep_source))
+  )
+  df <- as.data.frame(do.call(rbind, rows), stringsAsFactors = FALSE)
+  names(df) <- c("Setting", "Value")
+  df
+}
+
 #' Write the reproducible circadian workbook to `file`.
 #'
 #' @param file Output .xlsx path.
@@ -428,7 +537,7 @@ circadian_write_workbook <- function(file, results, shared, metric = "vm") {
   add <- function(name, df) {
     openxlsx::addWorksheet(wb, name)
     if (!is.null(df) && nrow(df) > 0) {
-      openxlsx::writeData(wb, name, .cw_relabel(df))
+      openxlsx::writeData(wb, name, .cw_relabel(df, metric))
       openxlsx::freezePane(wb, name, firstRow = TRUE)
     } else {
       openxlsx::writeData(wb, name, data.frame(Note = "No data available for this sheet"))
@@ -437,6 +546,7 @@ circadian_write_workbook <- function(file, results, shared, metric = "vm") {
 
   summary_df <- do.call(rbind, lapply(results, .cw_summary_row, metric = metric))
 
+  add("Provenance",          .cw_provenance(results, shared, metric))
   add("Summary Metrics",     summary_df)
   add("Daily Metrics",       .cw_daily(results, shared))
   add("Hourly Profile",      .cw_hourly(results))
@@ -446,7 +556,7 @@ circadian_write_workbook <- function(file, results, shared, metric = "vm") {
   add("Fractal DFA",         .cw_dfa(results))
   add("Multiscale Entropy",  .cw_mse(results))
   add("Raw Epochs",          .cw_raw_epochs(results, shared, metric))
-  add("Data Dictionary",     circadian_data_dictionary())
+  add("Data Dictionary",     circadian_data_dictionary(metric))
 
   openxlsx::saveWorkbook(wb, file, overwrite = TRUE)
   invisible(file)

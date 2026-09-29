@@ -9,7 +9,7 @@ wear.choi(
   non_wear_window = 90,
   spike_tolerance = 2,
   min_spike_length = 1,
-  spike_stoplevel = 100,
+  spike_stoplevel = Inf,
   min_window_len = 30,
   epoch_length = 60
 )
@@ -23,7 +23,8 @@ wear.choi(
 
 \item{min_spike_length}{Integer. Minimum length of spike (default: 1, reserved for future use)}
 
-\item{spike_stoplevel}{Integer. Maximum count value for spike (default: 100)}
+\item{spike_stoplevel}{Numeric. Counts above this end a spike (default: Inf). Choi (2011)
+and ActiLife set no stop level; 100 is Troiano's.}
 
 \item{min_window_len}{Integer. Required consecutive zeros before/after spike in minutes (default: 30)}
 

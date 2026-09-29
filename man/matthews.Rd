@@ -34,7 +34,6 @@ levels as measured by an accelerometer. Med Sci Sports Exerc, 37(2), 290-298.
 Other adult cut-points:
 \code{\link[=crouter]{crouter()}},
 \code{\link[=freedson]{freedson()}},
-\code{\link[=santos_lozano]{santos_lozano()}},
 \code{\link[=troiano]{troiano()}}
 }
 \concept{adult cut-points}

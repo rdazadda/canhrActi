@@ -596,7 +596,7 @@ plot_activity_heatmap_wear <- function(data,
     data[[timestamp_col]] <- as.POSIXct(data[[timestamp_col]])
   }
 
-  data$date <- as.Date(data[[timestamp_col]])
+  data$date <- .clock_date(data[[timestamp_col]])
   data$hour <- as.integer(format(data[[timestamp_col]], "%H"))
   data$activity <- data[[activity_col]]
 
@@ -696,7 +696,7 @@ plot_activity_heatmap_wear <- function(data,
       expand = c(0, 0)
     ) +
     ggplot2::scale_y_date(
-      date_labels = "%a %m/%d",
+      labels = function(x) .format_english(x, "%a %m/%d"),
       expand = c(0, 0)
     )
 
@@ -932,7 +932,7 @@ create_multipanel_figure <- function(plots,
 #' @param timestamp_col Name of timestamp column
 #' @param activity_col Name of activity column
 #' @param wear_time Optional wear time vector
-#' @param include Panels to include: "heatmap", "clock", "distribution", "daily"
+#' @param include Panels to include: "heatmap", "clock", "distribution"
 #' @param title Overall figure title
 #'
 #' @return A patchwork object
@@ -979,7 +979,8 @@ create_summary_figure <- function(data,
   }
 
   # Combine
-  combined <- create_multipanel_figure(plots, ncol = min(length(plots), 2))
+  combined <- create_multipanel_figure(plots, ncol = min(length(plots), 2)) +
+    patchwork::plot_annotation(title = title)
 
   return(combined)
 }

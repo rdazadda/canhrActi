@@ -49,7 +49,6 @@ accelerometer data to predict energy expenditure. J Appl Physiol,
 Other adult cut-points:
 \code{\link[=freedson]{freedson()}},
 \code{\link[=matthews]{matthews()}},
-\code{\link[=santos_lozano]{santos_lozano()}},
 \code{\link[=troiano]{troiano()}}
 }
 \concept{adult cut-points}

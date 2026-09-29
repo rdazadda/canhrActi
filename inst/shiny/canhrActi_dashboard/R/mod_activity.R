@@ -1,375 +1,427 @@
-# Module: Physical Activity Analysis
-# Redesigned with chart-first layout, compact metrics, and collapsible controls
+# Module: Activity
+#
+# One plot over the cohort at the top, the Summary export as the table
+# underneath. The other result sets are reached through the Export menu.
 
 mod_activity_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
-    # Page Header
-    page_header(
-      icon_name = "running",
-      title = "Physical Activity Analysis",
-      subtitle = "Activity intensity & MVPA",
-      status_output_id = ns("wear_time_status")
+    tags$div(
+      class = "ac-page",
+      uiOutput(ns("rule"), class = "ac-out"),
+      tags$div(id = ns("settings_panel"), class = "ac-settings", style = "display: none;",
+               ac_settings_panel(ns)),
+      tags$div(id = ns("raw_settings"), class = "ac-settings", style = "display: none;",
+               uiOutput(ns("raw_settings_panel"))),
+      # Schedule panels, one per branch
+      tags$div(id = ns("schedule_panel_c"), class = "ac-settings", style = "display: none;",
+               uiOutput(ns("schedule_ui_c"))),
+      tags$div(id = ns("schedule_panel_r"), class = "ac-settings", style = "display: none;",
+               uiOutput(ns("schedule_ui_r"))),
+      uiOutput(ns("figures"), class = "ac-out"),
+      uiOutput(ns("plot_panel"), class = "ac-out ac-plot-out"),
+      uiOutput(ns("table_panel"), class = "ac-out ac-table-out"),
+
+      # Hidden; set by clicking a table row and read by everything downstream
+      tags$div(class = "ac-hidden",
+        selectInput(ns("selected_participant"), NULL,
+                    choices = c("All recordings" = "all"), selectize = FALSE)),
+
+      tags$div(id = ns("processing_indicator"), class = "ac-busy", style = "display: none;",
+               tags$span(class = "ac-spinner", `aria-hidden` = "true"),
+               tags$span(id = ns("processing_status"), "Classifying"))
     ),
+    tags$script(HTML(ac_page_script(ns(""))))
+  )
+}
 
-    # Compact Metrics Strip
-    div(class = "metrics-strip metrics-strip--transparent",
-      # File count badge
-      div(class = "file-info-badge metrics-strip-fixed",
-        textOutput(ns("files_count"), inline = TRUE), " files"
-      ),
+# The plots the page offers; per_file marks the one that draws a single recording
+ac_plots <- function() {
+  list(
+    list(key = "intensity", label = "Intensity distribution", out = "intensity_plot", per_file = FALSE),
+    list(key = "hourly",    label = "Hourly pattern",         out = "hourly_plot",    per_file = FALSE),
+    list(key = "heatmap",   label = "VM heatmap",             out = "vm_heatmap_plot", per_file = TRUE)
+  )
+}
 
-      # Sedentary metric
-      div(class = "metric-card metric-card--inline",
-        div(class = "metric-value", textOutput(ns("metric_sedentary"), inline = TRUE)),
-        div(class = "metric-label", "Sedentary")
-      ),
+ac_cut_label <- function(k) {
+  switch(k %||% "freedson",
+    troiano        = "Troiano NHANES (2008)",
+    matthews       = "Matthews (2005)",
+    evenson        = "Evenson (2008)",
+    copeland_older = "Copeland (2009)",
+    sasaki_vm3     = "Freedson VM3 (Sasaki 2011)",
+    freedson_vm3   = "Freedson VM3 (Sasaki 2011)",
+    "Freedson (1998)")
+}
 
-      # Light metric
-      div(class = "metric-card metric-card--inline",
-        div(class = "metric-value", textOutput(ns("metric_light"), inline = TRUE)),
-        div(class = "metric-label", "Light")
-      ),
+# Settings panel: every parameter the run reads, with its unit and a note
+ac_settings_panel <- function(ns) {
+  field <- function(label, control, note, id = NULL) {
+    tags$div(class = "ac-field",
+      tags$div(class = "ac-field-k", label),
+      control,
+      tags$div(class = "ac-field-n", id = id, note))
+  }
+  num <- function(id, value, unit, ...) {
+    tags$div(class = "ac-num",
+      numericInput(ns(id), NULL, value = value, width = "100%", ...),
+      tags$span(class = "ac-unit", `aria-hidden` = "true", unit))
+  }
+  sel <- function(id, choices, selected) {
+    tags$div(class = "ac-select",
+      selectInput(ns(id), NULL, choices = choices, selected = selected,
+                  width = "100%", selectize = FALSE))
+  }
+  check <- function(id, label, value = FALSE) {
+    tags$div(class = "ac-check", checkboxInput(ns(id), label, value = value))
+  }
 
-      # MVPA metric
-      div(class = "metric-card metric-card--inline",
-        div(class = "metric-value", textOutput(ns("metric_mvpa"), inline = TRUE)),
-        div(class = "metric-label", "MVPA/day")
-      ),
+  tags$div(
+    class = "ac-panel ac-settings-grid",
+    tags$div(
+      class = "ac-fields",
 
-      # Steps metric
-      div(class = "metric-card metric-card--inline",
-        div(class = "metric-value", textOutput(ns("metric_steps"), inline = TRUE)),
-        div(class = "metric-label", "Steps/day")
-      ),
+      # A field that only applies while another box is ticked follows that box
+      # and is disabled when it does not apply
+      field("Cut points",
+            sel("cut_points", c(
+              "Freedson (1998)" = "freedson",
+              "Troiano NHANES (2008)" = "troiano",
+              "Matthews (2005)" = "matthews",
+              "Evenson (2008), children" = "evenson",
+              "Copeland (2009), older adults" = "copeland_older",
+              # ActiLife's Freedson VM3 is Sasaki, John and Freedson's set
+              "Freedson VM3 (Sasaki 2011)" = "sasaki_vm3"), "freedson"),
+            "sets the intensity thresholds"),
+      field("Counts", sel("data_type", c("Axis 1" = "axis1", "Vector magnitude" = "vm"), "axis1"),
+            "what the thresholds are read against"),
 
-      # Quick actions
-      div(class = "cluster cluster--gap-2 ml-auto metrics-strip-fixed",
-        actionButton(ns("run_btn"), span(icon("play"), "Run Analysis"),
-                     class = "btn-primary"),
-        actionButton(ns("clear_results"), span(icon("redo"), "Reset"),
-                     class = "btn-default")
-      )
+      field("Wear time filter", check("exclude_nonwear", "Valid days only", TRUE),
+            "needs wear time run first"),
+      field("METs", check("use_mets", "Calculate METs", TRUE),
+            "the Avg METs column"),
+      field("METs equation",
+            sel("mets_algo", c("Freedson VM3 (Sasaki 2011)" = "freedson.vm3",
+                               "Freedson Adult (1998)" = "freedson.adult",
+                               "Crouter 2-regression (2010)" = "crouter"), "freedson.vm3"),
+            "only while METs is on", id = ns("note_mets_algo")),
+      field("Energy expenditure", check("use_ee", "Calculate kcals", TRUE),
+            "needs body mass in the file"),
+
+      field("Energy equation",
+            sel("ee_algo", c("Freedson combination (1998)" = "freedson.combination",
+                             "Freedson (1998)" = "freedson",
+                             "Williams work-energy (1998)" = "williams"), "freedson.combination"),
+            "only while kcals is on", id = ns("note_ee_algo")),
+      field("MVPA bouts", check("use_bouts", "Detect bouts", TRUE),
+            "the MVPA Bouts columns"),
+      field("A bout lasts at least", num("bout_min", 10, "min", min = 1, max = 60, step = 1),
+            "only while bouts are on", id = ns("note_bout_min")),
+      field("Bout rule", sel("bout_rule", c("80% of the bout" = "80pct",
+                                            "Strictly consecutive" = "consecutive"), "80pct"),
+            "only while bouts are on", id = ns("note_bout_rule")),
+
+      field("A sedentary bout lasts", num("sed_min_length", 10, "min", min = 1, max = 60, step = 1),
+            "shorter runs are not bouts"),
+      field("Sedentary drop time", num("sed_drop_time", 2, "min", min = 0, max = 10, step = 1),
+            "movement allowed inside a bout"),
+      field("Sedentary at or under", num("sed_threshold", 200, "cpm", min = 50, max = 500, step = 25),
+            "counts per minute"),
+      field("Sedentary counts", check("sed_use_vm", "Vector magnitude if present", TRUE),
+            "otherwise axis 1"),
+
+      field("First break", check("sed_ignore_first", "Ignore the first break of each day", FALSE),
+            "waking often reads as a break")
     ),
-
-    # Main Content: Two-column layout
-    fluidRow(
-      # Left: Controls (narrow)
-      column(width = 3,
-        # Essential Controls (always visible)
-        div(class = "controls-panel",
-          div(class = "controls-header",
-            div(class = "controls-header-title",
-              icon("sliders-h"), "Analysis Settings"
-            )
-          ),
-          div(class = "mt-3",
-            # Cut-points selector (most important)
-            selectInput(ns("cut_points"), "Cut-Points Algorithm:",
-              choices = c(
-                "Adult: Freedson (1998)" = "freedson",
-                "Adult: Troiano NHANES (2008)" = "troiano",
-                "Adult: Matthews (2005)" = "matthews",
-                "Children: Evenson (2008)" = "evenson",
-                "Older: Copeland (2009)" = "copeland_older",
-                "VM3: Sasaki (2011)" = "sasaki_vm3",
-                "VM3: Freedson (2011)" = "freedson_vm3"
-              ),
-              selected = "freedson",
-              width = "100%"
-            ),
-
-            # Data type toggle
-            radioButtons(ns("data_type"), "Data Type:",
-              choices = c("Axis 1" = "axis1", "Vector Magnitude" = "vm"),
-              selected = "axis1", inline = TRUE
-            ),
-
-            # Wear time filter
-            checkboxInput(ns("exclude_nonwear"),
-              span(icon("check-circle"), " Apply Wear Time Filter"),
-              value = TRUE
-            ),
-            tags$small(class = "control-hint text-muted mb-3",
-              "Requires wear time analysis first"
-            )
-          )
-        ),
-
-        # Advanced Options (collapsible)
-        div(class = "controls-panel",
-          tags$div(
-            `data-toggle` = "collapse",
-            `data-target` = paste0("#", ns("advanced_options")),
-            class = "controls-header controls-header--clickable",
-            div(class = "controls-header-title",
-              icon("cog"), "Advanced Options"
-            ),
-            div(class = "controls-toggle",
-              icon("chevron-down"), "expand"
-            )
-          ),
-          div(id = ns("advanced_options"), class = "collapse",
-            div(class = "controls-body",
-              # METs Algorithm
-              div(class = "algo-group",
-                div(class = "algo-group-header",
-                  icon("fire"), "METs Calculation"
-                ),
-                checkboxInput(ns("use_mets"), "Enable METs", value = TRUE),
-                conditionalPanel(
-                  condition = sprintf("input['%s'] == true", ns("use_mets")),
-                  selectInput(ns("mets_algo"), NULL,
-                    choices = c(
-                      "Freedson VM3 (Sasaki 2011)" = "freedson.vm3",
-                      "Freedson Adult (1998)" = "freedson.adult",
-                      "Crouter 2-Regression (2010)" = "crouter"
-                    ),
-                    selected = "freedson.vm3"
-                  )
-                )
-              ),
-
-              # Energy Expenditure
-              div(class = "algo-group",
-                div(class = "algo-group-header",
-                  icon("bolt"), "Energy Expenditure"
-                ),
-                checkboxInput(ns("use_ee"), "Enable EE", value = TRUE),
-                conditionalPanel(
-                  condition = sprintf("input['%s'] == true", ns("use_ee")),
-                  selectInput(ns("ee_algo"), NULL,
-                    choices = c(
-                      "Freedson Combination (1998)" = "freedson.combination",
-                      "Freedson (1998)" = "freedson",
-                      "Williams Work-Energy (1998)" = "williams"
-                    ),
-                    selected = "freedson.combination"
-                  )
-                )
-              ),
-
-              # MVPA Bouts
-              div(class = "algo-group",
-                div(class = "algo-group-header",
-                  icon("stopwatch"), "MVPA Bouts"
-                ),
-                checkboxInput(ns("use_bouts"), "Detect Bouts", value = TRUE),
-                conditionalPanel(
-                  condition = sprintf("input['%s'] == true", ns("use_bouts")),
-                  # Row 1: Minimum
-                  tags$div(style = "display: flex; align-items: center; gap: 8px; margin: 8px 0;",
-                    tags$span(style = "width: 70px; text-align: right; color: #666;", "Minimum:"),
-                    tags$input(type = "number", id = ns("bout_min"), value = "10",
-                               min = "1", max = "60", step = "1",
-                               style = "width: 60px !important; height: 28px; padding: 4px 6px; text-align: center; border: 1px solid #ccc; border-radius: 4px;"),
-                    tags$span(style = "color: #666; font-size: 13px;", "minutes")
-                  ),
-                  # Row 2: Rule
-                  tags$div(style = "display: flex; align-items: center; gap: 8px; margin: 8px 0;",
-                    tags$span(style = "width: 70px; text-align: right; color: #666;", "Rule:"),
-                    tags$select(id = ns("bout_rule"),
-                                style = "width: 60px !important; height: 28px; padding: 2px 6px; border: 1px solid #ccc; border-radius: 4px;",
-                      tags$option(value = "80pct", selected = "selected", "80%"),
-                      tags$option(value = "consecutive", "Strict")
-                    )
-                  )
-                )
-              ),
-
-              # Sedentary Analysis
-              div(class = "algo-group",
-                div(class = "algo-group-header",
-                  icon("couch"), "Sedentary Analysis"
-                ),
-
-                # Length section
-                tags$div(style = "font-weight: 600; font-size: 13px; margin: 5px 0 8px 0;", "Length"),
-                # Row 1: Minimum
-                tags$div(style = "display: flex; align-items: center; gap: 8px; margin: 6px 0;",
-                  tags$span(style = "width: 70px; text-align: right; color: #666;", "Minimum:"),
-                  tags$input(type = "number", id = ns("sed_min_length"), value = "10",
-                             min = "1", max = "60", step = "1",
-                             style = "width: 60px !important; height: 28px; padding: 4px 6px; text-align: center; border: 1px solid #ccc; border-radius: 4px;"),
-                  tags$span(style = "color: #666; font-size: 13px;", "minutes")
-                ),
-                # Row 2: Drop Time
-                tags$div(style = "display: flex; align-items: center; gap: 8px; margin: 6px 0;",
-                  tags$span(style = "width: 70px; text-align: right; color: #666;", "Drop Time:"),
-                  tags$input(type = "number", id = ns("sed_drop_time"), value = "2",
-                             min = "0", max = "10", step = "1",
-                             style = "width: 60px !important; height: 28px; padding: 4px 6px; text-align: center; border: 1px solid #ccc; border-radius: 4px;"),
-                  tags$span(style = "color: #666; font-size: 13px;", "minutes")
-                ),
-
-                # Count Levels section
-                tags$div(style = "font-weight: 600; font-size: 13px; margin: 12px 0 8px 0;", "Count Levels"),
-                # Row 3: Maximum
-                tags$div(style = "display: flex; align-items: center; gap: 8px; margin: 6px 0;",
-                  tags$span(style = "width: 70px; text-align: right; color: #666;", "Maximum:"),
-                  tags$input(type = "number", id = ns("sed_threshold"), value = "200",
-                             min = "50", max = "500", step = "25",
-                             style = "width: 60px !important; height: 28px; padding: 4px 6px; text-align: center; border: 1px solid #ccc; border-radius: 4px;"),
-                  tags$span(style = "color: #666; font-size: 13px;", "per minute")
-                ),
-
-                # Checkboxes
-                tags$div(style = "margin-top: 12px;",
-                  checkboxInput(ns("sed_use_vm"), "Use Vector Magnitude (if available)", value = TRUE),
-                  checkboxInput(ns("sed_ignore_first"), "Ignore First Sedentary Break of Each Day", value = FALSE)
-                )
-              ),
-
-              # Age-based auto-select
-              div(class = "algo-group",
-                div(class = "algo-group-header",
-                  icon("magic"), "Auto-Select"
-                ),
-                checkboxInput(ns("auto_cutpoints"), "Age-based cut-points", value = FALSE),
-                conditionalPanel(
-                  condition = sprintf("input['%s'] == true", ns("auto_cutpoints")),
-                  numericInput(ns("participant_age"), "Age (years):",
-                    value = 35, min = 1, max = 120, step = 1)
-                )
-              )
-            )
-          )
-        ),
-
-        # Export Panel
-        div(class = "controls-panel",
-          div(class = "controls-header-title mb-3",
-            icon("download"), "Export Data"
-          ),
-          div(class = "export-row",
-            downloadButton(ns("export_summary"), span(icon("file-csv"), " Summary"),
-              class = "btn-primary"),
-            downloadButton(ns("export_daily"), span(icon("calendar"), " Daily"),
-              class = "btn-info")
-          ),
-          div(class = "export-row mt-2",
-            downloadButton(ns("export_hourly"), span(icon("clock"), " Hourly"),
-              class = "btn-default"),
-            downloadButton(ns("export_sedentary"), span(icon("couch"), " Sedentary"),
-              class = "btn-warning")
-          )
-        )
-      ),
-
-      # Right: Charts and Results (wide)
-      column(width = 9,
-        # HERO CHART: Activity Intensity
-        div(class = "hero-chart-container",
-          div(class = "hero-chart-header",
-            div(class = "hero-chart-title",
-              icon("chart-area"), "Activity Intensity Distribution"
-            ),
-            div(class = "hero-chart-controls",
-              uiOutput(ns("chart_status_badge")),
-              selectInput(ns("selected_participant"), NULL,
-                choices = c("All Participants" = "all"),
-                width = "180px")
-            )
-          ),
-          conditionalPanel(
-            condition = "output.has_activity_results == false",
-            ns = ns,
-            chart_empty_state(
-              title = "No Activity Data",
-              message = "Click 'Run Analysis' to classify activity intensity levels",
-              show_icon = FALSE
-            )
-          ),
-          conditionalPanel(
-            condition = "output.has_activity_results == true",
-            ns = ns,
-            plotOutput(ns("intensity_plot"), height = "420px")
-          )
-        ),
-
-        # Tabbed Results Section
-        div(class = "hero-chart-container results-tabs",
-          tabsetPanel(
-            id = ns("results_tabs"),
-            type = "tabs",
-
-            # Hourly Pattern Tab
-            tabPanel(
-              title = "Hourly Pattern",
-              value = "hourly",
-              div(class = "pt-4",
-                conditionalPanel(
-                  condition = "output.has_activity_results == false",
-                  ns = ns,
-                  chart_empty_state(
-                    title = "Hourly Pattern",
-                    message = "Run Analysis to see hourly activity patterns",
-                    show_icon = FALSE,
-                    extra_class = "chart-empty-state--spacious"
-                  )
-                ),
-                conditionalPanel(
-                  condition = "output.has_activity_results == true",
-                  ns = ns,
-                  plotOutput(ns("hourly_plot"), height = "300px")
-                )
-              )
-            ),
-
-            # Daily Summary Tab
-            tabPanel(
-              title = "Daily Summary",
-              value = "daily",
-              div(class = "pt-4",
-                DT::dataTableOutput(ns("daily_table"))
-              )
-            ),
-
-            # Detailed Results Tab
-            tabPanel(
-              title = "Summary Table",
-              value = "summary",
-              div(class = "pt-4",
-                DT::dataTableOutput(ns("summary_table"))
-              )
-            ),
-
-            # Files Tab
-            tabPanel(
-              title = "Files",
-              value = "files",
-              div(class = "pt-4",
-                DT::dataTableOutput(ns("files_table"))
-              )
-            ),
-
-            # VM Heatmap Tab
-            tabPanel(
-              title = "VM Heatmap",
-              value = "vm_heatmap",
-              div(class = "pt-4",
-                conditionalPanel(
-                  condition = "output.has_activity_results == false",
-                  ns = ns,
-                  chart_empty_state(
-                    title = "Vector Magnitude Heatmap",
-                    message = "Run Analysis to see activity heatmap",
-                    show_icon = FALSE
-                  )
-                ),
-                conditionalPanel(
-                  condition = "output.has_activity_results == true",
-                  ns = ns,
-                  plotOutput(ns("vm_heatmap_plot"), height = "400px")
-                )
-              )
-            )
-          )
-        )
-      )
+    tags$div(
+      class = "ac-settings-foot",
+      tags$span(class = "ac-spacer"),
+      actionButton(ns("clear_results"), "Clear results", class = "ac-btn ac-btn--text is-destructive")
     )
   )
+}
+
+# Page script. The menus open and close client side; Export clicks each of the
+# download links Shiny already put on the page.
+ac_page_script <- function(ns_prefix) {
+  js <- "
+(function () {
+  var NS = '__NS__';
+  function setVal(name, value) { Shiny.setInputValue(NS + name, value, { priority: 'event' }); }
+  // All four requests go out inside the click itself.
+  //
+  // The first version clicked the four links 500 ms apart, and only the first
+  // two ever arrived: a browser allows a download while the click that asked
+  // for it is still counted as a user action, which lasts about a second, and
+  // drops the rest without saying anything. Firing them synchronously keeps all
+  // four inside that one action. They go through hidden iframes rather than
+  // link clicks so none of them is treated as a pop-up.
+  function fireAll(row) {
+    // every link the menu holds: the four the page always writes, and the
+    // schedule's two when a schedule is in force
+    var menu = document.getElementById(NS + 'export_menu');
+    var ids = menu ? Array.prototype.slice.call(menu.querySelectorAll('a.ac-ei-link')) : [];
+    var sent = 0;
+    ids.forEach(function (a) {
+      var href = a.getAttribute('href');
+      if (!href) return;
+      var f = document.createElement('iframe');
+      f.style.display = 'none';
+      f.src = href;
+      document.body.appendChild(f);
+      setTimeout(function () { if (f.parentNode) f.parentNode.removeChild(f); }, 120000);
+      sent++;
+    });
+
+    // Files land in a folder the reader cannot see from here, so the menu says
+    // what happened instead of closing on a click that looks like it did nothing.
+    var label = row.querySelector('.ac-ei-label');
+    if (label) {
+      if (!label.dataset.rest) label.dataset.rest = label.textContent;
+      label.textContent = sent === ids.length
+        ? sent + ' files sent to your downloads folder'
+        : (sent === 0 ? 'Nothing to export yet' : sent + ' of ' + ids.length + ' sent; try again');
+      row.classList.toggle('is-done', sent === ids.length);
+      row.classList.toggle('is-partial', sent > 0 && sent < ids.length);
+      clearTimeout(row._t);
+      row._t = setTimeout(function () {
+        label.textContent = label.dataset.rest;
+        row.classList.remove('is-done', 'is-partial');
+        var back = row.contains(document.activeElement);
+        closeMenus(null);
+        if (back) focusButton('.ac-page .ac-export-btn');
+      }, 2600);
+    }
+  }
+
+  function closeMenus(except) {
+    document.querySelectorAll('.ac-page .ac-menu, .ac-page .ac-whomenu, .ac-page .ac-gomenu, .ac-page .ac-exportmenu').forEach(function (m) {
+      if (m !== except) m.style.display = 'none';
+    });
+    document.querySelectorAll('.ac-page .ac-pick, .ac-page .ac-who, .ac-page .ac-export-btn').forEach(function (b) {
+      b.classList.remove('is-open');
+      if (b.hasAttribute('aria-expanded')) b.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  // Open one menu, closing whatever else was open. Returns nothing; the caller
+  // has already decided this click belongs to it.
+  function toggleMenu(button, menu) {
+    var open = menu && menu.style.display !== 'none';
+    closeMenus(null);
+    if (menu && !open) {
+      menu.style.display = 'block';
+      button.classList.add('is-open');
+      button.setAttribute('aria-expanded', 'true');
+    }
+  }
+
+  // Go to: the grid scrolls so the group starts just right of the pinned columns
+  function gridOf(el) {
+    var panel = el.closest('.ac-tablepanel, .wtr-tables');
+    return panel && panel.querySelector('.ac-scroll, .wtr-scroll');
+  }
+  function pinEdge(sc) {
+    var edge = sc.getBoundingClientRect().left;
+    sc.querySelectorAll('thead th.ac-pin, thead th.wtr-stick').forEach(function (p) {
+      edge = Math.max(edge, p.getBoundingClientRect().right);
+    });
+    return edge;
+  }
+  function groupCells(sc) { return sc.querySelectorAll('thead th.ac-gg, thead th.acr-gg'); }
+  function markGroup(go, menu) {
+    var sc = gridOf(go);
+    if (!sc || !menu) return;
+    var edge = pinEdge(sc), cur = 0;
+    groupCells(sc).forEach(function (t, i) {
+      if (t.getBoundingClientRect().left <= edge + 1) cur = i;
+    });
+    menu.querySelectorAll('.ac-gi').forEach(function (it) {
+      var on = Number(it.dataset.go) === cur;
+      it.classList.toggle('is-on', on);
+      it.querySelector('.ac-tick').textContent = on ? '\\u2713' : '';
+    });
+  }
+  function goToGroup(item) {
+    var sc = gridOf(item);
+    var th = sc && groupCells(sc)[Number(item.dataset.go)];
+    if (th) sc.scrollLeft += th.getBoundingClientRect().left - pinEdge(sc);
+  }
+
+  // Keyboard: Enter, Space or Down opens a menu and moves into it, the arrows
+  // walk it, Enter or Space picks, Escape closes it and returns to its button
+  var ITEMS = '.ac-mi, .ac-wi, .ac-gi, .ac-ei-all, a.ac-ei-link';
+  function menuOf(b) {
+    if (b.classList.contains('ac-goto')) return b.parentNode.querySelector('.ac-gomenu');
+    if (b.classList.contains('ac-pick')) return document.querySelector('.ac-page .ac-menu');
+    if (b.classList.contains('ac-who')) return document.querySelector('.ac-page .ac-whomenu');
+    return document.getElementById(NS + 'export_menu');
+  }
+  function buttonSel(menu) {
+    if (menu.classList.contains('ac-gomenu')) return null;
+    if (menu.classList.contains('ac-menu')) return '.ac-page .ac-pick:not(.ac-goto)';
+    if (menu.classList.contains('ac-whomenu')) return '.ac-page .ac-who';
+    return '.ac-page .ac-export-btn';
+  }
+  function buttonOf(menu) {
+    var s = buttonSel(menu);
+    return s ? document.querySelector(s) : menu.parentNode.querySelector('.ac-goto');
+  }
+  // A pick redraws the panel holding the button, so the focus follows it to the new one
+  var refocus = null;
+  function focusButton(sel) {
+    var old = document.querySelector(sel);
+    if (old) old.focus();
+    refocus = { sel: sel, old: old, until: Date.now() + 4000 };
+  }
+  if (window.jQuery) jQuery(document).on('shiny:value', function () {
+    var r = refocus, tries = 0;
+    if (!r || Date.now() > r.until) { refocus = null; return; }
+    (function again() {
+      // the reader has moved on to something else
+      var a = document.activeElement;
+      if (a && a !== document.body && a !== r.old && document.contains(a)) { if (refocus === r) refocus = null; return; }
+      var el = document.querySelector(r.sel);
+      if (el && el !== r.old) { if (refocus === r) refocus = null; el.focus(); return; }
+      if (++tries < 20) setTimeout(again, 50);
+    })();
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest || !e.target.closest('.ac-page')) { closeMenus(null); return; }
+
+    // the raw interface: its window segments, chart chips and sortable
+    // headers. Checked first because they carry their own data attributes
+    // and would otherwise fall through to the counts handlers.
+    // the schedule panel's remove buttons, one handler for any number of rows
+    var swrm = e.target.closest('.ac-page [data-swrm]');
+    if (swrm) { e.preventDefault(); setVal('sched_rm_window', swrm.dataset.swrm); return; }
+    var srrm = e.target.closest('.ac-page [data-srrm]');
+    if (srrm) { e.preventDefault(); setVal('sched_rm_range', srrm.dataset.srrm); return; }
+    var aw = e.target.closest('.ac-page [data-acwindow]');
+    if (aw) { e.preventDefault(); setVal('acwindow_set', aw.dataset.acwindow); return; }
+    var ac = e.target.closest('.ac-page [data-actab]');
+    if (ac) { e.preventDefault(); setVal('actab_set', ac.dataset.actab); return; }
+    var as = e.target.closest('.ac-page [data-rawsort]');
+    if (as) { e.preventDefault(); setVal('acsort_set', as.dataset.rawsort); return; }
+
+    // Go to wears the chooser's class, so it is checked before the plot chooser
+    var go = e.target.closest('.ac-page .ac-goto');
+    if (go) {
+      var gm = go.parentNode.querySelector('.ac-gomenu');
+      markGroup(go, gm);
+      toggleMenu(go, gm);
+      return;
+    }
+    var gi = e.target.closest('.ac-page .ac-gi[data-go]');
+    if (gi) { closeMenus(null); goToGroup(gi); return; }
+
+    var pick = e.target.closest('.ac-page .ac-pick');
+    if (pick) { toggleMenu(pick, document.querySelector('.ac-page .ac-menu')); return; }
+
+    var item = e.target.closest('.ac-page .ac-mi[data-plot]');
+    if (item) { closeMenus(null); setVal('plot_pick', item.dataset.plot); return; }
+
+    var who = e.target.closest('.ac-page .ac-who');
+    if (who) { toggleMenu(who, document.querySelector('.ac-page .ac-whomenu')); return; }
+
+    // Same value the table rows set, so the button and the marked row are one
+    // piece of state rather than two that can drift.
+    var wi = e.target.closest('.ac-page .ac-wi[data-who]');
+    if (wi) {
+      var fid = wi.dataset.who;
+      document.querySelectorAll('.ac-page .ac-row[data-fid]').forEach(function (r) {
+        r.classList.toggle('is-selected', fid !== 'all' && r.dataset.fid === fid);
+      });
+      closeMenus(null);
+      setVal('pick', fid);
+      return;
+    }
+
+    var ex = e.target.closest('.ac-page .ac-export-btn');
+    if (ex) { toggleMenu(ex, document.getElementById(NS + 'export_menu')); return; }
+
+    var all = e.target.closest('.ac-page .ac-ei-all');
+    if (all) { fireAll(all); return; }
+
+    if (e.target.closest('.ac-page .ac-exportmenu')) return;
+
+    var row = e.target.closest('.ac-page .ac-row[data-fid]');
+    if (row) {
+      var was = row.classList.contains('is-selected');
+      document.querySelectorAll('.ac-page .ac-row.is-selected').forEach(function (r) { r.classList.remove('is-selected'); });
+      if (!was) row.classList.add('is-selected');
+      setVal('pick', was ? 'all' : row.dataset.fid);
+      closeMenus(null);
+      return;
+    }
+
+    closeMenus(null);
+  });
+
+  document.addEventListener('keydown', function (e) {
+    var t = e.target;
+    var menu = t.closest ? t.closest('.ac-page .ac-menu, .ac-page .ac-whomenu, .ac-page .ac-gomenu, .ac-page .ac-exportmenu') : null;
+    if (e.key === 'Escape') {
+      closeMenus(null);
+      if (menu) { var mb = buttonOf(menu); if (mb) mb.focus(); }
+      return;
+    }
+    if (!t.closest || !t.closest('.ac-page')) return;
+
+    if (menu) {
+      var items = Array.prototype.slice.call(menu.querySelectorAll(ITEMS));
+      var i = items.indexOf(t.closest(ITEMS));
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        if (items.length === 0) return;
+        var k = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1
+              : e.key === 'ArrowDown' ? Math.min(i + 1, items.length - 1) : Math.max(i - 1, 0);
+        items[k].focus();
+      } else if ((e.key === 'Enter' || e.key === ' ') && i >= 0) {
+        // a download link acts on Enter by itself
+        if (items[i].tagName === 'A' && e.key === 'Enter') return;
+        e.preventDefault();
+        var sel = buttonSel(menu), gb = sel ? null : buttonOf(menu);
+        var stays = menu.classList.contains('ac-exportmenu');
+        items[i].click();
+        if (gb) gb.focus();
+        else if (!stays) focusButton(sel);
+      } else if (e.key === 'Tab') {
+        closeMenus(null);
+      }
+      return;
+    }
+
+    var btn = t.closest('.ac-pick, .ac-who, .ac-export-btn');
+    if (btn && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      var m = menuOf(btn);
+      if (m && m.style.display === 'none') btn.click();
+      if (m && m.style.display !== 'none') {
+        var its = Array.prototype.slice.call(m.querySelectorAll(ITEMS));
+        var on = m.querySelector('.is-on');
+        var first = on && its.indexOf(on) >= 0 ? on : its[0];
+        if (first) first.focus();
+      }
+      return;
+    }
+
+    var row = e.target.closest('.ac-row[data-fid]');
+    if (!row) return;
+    var rows = Array.prototype.slice.call(document.querySelectorAll('.ac-page .ac-row[data-fid]'));
+    var i = rows.indexOf(row);
+    var next = null;
+    if (e.key === 'ArrowDown') next = rows[Math.min(i + 1, rows.length - 1)];
+    else if (e.key === 'ArrowUp') next = rows[Math.max(i - 1, 0)];
+    else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); row.click(); return; }
+    if (next) { e.preventDefault(); next.focus(); next.click(); }
+  });
+})();
+"
+  sub("__NS__", ns_prefix, js, fixed = TRUE)
 }
 
 mod_activity_server <- function(id, shared) {
@@ -378,11 +430,266 @@ mod_activity_server <- function(id, shared) {
 
     results <- reactiveVal(list())
 
+    # Drop the results of recordings removed on Overview
+    observeEvent(names(shared$files), {
+      res <- results()
+      if (!length(res)) return()
+      keep <- intersect(names(res), names(shared$files))
+      if (length(keep) == length(res)) return()
+      results(res[keep])
+      shared$results$activity <- res[keep]
+    }, ignoreNULL = FALSE)
+    run_stamp <- reactiveVal(NULL)
+
+    # Schedules: windows inside the day and kinds of day, one schedule per
+    # branch since the branches hold different recordings. The model is in
+    # activity_schedule.R and the panel in activity_loaded.R.
+
+    # The epoch the counts files share, for the boundary rule; NULL when mixed.
+    sched_epoch <- function() {
+      e <- unique(vapply(shared$files, function(f) as.numeric(f$epoch_length %||% NA), numeric(1)))
+      e <- e[is.finite(e)]
+      if (length(e) == 1) e else NULL
+    }
+
+    sched_branch <- function(idp, kind, panel_id, out_id, epoch_fn, is_view, diary_ui = NULL) {
+      # Session only
+      sched <- reactiveVal(sched_new())
+      layout <- reactiveVal(0L)          # bumps when a row is added or removed
+      drawn <- reactiveVal(FALSE)
+      id <- function(x) paste0(idp, x)
+
+      # Read the boxes back into the schedule. A box that has not rendered yet
+      # reads NULL and keeps the schedule's value; an empty tick group also
+      # reads NULL, so it is trusted only once the panel has been drawn.
+      from_inputs <- function(s) {
+        was_drawn <- isolate(drawn())
+        wd <- input[[id("st_weekday")]]; we <- input[[id("st_weekend")]]
+        s$types <- c(weekday = if (is.null(wd)) s$types[["weekday"]] else trimws(wd),
+                     weekend = if (is.null(we)) s$types[["weekend"]] else trimws(we))
+        mw <- suppressWarnings(as.numeric(input[[id("s_minwear")]]))
+        if (length(mw) == 1 && is.finite(mw)) s$min_wear <- min(1, max(0, mw / 100))
+        for (i in seq_along(s$windows)) {
+          w <- s$windows[[i]]
+          lab <- input[[id(paste0("sw_label_", i))]]; st <- input[[id(paste0("sw_start_", i))]]
+          en <- input[[id(paste0("sw_end_", i))]]; ap <- input[[id(paste0("sw_applies_", i))]]
+          if (!is.null(lab)) w$label <- trimws(lab)
+          if (!is.null(st)) w$start <- sched_parse_time(st)
+          if (!is.null(en)) w$end <- sched_parse_time(en)
+          if (!is.null(ap) || was_drawn) w$applies <- as.character(ap %||% character(0))
+          s$windows[[i]] <- w
+        }
+        for (i in seq_along(s$ranges)) {
+          r <- s$ranges[[i]]
+          lab <- input[[id(paste0("sr_label_", i))]]; fr <- input[[id(paste0("sr_from_", i))]]
+          to <- input[[id(paste0("sr_to_", i))]]
+          if (!is.null(lab)) r$label <- trimws(lab)
+          if (!is.null(fr)) r$from <- sched_parse_date(fr)
+          if (!is.null(to)) r$to <- sched_parse_date(to)
+          s$ranges[[i]] <- r
+        }
+        s
+      }
+      # Reading the boxes is what registers them. After a row is added or
+      # removed the boxes on screen are still the old rows until the browser
+      # redraws, so that run only registers them and applies nothing; the
+      # redrawn values arrive as changes. sched() is read in isolation so the
+      # write back cannot start a loop.
+      seen <- 0L
+      observe({
+        lay <- layout()
+        s <- isolate(sched())
+        s2 <- from_inputs(s)
+        if (!identical(lay, seen)) { seen <<- lay; return() }
+        if (!identical(s2, s)) {
+          sched(s2)
+          # Update the pills in place; redrawing the panel would take the focus
+          # out of the box being typed in
+          if (!identical(sched_type_labels(s2), sched_type_labels(s))) {
+            ch <- sched_pill_choices(s2)
+            for (i in seq_along(s2$windows)) {
+              updateCheckboxGroupInput(session, id(paste0("sw_applies_", i)), choices = ch,
+                                       selected = intersect(as.character(s2$windows[[i]]$applies), unname(ch)),
+                                       inline = TRUE)
+            }
+          }
+        }
+      })
+      bump <- function(s) { sched(s); layout(isolate(layout()) + 1L) }
+      observeEvent(input[[id("sw_add")]], {
+        s <- from_inputs(sched())
+        s$windows[[length(s$windows) + 1]] <- list(label = "", start = NA_real_, end = NA_real_,
+                                                   applies = character(0))
+        bump(s)
+      })
+      observeEvent(input[[id("sr_add")]], {
+        s <- from_inputs(sched())
+        # windows point at the key, so it survives renaming and reordering
+        key <- paste0("range_", format(Sys.time(), "%H%M%S"), "_", length(s$ranges) + 1)
+        s$ranges[[length(s$ranges) + 1]] <- list(key = key, label = "", from = as.Date(NA), to = as.Date(NA))
+        bump(s)
+      })
+      observeEvent(input[[id("sched_clear")]], bump(sched_new()))
+      rm_window <- function(i) {
+        s <- from_inputs(sched())
+        if (!is.na(i) && i >= 1 && i <= length(s$windows)) { s$windows[[i]] <- NULL; bump(s) }
+      }
+      rm_range <- function(i) {
+        s <- from_inputs(sched())
+        if (!is.na(i) && i >= 1 && i <= length(s$ranges)) {
+          key <- s$ranges[[i]]$key
+          s$ranges[[i]] <- NULL
+          for (j in seq_along(s$windows)) s$windows[[j]]$applies <- setdiff(s$windows[[j]]$applies, key)
+          bump(s)
+        }
+      }
+      observeEvent(input[[id("sched_open")]], shinyjs::toggle(panel_id))
+      output[[out_id]] <- renderUI({
+        layout()
+        if (!is_view()) return(NULL)
+        s <- isolate(sched())
+        isolate(drawn(TRUE))
+        ac_sched_panel(ns, s, prefix = if (identical(kind, "raw")) "wt" else "ac", idp = idp,
+                       foot = if (identical(kind, "raw")) "Applied by Re-run."
+                              else "The By window and By day type views follow this as you type.",
+                       diary = if (is.null(diary_ui)) NULL else diary_ui(s))
+      })
+      # Each fault is reported under the table it belongs to.
+      faults <- reactive(sched_validate(sched(), epoch_fn()))
+      output[[id("sched_msg_w")]] <- renderUI(ac_sched_msgs(grep("^Window", faults(), value = TRUE)))
+      output[[id("sched_msg_r")]] <- renderUI(ac_sched_msgs(grep("^Date range", faults(), value = TRUE)))
+      output[[id("sched_msg_t")]] <- renderUI(ac_sched_msgs(grep("^(Window|Date range)", faults(), value = TRUE, invert = TRUE)))
+      list(sched = sched, rm_window = rm_window, rm_range = rm_range, bump = bump)
+    }
+
+    # Diaries: a csv in GGIR's activity diary layout (one row per participant
+    # and date, the start time of each activity under its name), matched to
+    # the loaded recordings by subject id, loaded name or device serial. A
+    # matched participant's days replace the typed windows on those days.
+    diary_ui_for <- function(idp) function(s) list(
+      # a button rather than an <a>, which the page's link rules would recolour
+      action = tags$button(type = "button", class = "ac-sched-add",
+                           onclick = sprintf("document.getElementById('%s').click(); return false;",
+                                             ns(paste0(idp, "diary_file"))),
+                           ac_plus_icon(), "Import diary"),
+      body = tagList(
+        tags$div(style = "display: none;",
+                 fileInput(ns(paste0(idp, "diary_file")), NULL, accept = c(".csv", "text/csv"))),
+        uiOutput(ns(paste0(idp, "diary_note")))))
+
+    sc <- sched_branch("c_", "counts", "schedule_panel_c", "schedule_ui_c",
+                       sched_epoch, function() !identical(view(), "raw"), diary_ui_for("c_"))
+    sr <- sched_branch("r_", "raw", "schedule_panel_r", "schedule_ui_r",
+                       function() NULL, function() identical(view(), "raw"), diary_ui_for("r_"))
+    sched_c <- sc$sched
+    sched_r <- sr$sched
+
+    counts_recs <- function() {
+      lapply(names(shared$files), function(fid) {
+        f <- shared$files[[fid]]
+        nm <- c(f$subject_info$id, f$name, f$device_info$serial_number)
+        nm <- as.character(unlist(nm))
+        list(pid = fid, names = nm[!is.na(nm) & nzchar(nm)])
+      })
+    }
+    raw_recs <- function() {
+      rs <- raw_list(); ids <- raw_ids()
+      lapply(ids, function(id) {
+        r <- rs[[id]]
+        pid <- tryCatch(as.character(r$inspection$id %||% id), error = function(e) id)
+        nm <- tryCatch(c(ovr_name(r, id), as.character(r$device$serial %||% "")), error = function(e) id)
+        list(pid = pid, names = c(nm[!is.na(nm) & nzchar(nm)], id))
+      })
+    }
+    diary_import <- function(f, branch, recs) {
+      rd <- sched_read_ggir_diary(f$datapath[1])
+      m <- sched_match_diary(rd$entries, recs)
+      s <- branch$sched()
+      s$overrides <- m$overrides
+      s$diary <- list(file = f$name[1], ids = length(rd$entries), matched = length(m$matched),
+                      unmatched = m$unmatched, dateformat = rd$dateformat, problems = rd$problems,
+                      days = sum(vapply(m$overrides, function(o) length(unique(o$date)), integer(1))))
+      branch$bump(s)
+    }
+    observeEvent(input$c_diary_file, {
+      f <- input$c_diary_file
+      if (!is.null(f) && nrow(f) > 0) diary_import(f, sc, counts_recs())
+    })
+    observeEvent(input$r_diary_file, {
+      f <- input$r_diary_file
+      if (!is.null(f) && nrow(f) > 0) diary_import(f, sr, raw_recs())
+    })
+    observeEvent(input$c_diary_clear, { s <- sched_c(); s$overrides <- list(); s$diary <- NULL; sc$bump(s) })
+    observeEvent(input$r_diary_clear, { s <- sched_r(); s$overrides <- list(); s$diary <- NULL; sr$bump(s) })
+    diary_note <- function(s, idp) {
+      d <- s$diary
+      if (is.null(d)) {
+        return(tags$div(class = "ac-sched-none",
+          "None. Import a diary, one row per participant with a date and the start time of each activity under its name, and its days replace the windows above."))
+      }
+      fmt_words <- c("%d-%m-%Y" = "day-month-year", "%Y-%m-%d" = "year-month-day", "%d/%m/%Y" = "day/month/year",
+                     "%m/%d/%Y" = "month/day/year", "%Y/%m/%d" = "year/month/day")
+      tagList(
+        tags$div(class = "ac-sched-none",
+          paste0(d$file, " · ", d$matched, " of ", d$ids, if (d$ids == 1) " participant" else " participants",
+                 " matched a loaded recording · ", d$days, if (d$days == 1) " day" else " days",
+                 if (!is.na(d$dateformat)) paste0(" · dates read as ", fmt_words[d$dateformat] %||% d$dateformat) else "")),
+        if (length(d$unmatched) > 0)
+          tags$div(class = "ac-sched-none", paste0("Not loaded here: ", paste(d$unmatched, collapse = ", "))),
+        if (length(d$problems) > 0) ac_sched_msgs(d$problems),
+        tags$div(class = "ac-sched-links",
+          tags$button(id = ns(paste0(idp, "diary_clear")), type = "button",
+                      class = "action-button ac-sched-add is-quiet", "Remove diary")))
+    }
+    output$c_diary_note <- renderUI(diary_note(sched_c(), "c_"))
+    output$r_diary_note <- renderUI(diary_note(sched_r(), "r_"))
+    # On counts the schedule only slices scored epochs, so the views follow
+    # sched_c() live. On raw it goes into part 5, so the run keeps the
+    # schedule it was scored with.
+    raw_run_sched <- reactiveVal(NULL)      # the raw run's schedule
+    table_view <- reactiveVal("summary")
+    observe({ shared$schedule <- list(counts = sched_c(), raw = sched_r()) })
+    observeEvent(input$table_view, table_view(input$table_view), ignoreInit = TRUE)
+    # Switching branch closes the open schedule panel
+    observeEvent(view(), {
+      shinyjs::hide("schedule_panel_c"); shinyjs::hide("schedule_panel_r")
+    }, ignoreInit = TRUE)
+    # Remove buttons report branch and row, "c:2" being the counts branch's second row
+    sched_rm_target <- function(v) {
+      p <- strsplit(as.character(v), ":", fixed = TRUE)[[1]]
+      list(branch = p[1], i = suppressWarnings(as.integer(p[2])))
+    }
+    observeEvent(input$sched_rm_window, {
+      t <- sched_rm_target(input$sched_rm_window)
+      if (identical(t$branch, "r")) sr$rm_window(t$i) else sc$rm_window(t$i)
+    })
+    observeEvent(input$sched_rm_range, {
+      t <- sched_rm_target(input$sched_rm_range)
+      if (identical(t$branch, "r")) sr$rm_range(t$i) else sc$rm_range(t$i)
+    })
+    # Raw only: the run carries the signature of the schedule part 5 was given
+    raw_sched_moved <- reactive({
+      tus <- timeuse()
+      if (length(tus) == 0) return(FALSE)
+      !identical(tus[[1]]$settings$schedule_sig %||% "", sched_sig(sched_r()))
+    })
+    # and the cut points and bouts in the settings panel, against a recording that scored
+    raw_settings_moved <- reactive({
+      ok <- Filter(function(t) length(t$settings) > 0, timeuse())
+      length(ok) > 0 && acr_settings_moved(ok[[1]], input)
+    })
+
+    # canhrActi_<what>_<ISO date>_<time>.csv
+    export_name <- function(what) {
+      paste0("canhrActi_", what, "_",
+             format(run_stamp() %||% Sys.time(), "%Y-%m-%d_%H%M%S"), ".csv")
+    }
+
     # Update participant selector when results change
     observe({
       res <- results()
       if (length(res) > 0) {
-        choices <- c("All Participants" = "all")
+        choices <- c("All participants" = "all")
         for (fid in names(res)) {
           r <- res[[fid]]
           label <- r$subject_id %||% r$name %||% fid
@@ -393,219 +700,732 @@ mod_activity_server <- function(id, shared) {
           selected = isolate(input$selected_participant) %||% "all")
       } else {
         updateSelectInput(session, "selected_participant",
-          choices = c("All Participants" = "all"),
+          choices = c("All participants" = "all"),
           selected = "all")
       }
     })
 
-    # Output for conditional panel
-    output$has_activity_results <- reactive({
-      length(results()) > 0
+    # Raw interface. Part 5 is raw.timeuse() over the part-4 nights from
+    # raw.sleep.nights(), not the part-3 nights the read leaves behind; both
+    # run once per recording and are cached for the session.
+    raw_ids <- reactive(names(shared$raw %||% list()))
+    raw_list <- reactive(shared$raw %||% list())
+    has_raw <- reactive(length(raw_ids()) > 0)
+    has_counts <- reactive(length(shared$files) > 0)
+    view <- reactive({
+      if (!has_raw()) return("counts")
+      if (!has_counts()) return("raw")
+      if (identical(local_raw$view, "raw")) "raw" else "counts"
     })
-    outputOptions(output, "has_activity_results", suspendWhenHidden = FALSE)
+    local_raw <- reactiveValues(view = "raw", sel = NULL, tab = "daysummary",
+                                window = NULL, sort = NULL, dir = 1)
+    # A plain environment, not a reactiveVal: timeuse() both reads and fills
+    # the cache, and a reactiveVal would invalidate the expression writing it.
+    # tu_tick is the reactive signal, bumped after a fill.
+    tu_env <- new.env(parent = emptyenv())
+    tu_env$cache <- list()
+    tu_env$nights <- list()
+    tu_env$reports <- list()
+    tu_tick <- reactiveVal(0L)
 
-    # Files count
-    output$files_count <- renderText({
-      as.character(shared$file_count)
-    })
-
-    # Compact metrics (reactive to participant selection) - use daily data for consistency
-    output$metric_sedentary <- renderText({
-      res <- results()
-      sel <- input$selected_participant
-      if (is.null(res) || length(res) == 0 || is.null(sel)) return("--")
-      if (sel == "all") {
-        # Simple average of each participant's average (not weighted by days)
-        participant_avgs <- c()
-        for (r in res) {
-          if (!is.null(r$daily) && "sedentary_hrs" %in% names(r$daily)) {
-            participant_avgs <- c(participant_avgs, mean(r$daily$sedentary_hrs, na.rm = TRUE))
-          }
-        }
-        if (length(participant_avgs) == 0) return("--")
-        avg <- mean(participant_avgs, na.rm = TRUE)
-        if (is.na(avg)) return("--")
-        paste0(round(avg, 1), "h")
-      } else if (sel %in% names(res)) {
-        r <- res[[sel]]
-        if (!is.null(r$daily) && "sedentary_hrs" %in% names(r$daily)) {
-          avg <- mean(r$daily$sedentary_hrs, na.rm = TRUE)
-          if (is.na(avg)) return("--")
-          paste0(round(avg, 1), "h")
-        } else {
-          "--"
-        }
-      } else {
-        "--"
+    raw_switch <- function() {
+      if (!(has_counts() && has_raw())) return(NULL)
+      v <- view()
+      seg <- function(key, label, n) {
+        tags$button(id = ns(paste0("act_view_", key)), type = "button",
+                    class = paste("action-button ovr-seg-b",
+                                  if (identical(v, key)) "is-on" else ""),
+                    label, tags$b(fmt_int(n)))
       }
-    })
+      tags$div(class = "ovr-seg", role = "tablist",
+               seg("counts", "Counts", length(shared$files)),
+               seg("raw", "Raw", length(raw_ids())))
+    }
+    observeEvent(input$act_view_counts, local_raw$view <- "counts")
+    observeEvent(input$act_view_raw, local_raw$view <- "raw")
 
-    output$metric_light <- renderText({
-      res <- results()
-      sel <- input$selected_participant
-      if (is.null(res) || length(res) == 0 || is.null(sel)) return("--")
-      if (sel == "all") {
-        # Simple average of each participant's average (not weighted by days)
-        participant_avgs <- c()
-        for (r in res) {
-          if (!is.null(r$daily) && "light_hrs" %in% names(r$daily)) {
-            participant_avgs <- c(participant_avgs, mean(r$daily$light_hrs, na.rm = TRUE))
-          }
-        }
-        if (length(participant_avgs) == 0) return("--")
-        avg <- mean(participant_avgs, na.rm = TRUE)
-        if (is.na(avg)) return("--")
-        paste0(round(avg, 1), "h")
-      } else if (sel %in% names(res)) {
-        r <- res[[sel]]
-        if (!is.null(r$daily) && "light_hrs" %in% names(r$daily)) {
-          avg <- mean(r$daily$light_hrs, na.rm = TRUE)
-          if (is.na(avg)) return("--")
-          paste0(round(avg, 1), "h")
-        } else {
-          "--"
-        }
-      } else {
-        "--"
-      }
-    })
+    # Part 5 for every loaded raw recording, scored on Run analysis and cached
+    raw_run <- reactiveVal(0L)
 
-    output$metric_mvpa <- renderText({
-      res <- results()
-      sel <- input$selected_participant
-      if (is.null(res) || length(res) == 0 || is.null(sel)) return("--")
-      if (sel == "all") {
-        # Simple average of each participant's average (not weighted by days)
-        participant_avgs <- c()
-        for (r in res) {
-          if (!is.null(r$daily)) {
-            mod_hrs <- if ("moderate_hrs" %in% names(r$daily)) r$daily$moderate_hrs else 0
-            vig_hrs <- if ("vigorous_hrs" %in% names(r$daily)) r$daily$vigorous_hrs else 0
-            vvig_hrs <- if ("very_vigorous_hrs" %in% names(r$daily)) r$daily$very_vigorous_hrs else 0
-            mvpa_min <- (mod_hrs + vig_hrs + vvig_hrs) * 60
-            participant_avgs <- c(participant_avgs, mean(mvpa_min, na.rm = TRUE))
+    timeuse <- reactive({
+      ids <- raw_ids(); rs <- raw_list()
+      tu_tick()
+      if (raw_run() == 0L) return(list())
+      if (length(ids) == 0) return(list())
+      cache <- tu_env$cache
+      todo <- setdiff(ids, names(cache))
+      if (length(todo) > 0) {
+        withProgress(message = "Running GGIR part 5", value = 0, {
+          for (k in seq_along(todo)) {
+            id <- todo[k]
+            incProgress(1 / length(todo), detail = ovr_name(rs[[id]], id))
+            cache[[id]] <- tryCatch({
+              nights <- canhrActi::raw.sleep.nights(rs[[id]])
+              tu_env$nights[[id]] <- nights
+              pp <- canhrActi::raw.params()
+              ov <- isolate(acr_params())
+              # cutpoint is not a GGIR parameter; it is stamped onto the result
+              chosen <- ov$cutpoint
+              ov$cutpoint <- NULL
+              for (n in names(ov)) pp[[n]] <- ov[[n]]
+              # Windows go in as a qwindow diary matched on the ID part 5 takes
+              # from the night summary; with no ID the numeric form is used
+              s_run <- isolate(raw_run_sched())
+              if (sched_has_windows(s_run)) {
+                # a fault here is the schedule's, so it is named as such
+                pp$qwindow <- tryCatch({
+                  pid <- as.character(nights$ID[1] %||% NA)
+                  sp <- ovr_span(rs[[id]]); rtz <- ovr_tz(rs[[id]])
+                  if (is.null(sp)) stop("the recording has no time span")
+                  dd <- seq(as.Date(format(sp$start, "%Y-%m-%d", tz = rtz)),
+                            as.Date(format(sp$end, "%Y-%m-%d", tz = rtz)), by = "day")
+                  q <- if (length(pid) == 1 && !is.na(pid) && nzchar(pid)) sched_qwindow(s_run, pid, dd) else NULL
+                  if (!is.null(q)) q else sched_qwindow_numeric(s_run)
+                }, error = function(e) stop("The schedule could not be applied: ", conditionMessage(e), call. = FALSE))
+              }
+              # The set's metric must have been stored at read time; part 5's
+              # own message for a missing one does not say what to do
+              have <- acr_metrics_present(rs[[id]])
+              m <- pp$acc.metric %||% "ENMO"
+              if (length(have) > 0 && !m %in% have) {
+                stop(m, " is not in this recording, which was read with ",
+                     paste(have, collapse = ", "), ". ",
+                     if (m %in% RAW_READ_HAS)
+                       "Remove and re-add the file to read it as well."
+                     else
+                       # not read by the import: its filter bank adds about a
+                       # quarter to every read
+                       paste0("Reading the file again will not add it: ", m,
+                              " needs GGIR's filter bank, which this app does",
+                              " not run. Score this recording with raw.timeuse()",
+                              " directly if you need it."),
+                     call. = FALSE)
+              }
+              tu <- canhrActi::raw.timeuse(rs[[id]], nights = nights, params = pp)
+              tu$settings$cutpoint <- chosen %||% ACR_CUSTOM
+              tu$settings$acc.metric <- pp$acc.metric %||% "ENMO"
+              tu$settings$schedule_sig <- sched_sig(s_run)
+              tu
+            }, error = function(e) structure(list(
+              daysummary = NULL, windows = NULL, settings = list(),
+              status = list(state = "error", messages = conditionMessage(e))),
+              class = "canhrActi_raw_timeuse"))
           }
-        }
-        if (length(participant_avgs) == 0) return("--")
-        avg <- mean(participant_avgs, na.rm = TRUE)
-        if (is.na(avg)) return("--")
-        paste0(round(avg), "m")
-      } else if (sel %in% names(res)) {
-        r <- res[[sel]]
-        if (!is.null(r$daily)) {
-          mod_hrs <- if ("moderate_hrs" %in% names(r$daily)) r$daily$moderate_hrs else 0
-          vig_hrs <- if ("vigorous_hrs" %in% names(r$daily)) r$daily$vigorous_hrs else 0
-          vvig_hrs <- if ("very_vigorous_hrs" %in% names(r$daily)) r$daily$very_vigorous_hrs else 0
-          mvpa_min <- (mod_hrs + vig_hrs + vvig_hrs) * 60
-          avg <- mean(mvpa_min, na.rm = TRUE)
-          if (is.na(avg)) return("--")
-          paste0(round(avg), "m")
-        } else {
-          "--"
-        }
-      } else {
-        "--"
-      }
-    })
-
-    output$metric_steps <- renderText({
-      res <- results()
-      sel <- input$selected_participant
-      if (is.null(res) || length(res) == 0 || is.null(sel)) return("--")
-      if (sel == "all") {
-        step_values <- sapply(names(shared$files), function(fid) {
-          f <- shared$files[[fid]]
-          if ("steps" %in% names(f$data)) {
-            total_steps <- sum(f$data$steps, na.rm = TRUE)
-            n_days <- if ("timestamp" %in% names(f$data)) length(unique(as.Date(f$data$timestamp))) else 1
-            return(total_steps / n_days)
-          }
-          return(NA)
         })
-        avg <- mean(step_values, na.rm = TRUE)
-        if (is.na(avg)) return("--")
-        formatC(round(avg), format = "d", big.mark = ",")
-      } else if (sel %in% names(res)) {
-        fid <- sel
+        tu_env$cache <- cache
+        # Published for the Visualization tab, which reads it rather than scoring its own
+        shared$raw_timeuse <- cache
+        isolate(tu_tick(tu_tick() + 1L))
+      }
+      cache[ids]
+    })
+
+    # Which day window the page is on; the first the recordings offer.
+    active_window <- reactive({
+      tus <- timeuse()
+      if (length(tus) == 0) return(NULL)
+      w <- unique(unlist(lapply(tus, acr_windows)))
+      if (length(w) == 0) return(NULL)
+      if (!is.null(local_raw$window) && local_raw$window %in% w) return(local_raw$window)
+      # A run made with windows opens on them
+      if ("Segments" %in% w && sched_has_windows(isolate(raw_run_sched()))) "Segments" else w[1]
+    })
+
+    observeEvent(input$acwindow_set, {
+      local_raw$window <- input$acwindow_set
+      local_raw$sort <- NULL; local_raw$dir <- 1
+    }, ignoreInit = TRUE)
+    observeEvent(input$actab_set, {
+      if (input$actab_set %in% names(ACR_TABS)) {
+        local_raw$tab <- input$actab_set
+        # the two tables do not share a column set, so a sort cannot carry
+        local_raw$sort <- NULL; local_raw$dir <- 1
+      }
+    }, ignoreInit = TRUE)
+    # The recording chooser; one at a time, no All
+    observeEvent(input$acwho_set, {
+      v <- input$acwho_set
+      was <- local_raw$sel %||% raw_ids()[1]
+      local_raw$sel <- if (!v %in% raw_ids()) NULL else v
+      # a redrawn box sends the value it was drawn with; only a change is a pick
+      if (v %in% raw_ids() && !identical(v, was)) focus_set(shared, v)
+    }, ignoreInit = TRUE)
+    observeEvent(input$acsort_set, {
+      i <- suppressWarnings(as.integer(input$acsort_set))
+      if (length(i) != 1 || is.na(i)) return()
+      if (identical(local_raw$sort, i)) local_raw$dir <- -local_raw$dir
+      else { local_raw$sort <- i; local_raw$dir <- 1 }
+    }, ignoreInit = TRUE)
+    observeEvent(raw_ids(), {
+      if (!is.null(local_raw$sel) && !local_raw$sel %in% raw_ids()) local_raw$sel <- NULL
+      if (is.null(local_raw$sel) && length(raw_ids()) > 0) local_raw$sel <- raw_ids()[1]
+    })
+
+    raw_current <- reactive({
+      ids <- raw_ids(); i <- if (is.null(local_raw$sel)) 1L else match(local_raw$sel, ids)
+      if (is.na(i)) i <- 1L
+      i
+    })
+
+    # GGIR's own report and csv files, one run per recording, cached
+    reports <- reactive({
+      ids <- raw_ids(); rs <- raw_list(); tus <- timeuse()
+      if (raw_run() == 0L) return(list())
+      if (length(ids) == 0) return(list())
+      tu_tick()
+      cache <- tu_env$reports %||% list()
+      todo <- setdiff(ids, names(cache))
+      if (length(todo) > 0) {
+        withProgress(message = "Running GGIR's report", value = 0, {
+          for (k in seq_along(todo)) {
+            id <- todo[k]
+            incProgress(1 / length(todo), detail = ovr_name(rs[[id]], id))
+            # With a schedule the report also gets the schedule's segment wear
+            # rule and GGIR's weekday and weekend aggregates; the two arguments
+            # are passed only when the installed wrapper takes them
+            s_run <- isolate(raw_run_sched())
+            takes <- all(c("params_cleaning", "params_output") %in% names(formals(canhrActi::raw.ggir.report)))
+            cache[[id]] <- tryCatch(
+              if (sched_active(s_run) && takes)
+                canhrActi::raw.ggir.report(rs[[id]], tu_env$nights[[id]], tus[[id]],
+                  params_cleaning = list(segmentWEARcrit.part5 = as.numeric(s_run$min_wear %||% 0.5)),
+                  params_output = list(week_weekend_aggregate.part5 = TRUE))
+              else
+                canhrActi::raw.ggir.report(rs[[id]], tu_env$nights[[id]], tus[[id]]),
+              error = function(e) list(state = "error", pdf = NA_character_,
+                                       csv = character(0), messages = conditionMessage(e)))
+          }
+        })
+        tu_env$reports <- cache
+        # Published for the Visualization tab, which draws the day panel from $dir
+        shared$raw_report <- cache
+      }
+      cache[ids]
+    })
+    # GGIR's panelplot over the report's milestone tree, drawn to pdf and
+    # rasterised: at a 5 s epoch a bout is a fraction of a pixel wide, which
+    # a png device drops and a vector device keeps.
+    raw_panel_w <- function() {
+      w <- session$clientData[[paste0("output_", ns("raw_report"), "_width")]]
+      if (is.null(w) || !is.finite(w) || w < 200) return(1100)
+      # snapped to 100 px so a window drag does not queue a redraw per pixel
+      round(w / 100) * 100
+    }
+
+    output$raw_report <- renderImage({
+      reps <- reports(); i <- raw_current()
+      rep <- reps[[i]]
+      req(!is.null(rep), identical(rep$state, "ok"), !is.na(rep$dir))
+      tz <- tryCatch(ovr_tz(raw_list()[[raw_ids()[i]]]), error = function(e) "")
+      if (is.na(tz) || !nzchar(tz)) tz <- ""
+      w <- raw_panel_w()
+      f <- tempfile(fileext = ".png")
+      r <- canhrActi::raw.ggir.panel.png(rep$dir, f, width_px = round(w * 2),
+                                         desiredtz = tz)
+      if (!identical(r$state, "ok")) {
+        stop(switch(r$state,
+                    no_pdftools = "Install the pdftools and png packages to see the report.",
+                    no_windows  = "No window in this recording is long enough to draw.",
+                    paste("The report could not be drawn:", r$state)))
+      }
+      list(src = f, contentType = "image/png",
+           width = w, height = round(r$height * w / r$width),
+           alt = "GGIR time use report")
+    }, deleteFile = TRUE)
+
+
+
+
+    # Raw settings. Re-run clears the cache; part 5 starts from the
+    # milestone, so the file is not read again.
+    output$raw_settings_panel <- renderUI({
+      tus <- timeuse()
+      if (length(raw_ids()) == 0) return(NULL)
+      r <- tryCatch(raw_list()[[raw_ids()[raw_current()]]], error = function(e) NULL)
+      # NULL before the first run, so the cut points can be chosen up front.
+      acr_settings_panel(if (length(tus) == 0) NULL else tus[[raw_current()]],
+                         ns, have = acr_metrics_present(r))
+    })
+    toggle_raw_settings <- function() shinyjs::toggle("raw_settings")
+    observeEvent(input$raw_change, toggle_raw_settings())
+    observeEvent(input$raw_change_empty, toggle_raw_settings())
+
+    # A published set fills the three boxes; editing a box afterwards moves
+    # the chooser to Custom.
+    acr_guard <- reactiveVal(0L)     # > 0 while the boxes are being written from here
+
+    output$acr_gap <- renderUI({
+      g <- acr_cutpoint_gap(input$acr_cutpoint %||% ACR_CUSTOM)
+      if (!nzchar(g)) return(NULL)
+      tags$div(class = "wt-settings-note", g)
+    })
+
+    observeEvent(input$acr_cutpoint, {
+      k <- input$acr_cutpoint
+      if (is.null(k) || identical(k, ACR_CUSTOM)) return()
+      cp <- tryCatch(canhrActi::raw.cutpoint(k), error = function(e) NULL)
+      if (is.null(cp)) return()
+      # A band the set does not define keeps GGIR's default
+      d <- c(light = 40, moderate = 100, vigorous = 400)
+      acr_guard(isolate(acr_guard()) + 1L)
+      updateNumericInput(session, "acr_thr_lig",
+                         value = if (is.na(cp$threshold.lig)) d[["light"]] else cp$threshold.lig)
+      updateNumericInput(session, "acr_thr_mod",
+                         value = if (is.na(cp$threshold.mod)) d[["moderate"]] else cp$threshold.mod)
+      updateNumericInput(session, "acr_thr_vig",
+                         value = if (is.na(cp$threshold.vig)) d[["vigorous"]] else cp$threshold.vig)
+    }, ignoreInit = TRUE)
+
+    observeEvent(list(input$acr_thr_lig, input$acr_thr_mod, input$acr_thr_vig), {
+      # the write above fires this too, so one event is swallowed per set applied
+      if (isolate(acr_guard()) > 0) { acr_guard(isolate(acr_guard()) - 1L); return() }
+      k <- input$acr_cutpoint
+      if (is.null(k) || identical(k, ACR_CUSTOM)) return()
+      cp <- tryCatch(canhrActi::raw.cutpoint(k), error = function(e) NULL)
+      if (is.null(cp)) return()
+      d <- c(40, 100, 400)
+      want <- c(if (is.na(cp$threshold.lig)) d[1] else cp$threshold.lig,
+                if (is.na(cp$threshold.mod)) d[2] else cp$threshold.mod,
+                if (is.na(cp$threshold.vig)) d[3] else cp$threshold.vig)
+      got <- suppressWarnings(as.numeric(c(input$acr_thr_lig, input$acr_thr_mod, input$acr_thr_vig)))
+      if (length(got) == 3 && all(is.finite(got)) && !isTRUE(all.equal(want, got))) {
+        updateSelectInput(session, "acr_cutpoint", selected = ACR_CUSTOM)
+      }
+    }, ignoreInit = TRUE)
+
+    acr_params <- reactiveVal(list())
+
+    # Run analysis (in the bar or the empty panel) and Re-run do the same
+    # thing; one observer per button, each calling this
+    raw_start <- function() {
+      acr_params(acr_form_params(input))
+      raw_run_sched(sched_r())
+      tu_env$cache <- list(); tu_env$reports <- list()   # every recording re-scored
+      shared$raw_timeuse <- list()   # scored against the old settings
+      shared$raw_report <- list()   # scored against the old settings
+      raw_run(isolate(raw_run()) + 1L)
+      tu_tick(isolate(tu_tick()) + 1L)
+      local_raw$sort <- NULL; local_raw$dir <- 1
+    }
+    observeEvent(input$raw_run, raw_start())
+    observeEvent(input$raw_run_empty, raw_start())
+    observeEvent(input$raw_reanalyse, raw_start())
+
+    observeEvent(input$acr_defaults, {
+      d <- list(threshold.lig = 40, threshold.mod = 100, threshold.vig = 400,
+                boutcriter.mvpa = 0.8, boutcriter.in = 0.9)
+      for (n in names(d)) {
+        updateNumericInput(session, paste0("acr_", sub("^threshold\\.", "thr_",
+          sub("^boutcriter\\.", "bc_", n))), value = d[[n]])
+      }
+      updateTextInput(session, "acr_bd_mvpa", value = "10, 5, 1")
+      updateTextInput(session, "acr_bd_in", value = "30, 20, 10")
+      # GGIR's 40/100/400 defaults are not one of the published rows, so Custom
+      updateSelectInput(session, "acr_cutpoint", selected = ACR_CUSTOM)
+    })
+
+    # Both downloads hand over GGIR's own files unchanged
+    output$raw_pdf <- downloadHandler(
+      filename = function() {
+        rep <- reports()[[raw_current()]]
+        if (!is.null(rep) && !is.na(rep$pdf)) basename(rep$pdf) else "report.pdf"
+      },
+      content = function(file) {
+        rep <- reports()[[raw_current()]]
+        validate(need(!is.null(rep) && !is.na(rep$pdf) && file.exists(rep$pdf),
+                      "GGIR drew no report for this recording."))
+        file.copy(rep$pdf, file, overwrite = TRUE)
+      })
+
+    output$raw_export <- downloadHandler(
+      filename = function() {
+        p <- acr_csv_for(reports()[[raw_current()]], local_raw$tab, active_window())
+        if (is.na(p)) "part5.csv" else basename(p)
+      },
+      content = function(file) {
+        p <- acr_csv_for(reports()[[raw_current()]], local_raw$tab, active_window())
+        validate(need(!is.na(p) && file.exists(p), "GGIR wrote no file for this selection."))
+        file.copy(p, file, overwrite = TRUE)
+      })
+
+    # GGIR's study-level report: g.report.part5 over every recording's part-5
+    # milestone at once, with the overrides reports() passed, under GGIR's names
+    output$raw_export_all <- downloadHandler(
+      filename = function() "part5_report.zip",
+      content = function(file) {
+        s_run <- isolate(raw_run_sched())
+        args <- if (sched_active(s_run))
+          list(params_cleaning = list(segmentWEARcrit.part5 = as.numeric(s_run$min_wear %||% 0.5)),
+               params_output = list(week_weekend_aggregate.part5 = TRUE))
+        else list()
+        st <- do.call(canhrActi:::.raw.ggir.report.study, c(list(reports()), args))
+        if (is.character(st$dir) && !is.na(st$dir)) on.exit(unlink(st$dir, recursive = TRUE), add = TRUE)
+        # a failed download shows nothing on the page, so say why first
+        if (!identical(st$state, "ok") || length(st$csv) == 0)
+          showNotification(paste(c("GGIR wrote no study report.", st$messages), collapse = " "), type = "error")
+        validate(need(identical(st$state, "ok") && length(st$csv) > 0,
+                      paste(c("GGIR wrote no study report.", st$messages), collapse = " ")))
+        zip::zipr(zipfile = file, files = unname(st$csv))
+      })
+
+    # A clicked row scopes the page to that recording; everything downstream
+    # reads selected_participant
+    observeEvent(input$pick, {
+      v <- input$pick %||% "all"
+      updateSelectInput(session, "selected_participant", selected = v)
+      focus_set(shared, v)
+    })
+
+    # Opening the tab takes up the recording picked on another tab, on either side
+    on_tab_shown(shared, "activity", function() {
+      id <- focus_get(shared, among = intersect(names(results()), names(shared$files)))
+      if (!is.null(id)) updateSelectInput(session, "selected_participant", selected = id)
+      rid <- focus_get(shared, among = raw_ids())
+      if (!is.null(rid)) local_raw$sel <- rid
+    })
+
+    observeEvent(input$toggle_advanced, {
+      shinyjs::toggle("settings_panel")
+    })
+
+    # Fields that only apply while another box is ticked are disabled, not hidden
+    observeEvent(input$use_mets, {
+      on <- isTRUE(input$use_mets)
+      shinyjs::toggleState("mets_algo", condition = on)
+      shinyjs::html("note_mets_algo", if (on) "fills the Avg METs column" else "only while METs is on")
+    }, ignoreInit = FALSE)
+
+    observeEvent(input$use_ee, {
+      on <- isTRUE(input$use_ee)
+      shinyjs::toggleState("ee_algo", condition = on)
+      shinyjs::html("note_ee_algo", if (on) "fills the kcals columns" else "only while kcals is on")
+    }, ignoreInit = FALSE)
+
+    observeEvent(input$use_bouts, {
+      on <- isTRUE(input$use_bouts)
+      shinyjs::toggleState("bout_min", condition = on)
+      shinyjs::toggleState("bout_rule", condition = on)
+      shinyjs::html("note_bout_min", if (on) "a shorter run is not a bout" else "only while bouts are on")
+      shinyjs::html("note_bout_rule", if (on) "how much interruption is allowed"
+                    else "only while bouts are on")
+    }, ignoreInit = FALSE)
+
+    sel_fid <- reactive({
+      s <- input$selected_participant %||% "all"
+      if (identical(s, "all")) NULL else s
+    })
+
+    # Result frames shared by the table and the exports
+    summary_df <- reactive({
+      res <- results()
+      if (length(res) == 0) return(NULL)
+      tryCatch(act_summary_df(res, shared, input$bout_min), error = function(e) {
+        message("act_summary_df failed: ", conditionMessage(e)); NULL
+      })
+    })
+
+    daily_df <- reactive({
+      res <- results()
+      if (length(res) == 0) return(NULL)
+      tryCatch(act_daily_df(res, shared, input$bout_min, sched_c()), error = function(e) {
+        message("act_daily_df failed: ", conditionMessage(e)); NULL
+      })
+    })
+    # The schedule views follow the schedule on screen; NULL until there is a
+    # run to slice and a schedule to slice by
+    window_daily_df <- reactive({
+      res <- results(); s <- sched_c()
+      if (length(res) == 0 || !sched_active(s)) return(NULL)
+      tryCatch(act_window_daily_df(res, shared, s, input$bout_min), error = function(e) {
+        message("act_window_daily_df failed: ", conditionMessage(e)); NULL
+      })
+    })
+    daytype_df <- reactive(act_daytype_df(daily_df()))
+
+    # The rule bar reads the run's parameters, not the live boxes
+    run_params <- reactive({
+      r <- results()
+      if (length(r) == 0) NULL else r[[1]]$parameters
+    })
+    settings_moved <- reactive({
+      settings_moved_from(run_params(), input, list(
+        cut_points = "cut_points", data_type = "data_type", mets_algo = "mets_algo",
+        ee_algo = "ee_algo", exclude_nonwear = "exclude_nonwear"))
+    })
+
+    output$rule <- renderUI({
+      if (identical(view(), "raw")) {
+        if (length(raw_ids()) == 0) return(raw_switch())
+        tus <- timeuse()
+        # Before the run the bar shows the defaults so the cut points can be set first
+        if (length(tus) == 0) return(tagList(raw_switch(),
+          acr_rule(NULL, NULL, ns, ran = FALSE, sched_text = sched_text(sched_r()))))
+        return(tagList(raw_switch(),
+          acr_rule(tus[[1]], active_window(), ns, sched_text = sched_text(raw_run_sched()),
+                   stale = raw_sched_moved() || raw_settings_moved())))
+      }
+      # The Counts/Raw switch must be drawn in both branches, or Counts is a one-way door
+      p <- run_params()
+      cut <- ac_cut_label(p$cut_points %||% input$cut_points)
+      counts <- if (identical(p$data_type %||% input$data_type %||% "axis1", "vm")) "vector magnitude" else "axis 1"
+      epochs <- unique(vapply(shared$files, function(f) as.numeric(f$epoch_length %||% NA), numeric(1)))
+      epochs <- epochs[!is.na(epochs)]
+      epoch_txt <- if (length(epochs) == 1) paste0(fmt_int(epochs), " s epochs")
+                   else if (length(epochs) > 1) "mixed epochs" else NULL
+
+
+      wt <- shared$results$wear_time
+      excluded <- if (is.null(p)) isTRUE(input$exclude_nonwear) else isTRUE(p$exclude_nonwear)
+      days_txt <- if (!excluded) {
+        tags$span("wear time filter ", tags$b("off"))
+      } else if (length(wt) == 0) {
+        tags$span(tags$b("wear time not run"), " · no day is excluded")
+      } else {
+        total <- sum(vapply(wt, function(w) as.numeric(w$total_days %||% 0), numeric(1)))
+        valid <- sum(vapply(wt, function(w) as.numeric(w$valid_days %||% 0), numeric(1)))
+        tags$span("wear time filter on · ", tags$b(fmt_int(valid)), " of ", fmt_int(total), " valid")
+      }
+
+      tagList(raw_switch(), tags$div(
+        class = "ac-panel ac-rule",
+        tags$span(class = "ac-rule-k", "Cut points"),
+        tags$span(class = "ac-rule-v",
+          tags$b(cut), " · ", counts,
+          if (!is.null(epoch_txt)) paste0(" · ", epoch_txt) else NULL),
+        tags$span(class = "ac-rule-sep", `aria-hidden` = "true"),
+        tags$span(class = "ac-rule-k", "Days"),
+        tags$span(class = "ac-rule-v", days_txt),
+        tags$span(class = "ac-rule-sep", `aria-hidden` = "true"),
+        tags$span(class = "ac-rule-k", "Schedule"),
+        tags$span(class = "ac-rule-v", sched_text(sched_c())),
+        if (settings_moved()) stale_note("ac") else NULL,
+        tags$span(class = "ac-rule-actions",
+          actionButton(ns("c_sched_open"), "Schedule", class = "ac-btn ac-btn--secondary"),
+          actionButton(ns("toggle_advanced"), "Change", class = "ac-btn ac-btn--secondary"),
+          tags$span(class = "ac-export-wrap",
+            tags$span(class = paste("ac-btn ac-btn--secondary ac-export-btn",
+                                    if (length(results()) == 0) "is-quiet" else ""),
+                      tabindex = "0", role = "button", `aria-haspopup` = "menu", `aria-expanded` = "false",
+                      "Export", tags$span(class = "ac-car", `aria-hidden` = "true", HTML("&#9660;"))),
+            ac_export_menu(ns, length(results()) > 0, sched_active(sched_c()))),
+          actionButton(ns("run_btn"),
+                       if (length(results()) == 0) "Run analysis" else "Re-run",
+                       class = paste(run_button_class("ac", length(results()) > 0, settings_moved()),
+                                     "ac-run")))
+      ))
+    })
+
+    # Figures: the mean of each recording's own daily mean, so a recording
+    # with three days and one with eight weigh the same
+    output$figures <- renderUI({
+      if (identical(view(), "raw")) {
+        tus <- timeuse()
+        if (length(tus) == 0) return(NULL)
+        return(acr_figures(tus, active_window()))
+      }
+      res <- results()
+      if (length(res) == 0) return(NULL)
+      sel <- sel_fid()
+      scope <- if (is.null(sel)) res else res[names(res) == sel]
+      if (length(scope) == 0) scope <- res
+
+      daily_mean <- function(pick) {
+        v <- vapply(scope, function(r) {
+          d <- r$daily
+          if (is.null(d)) return(NA_real_)
+          mean(pick(d), na.rm = TRUE)
+        }, numeric(1))
+        v <- v[is.finite(v)]
+        if (length(v) == 0) NA_real_ else mean(v)
+      }
+      col <- function(d, nm) if (nm %in% names(d)) d[[nm]] else rep(0, nrow(d))
+
+      sed <- daily_mean(function(d) col(d, "sedentary_hrs"))
+      light <- daily_mean(function(d) col(d, "light_hrs"))
+      mvpa <- daily_mean(function(d)
+        (col(d, "moderate_hrs") + col(d, "vigorous_hrs") + col(d, "very_vigorous_hrs")) * 60)
+
+      step_ids <- if (is.null(sel)) names(res) else sel
+      steps <- vapply(step_ids, function(fid) {
         f <- shared$files[[fid]]
-        if (!is.null(f) && "steps" %in% names(f$data)) {
-          total_steps <- sum(f$data$steps, na.rm = TRUE)
-          n_days <- if ("timestamp" %in% names(f$data)) length(unique(as.Date(f$data$timestamp))) else 1
-          avg <- total_steps / n_days
-          formatC(round(avg), format = "d", big.mark = ",")
-        } else {
-          "--"
-        }
-      } else {
-        "--"
-      }
-    })
+        if (is.null(f) || !("steps" %in% names(f$data))) return(NA_real_)
+        nd <- if ("timestamp" %in% names(f$data)) length(unique(as.Date(f$data$timestamp))) else 1
+        if (nd == 0) return(NA_real_)
+        sum(f$data$steps, na.rm = TRUE) / nd
+      }, numeric(1))
+      steps <- steps[is.finite(steps)]
+      steps <- if (length(steps) == 0) NA_real_ else mean(steps)
 
-    # Wear time status indicator
-    output$wear_time_status <- renderUI({
-      wt_available <- length(shared$results$wear_time) > 0
-      if (wt_available) {
-        status_badge("Wear Time Ready", "success")
-      } else {
-        status_badge("No Wear Time", "caution")
-      }
-    })
+      dash <- "–"
+      n1 <- function(x, digits = 1) if (is.na(x)) dash else fmt_dec(x, digits)
+      n0 <- function(x) if (is.na(x)) dash else fmt_int(round(x))
 
-    # Chart status badge
-    output$chart_status_badge <- renderUI({
-      res <- results()
-      if (length(res) > 0) {
-        algo <- res[[1]]$parameters$cut_points %||% "freedson"
-        tags$span(class = "status-indicator status-info",
-          icon("check"), paste("Algorithm:", algo)
-        )
-      } else {
-        NULL
-      }
-    })
-
-    # Files table (compact)
-    output$files_table <- DT::renderDataTable({
-      if (shared$file_count == 0) {
-        return(DT::datatable(
-          data.frame(Message = "No files loaded. Go to Data Upload tab."),
-          rownames = FALSE, options = list(dom = 't')
-        ))
-      }
-
-      res <- results()
-      wt_res <- shared$results$wear_time
-
-      df <- data.frame(
-        Subject = sapply(shared$files, function(f) f$subject_info$id %||% "N/A"),
-        Serial = sapply(shared$files, function(f) f$device_info$serial_number %||% "N/A"),
-        Validated = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(wt_res)) "Yes" else "No"
-        }),
-        Status = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res)) "Scored" else "Pending"
-        }),
-        Sedentary = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res)) paste0(round(res[[fid]]$sedentary_min / 60, 1), "h") else "-"
-        }),
-        Light = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res)) paste0(round(res[[fid]]$light_min / 60, 1), "h") else "-"
-        }),
-        MVPA = sapply(names(shared$files), function(fid) {
-          if (fid %in% names(res)) paste0(round(res[[fid]]$mvpa_min), "m") else "-"
-        }),
-        stringsAsFactors = FALSE
+      tags$div(
+        class = "ac-panel ac-figs",
+        ac_fig(if (is.null(sel)) fmt_int(length(res)) else scope[[1]]$subject_id %||% "1",
+               NULL, if (is.null(sel)) "Recordings" else "Recording"),
+        ac_rule_div(),
+        ac_fig(n1(sed), "h", "Sedentary a day"),
+        ac_rule_div(),
+        ac_fig(n1(light), "h", "Light a day"),
+        ac_rule_div(),
+        ac_fig(n0(mvpa), "min", "MVPA a day"),
+        ac_rule_div(),
+        ac_fig(n0(steps), NULL, "Steps a day")
       )
+    })
 
-      DT::datatable(
-        df,
-        selection = "multiple",
-        options = list(pageLength = 10, scrollX = TRUE, dom = 'tip'),
-        rownames = FALSE
-      ) %>%
-        DT::formatStyle("Status",
-          color = DT::styleEqual(c("Pending", "Scored"), c("#f59e0b", "#10b981")),
-          fontWeight = "bold")
+    # Plot panel
+    output$plot_panel <- renderUI({
+      if (identical(view(), "raw")) {
+        rs <- raw_list(); ids <- raw_ids(); tus <- timeuse()
+        if (length(ids) == 0) return(NULL)
+        if (length(tus) == 0) return(acr_not_run(rs, ids, local_raw$sel, ns))
+        st <- tus[[raw_current()]]$status$state
+        if (!identical(st, "ok")) return(acr_no_part5(tus[[raw_current()]], rs, ids, local_raw$sel, ns))
+        return(acr_report_panel(rs, ids, tus, reports(), local_raw$sel, ns))
+      }
+      res <- results()
+      plots <- ac_plots()
+      keys <- vapply(plots, function(p) p$key, character(1))
+      pick <- input$plot_pick %||% "intensity"
+      if (!(pick %in% keys)) pick <- "intensity"
+      p <- plots[[match(pick, keys)]]
+
+      if (length(res) == 0) {
+        return(tags$div(class = "ac-panel ac-plotpanel",
+          tags$div(class = "ac-empty",
+            tags$div(class = "ac-empty-t", "No activity results"),
+            tags$div(class = "ac-empty-m",
+                     "Run the analysis to classify every epoch and fill the table below."))))
+      }
+
+      sel <- sel_fid()
+      label_of <- function(fid) res[[fid]]$subject_id %||% res[[fid]]$name %||% fid
+
+      # The participant button and a clicked row set the same value
+      who_label <- if (is.null(sel)) {
+        paste("All", fmt_int(length(res)), if (length(res) == 1) "recording" else "recordings")
+      } else label_of(sel)
+
+      # A per_file plot with everybody chosen falls back to the first recording and says so
+      scope <- if (isTRUE(p$per_file) && is.null(sel)) {
+        paste0("showing ", label_of(names(res)[1]), " · this plot draws one recording at a time")
+      } else ""
+
+      # What each plot in the list would show for the current choice
+      covers <- function(q) {
+        if (!is.null(sel)) return(label_of(sel))
+        if (isTRUE(q$per_file)) return(label_of(names(res)[1]))
+        "all recordings"
+      }
+
+      tags$div(class = "ac-panel ac-plotpanel",
+        tags$div(class = "ac-plotbar",
+          tags$span(class = "ac-pick", tabindex = "0", role = "button",
+                    `aria-haspopup` = "menu", `aria-expanded` = "false",
+                    p$label, tags$span(class = "ac-car", `aria-hidden` = "true", HTML("&#9660;"))),
+          tags$div(class = "ac-menu", role = "menu", style = "display: none;",
+            lapply(plots, function(q)
+              tags$div(class = paste("ac-mi", if (identical(q$key, p$key)) "is-on" else ""),
+                       role = "menuitemradio", tabindex = "-1",
+                       `aria-checked` = tolower(as.character(identical(q$key, p$key))),
+                       `data-plot` = q$key,
+                       tags$span(class = "ac-tick", `aria-hidden` = "true",
+                                 if (identical(q$key, p$key)) HTML("&#10003;") else ""),
+                       q$label,
+                       tags$span(class = "ac-sc", covers(q))))),
+
+          tags$span(class = "ac-who-wrap",
+          tags$span(class = "ac-who", tabindex = "0", role = "button",
+                    `aria-haspopup` = "menu", `aria-expanded` = "false",
+                    who_label, tags$span(class = "ac-car", `aria-hidden` = "true", HTML("&#9660;"))),
+          tags$div(class = "ac-whomenu", role = "menu", style = "display: none;",
+            tags$div(class = paste("ac-wi", if (is.null(sel)) "is-on" else ""), `data-who` = "all",
+                     role = "menuitemradio", tabindex = "-1",
+                     `aria-checked` = tolower(as.character(is.null(sel))),
+                     tags$span(class = "ac-tick", `aria-hidden` = "true",
+                               if (is.null(sel)) HTML("&#10003;") else ""),
+                     "All recordings",
+                     if (isTRUE(p$per_file))
+                       tags$span(class = "ac-sc", "falls back to the first") else NULL),
+            tags$div(class = "ac-wi-rule", `aria-hidden` = "true"),
+            lapply(names(res), function(fid)
+              tags$div(class = paste("ac-wi", if (identical(fid, sel)) "is-on" else ""), `data-who` = fid,
+                       role = "menuitemradio", tabindex = "-1",
+                       `aria-checked` = tolower(as.character(identical(fid, sel))),
+                       tags$span(class = "ac-tick", `aria-hidden` = "true",
+                                 if (identical(fid, sel)) HTML("&#10003;") else ""),
+                       label_of(fid),
+                       tags$span(class = "ac-sc",
+                                 paste(fmt_int(res[[fid]]$n_days %||% 0), "days")))))),
+
+          if (nzchar(scope)) tags$span(class = "ac-scope", scope) else NULL),
+        tags$div(class = "ac-plotwrap", plotOutput(ns(p$out), height = "367px")))
+    })
+
+    # Table panel
+    output$table_panel <- renderUI({
+      if (identical(view(), "raw")) {
+        tus <- timeuse()
+        if (length(tus) == 0) return(NULL)
+        return(acr_table_panel(reports(), raw_ids(), local_raw$sel, local_raw$tab,
+                               active_window(), ns, local_raw$sort, local_raw$dir,
+                               sched = raw_run_sched()))
+      }
+      res <- results()
+      if (length(res) == 0) return(NULL)
+      sdf <- summary_df()
+      if (is.null(sdf) || nrow(sdf) == 0) return(NULL)
+      ddf <- daily_df()
+
+      # Four views of the same run: Summary, Daily and the schedule's two
+      tv <- table_view()
+      if (!tv %in% c("summary", "daily", "window", "daytype")) tv <- "summary"
+      s_run <- sched_c()
+      # By window shows the per-day rows split into windows; the per-window
+      # means are in the Windows export
+      shown <- switch(tv, summary = sdf, daily = ddf, window = act_window_view(window_daily_df()),
+                      daytype = daytype_df())
+      sub <- if (is.null(shown) || nrow(shown) == 0) NULL else
+        paste0(fmt_int(nrow(shown)),
+               switch(tv,
+                 summary = if (nrow(shown) == 1) " recording · " else " recordings · ",
+                 daily = if (nrow(shown) == 1) " day · " else " days · ",
+                 window = if (nrow(shown) == 1) " window day · " else " window days · ",
+                 if (nrow(shown) == 1) " row · " else " rows · "),
+               fmt_int(ncol(shown)), " columns")
+      body <- switch(tv,
+        summary = ac_summary_grid(sdf, ddf, names(res), sel_fid()),
+        daily = ac_plain_grid(ddf, pin = 2L),
+        window = if (!sched_active(s_run)) ac_sched_empty()
+                 else ac_plain_grid(shown, pin = 2L) %||% ac_sched_empty(rows = TRUE),
+        daytype = if (!sched_active(s_run)) ac_sched_empty()
+                  else ac_plain_grid(shown, pin = 2L) %||% ac_sched_empty(rows = TRUE))
+
+      tags$div(class = "ac-panel ac-tablepanel",
+        tags$div(class = "ac-table-head",
+          tags$span(class = "ac-table-title",
+            tags$span(class = "ac-view",
+              selectInput(ns("table_view"), NULL, width = "100%", selectize = FALSE,
+                          choices = c("Summary" = "summary", "Daily" = "daily",
+                                      "By window" = "window", "By day type" = "daytype"),
+                          selected = tv)),
+            if (!is.null(sub)) tags$span(class = "ac-table-sub", sub)),
+          # the Summary is the view with column groups
+          if (identical(tv, "summary")) {
+            g <- ac_summary_groups(sdf)
+            ac_goto(vapply(g, function(x) x[[1]], ""), vapply(g, function(x) length(x[[2]]), integer(1)))
+          },
+          if (identical(tv, "summary")) tags$span(class = "ac-key",
+            tags$span("Each day"),
+            tags$span(class = "ac-ramp",
+              tags$b(class = "s0"), tags$b(class = "s1"), tags$b(class = "s2"),
+              tags$b(class = "s3"), tags$b(class = "s4")),
+            tags$span("0 to 450+ min MVPA"),
+            tags$span(class = "ac-key-out",
+                      tags$span(class = "ac-cell is-out"), "no valid wear"))),
+        body)
     })
 
     # Helper: Format ETA
@@ -681,15 +1501,7 @@ mod_activity_server <- function(id, shared) {
           }
 
           # Determine algorithm to use
-          selected_algo <- if (input$auto_cutpoints) {
-            age <- input$participant_age %||% f$subject_info$age %||% 35
-            if (age < 5) "pate_preschool"
-            else if (age < 18) "evenson"
-            else if (age >= 65) "copeland_older"
-            else "freedson"
-          } else {
-            input$cut_points
-          }
+          selected_algo <- input$cut_points
 
           # Apply mask to get valid data
           valid_data <- activity_data[analysis_mask]
@@ -698,9 +1510,7 @@ mod_activity_server <- function(id, shared) {
           intensity <- tryCatch({
             canhrActi::apply_cutpoints(
               data = valid_data,
-              algorithm = selected_algo,
-              epoch_seconds = epoch_length,
-              age = input$participant_age %||% f$subject_info$age
+              algorithm = selected_algo
             )
           }, error = function(e) {
             showNotification(paste0("Could not score activity for ", f$name, " - check data format"), type = "error")
@@ -710,6 +1520,7 @@ mod_activity_server <- function(id, shared) {
           algo_used <- selected_algo
 
           if (is.null(intensity)) next
+          intensity <- act_light_lifestyle(intensity)
 
           # MVPA bouts
           bouts <- NULL
@@ -721,7 +1532,6 @@ mod_activity_server <- function(id, shared) {
                 use_80_percent_rule = (input$bout_rule == "80pct")
               )
             }, error = function(e) {
-              showNotification(paste("MVPA bout detection failed for", f$name, ":", e$message), type = "warning", duration = 5)
               NULL
             })
           }
@@ -742,7 +1552,6 @@ mod_activity_server <- function(id, shared) {
                 epoch_length = epoch_length
               )
             }, error = function(e) {
-              showNotification(paste("Sedentary fragmentation failed for", f$name, ":", e$message), type = "warning", duration = 5)
               NULL
             })
           }
@@ -763,7 +1572,6 @@ mod_activity_server <- function(id, shared) {
                 verbose = FALSE
               )
             }, error = function(e) {
-              showNotification(paste("METs calculation failed for", f$name, ":", e$message), type = "warning", duration = 5)
               NULL
             })
 
@@ -773,8 +1581,9 @@ mod_activity_server <- function(id, shared) {
             }
           }
 
-          # Energy expenditure
+          # Energy expenditure; the per-epoch values let the tables keep worn epochs only
           total_ee <- NA
+          kcal_epochs <- NULL
           if (input$use_ee) {
             ee <- tryCatch({
               mass <- if (!is.null(f$subject_info$body_mass) && !is.na(f$subject_info$body_mass)) {
@@ -785,10 +1594,12 @@ mod_activity_server <- function(id, shared) {
                 algorithm = input$ee_algo, epoch_length = f$epoch_length
               )
             }, error = function(e) {
-              showNotification(paste("Energy expenditure calculation failed for", f$name, ":", e$message), type = "warning", duration = 5)
               NULL
             })
-            if (!is.null(ee)) total_ee <- ee$total_kcal
+            if (!is.null(ee)) {
+              total_ee <- ee$total_kcal
+              kcal_epochs <- ee$kcal_per_epoch
+            }
           }
 
           # Basic epoch counts (for reference)
@@ -869,6 +1680,7 @@ mod_activity_server <- function(id, shared) {
             mets = mets,
             avg_mets = avg_mets,
             total_ee = total_ee,
+            kcal_epochs = kcal_epochs,
             hourly = hourly,
             daily = daily,
             fragmentation = fragmentation,
@@ -884,8 +1696,6 @@ mod_activity_server <- function(id, shared) {
             parameters = list(
               cut_points = algo_used,
               data_type = input$data_type,
-              auto_cutpoints = input$auto_cutpoints,
-              participant_age = input$participant_age,
               mets_algo = input$mets_algo,
               ee_algo = input$ee_algo,
               exclude_nonwear = input$exclude_nonwear
@@ -897,6 +1707,7 @@ mod_activity_server <- function(id, shared) {
       })
 
       results(all_results)
+      run_stamp(Sys.time())
       shared$results$activity <- all_results
 
       # Store sedentary analysis parameters and detect bouts for use by Sedentary Fragmentation tab
@@ -997,197 +1808,45 @@ mod_activity_server <- function(id, shared) {
         bouts = sed_bouts_all,
         timestamp = Sys.time()
       )
-
-      showNotification(paste(length(all_results), "files scored"), type = "message")
     })
 
     # Clear results
     observeEvent(input$clear_results, {
       results(list())
+      run_stamp(NULL)
       shared$results$activity <- NULL
       shared$results$sedentary_bouts <- NULL
-      showNotification("Activity results cleared.", type = "message")
-    })
-
-    # Summary table
-    output$summary_table <- DT::renderDataTable({
-      res <- results()
-      if (is.null(res) || length(res) == 0) {
-        return(DT::datatable(data.frame(Message = "Run Analysis to see results"), rownames = FALSE))
-      }
-
-      df <- data.frame(
-        Subject = sapply(res, function(r) r$subject_id),
-        Days = sapply(res, function(r) r$n_days),
-        `Sedentary (h)` = sapply(res, function(r) round(r$sedentary_min / 60, 1)),
-        `Light (h)` = sapply(res, function(r) round(r$light_min / 60, 1)),
-        `Moderate (min)` = sapply(res, function(r) round(r$moderate_min)),
-        `Vigorous (min)` = sapply(res, function(r) round(r$vigorous_min)),
-        `MVPA (min)` = sapply(res, function(r) round(r$mvpa_min)),
-        `Avg METs` = sapply(res, function(r) if (!is.na(r$avg_mets)) round(r$avg_mets, 2) else NA),
-        `MVPA Bouts` = sapply(res, function(r) r$n_bouts),
-        check.names = FALSE,
-        stringsAsFactors = FALSE
-      )
-
-      DT::datatable(df, options = list(pageLength = 15, scrollX = TRUE, dom = 'tip'), rownames = FALSE)
-    })
-
-    # Daily table
-    output$daily_table <- DT::renderDataTable({
-      res <- results()
-      if (is.null(res) || length(res) == 0) {
-        return(DT::datatable(data.frame(Message = "Run Analysis to see results"), rownames = FALSE))
-      }
-
-      all_daily <- list()
-      for (r in res) {
-        if (!is.null(r$daily) && nrow(r$daily) > 0) {
-          d <- r$daily
-          d$Subject <- r$subject_id
-          all_daily[[length(all_daily) + 1]] <- d
-        }
-      }
-
-      if (length(all_daily) == 0) {
-        return(DT::datatable(data.frame(Message = "No daily data available"), rownames = FALSE))
-      }
-
-      df <- do.call(rbind, all_daily)
-      df$date <- as.character(df$date)
-      df$weekday <- weekdays(as.Date(df$date))
-
-      DT::datatable(
-        df[, c("Subject", "date", "weekday", "analyzed_hours", "sedentary", "light", "moderate", "vigorous")],
-        options = list(pageLength = 10, scrollX = TRUE, dom = 'tip'),
-        rownames = FALSE,
-        colnames = c("Subject", "Date", "Day", "Hours", "Sedentary", "Light", "Moderate", "Vigorous")
-      )
     })
 
     # HERO CHART: Intensity plot (larger, more prominent)
     output$intensity_plot <- renderPlot({
+      gg_app(isTRUE(shared$dark), {
       res <- results()
       sel <- input$selected_participant
-
-      # User-friendly empty state messaging
-      validate(
-        need(length(res) > 0,
-             "No data yet")
-      )
-
-      # Filter results based on selection
-      if (!is.null(sel) && sel != "all" && sel %in% names(res)) {
-        res <- list(res[[sel]])
-      }
-
-      # Use daily data (source of truth) - sum hours across all days
-      total_sedentary <- 0
-      total_light <- 0
-      total_moderate <- 0
-      total_vigorous <- 0
-      total_very_vigorous <- 0
-      total_days <- 0
-
-      for (r in res) {
-        daily <- r$daily
-        if (!is.null(daily) && nrow(daily) > 0) {
-          total_days <- total_days + nrow(daily)
-          total_sedentary <- total_sedentary + sum(daily$sedentary_hrs, na.rm = TRUE)
-          total_light <- total_light + sum(daily$light_hrs, na.rm = TRUE)
-          total_moderate <- total_moderate + sum(daily$moderate_hrs, na.rm = TRUE)
-          total_vigorous <- total_vigorous + sum(daily$vigorous_hrs, na.rm = TRUE)
-          total_very_vigorous <- total_very_vigorous + sum(daily$very_vigorous_hrs, na.rm = TRUE)
-        }
-      }
-
-      validate(
-        need(total_days > 0,
-             "No valid data found")
-      )
-
-      total_hours <- total_sedentary + total_light + total_moderate + total_vigorous + total_very_vigorous
-
-      df <- data.frame(
-        intensity = factor(c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous"),
-          levels = c("Sedentary", "Light", "Moderate", "Vigorous", "Very Vigorous")),
-        hours = c(total_sedentary, total_light, total_moderate, total_vigorous, total_very_vigorous),
-        pct = c(total_sedentary, total_light, total_moderate, total_vigorous, total_very_vigorous) / total_hours * 100
-      )
-
-      colors <- c("Sedentary" = "#94a3b8", "Light" = "#3b82f6", "Moderate" = "#f59e0b",
-                  "Vigorous" = "#f97316", "Very Vigorous" = "#ef4444")
-
-      ggplot2::ggplot(df, ggplot2::aes(x = intensity, y = hours, fill = intensity)) +
-        ggplot2::geom_col(width = 0.7) +
-        ggplot2::geom_text(ggplot2::aes(label = sprintf("%.1fh\n(%.1f%%)", hours, pct)),
-          vjust = -0.3, size = 4, fontface = "bold", color = "#1e293b") +
-        ggplot2::scale_fill_manual(values = colors, guide = "none") +
-        ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0.15))) +
-        ggplot2::labs(x = NULL, y = "Total Hours") +
-        canhrActi::theme_canhrActi() +
-        ggplot2::theme(
-          plot.background = ggplot2::element_rect(fill = "white", color = NA),
-          panel.grid.major.x = ggplot2::element_blank(),
-          panel.grid.minor = ggplot2::element_blank(),
-          axis.text.x = ggplot2::element_text(size = 14, face = "bold", color = "#334155"),
-          axis.text.y = ggplot2::element_text(size = 13, color = "#64748b"),
-          axis.title.y = ggplot2::element_text(size = 14, color = "#64748b", margin = ggplot2::margin(r = 10))
-        )
-    })
+      validate(need(length(res) > 0, "No data yet"))
+      if (!is.null(sel) && sel != "all" && sel %in% names(res)) res <- list(res[[sel]])
+      
+      # Hours per intensity, summed over the daily frames
+      canhrActi::plot_intensity_hours(lapply(res, function(r) r$daily))
+      })
+    }, bg = "white")
 
     # Hourly pattern plot
     output$hourly_plot <- renderPlot({
+      gg_app(isTRUE(shared$dark), {
       res <- results()
       sel <- input$selected_participant
-
-      # User-friendly empty state messaging
-      validate(
-        need(length(res) > 0,
-             "No hourly data")
-      )
-
-      # Filter results based on selection
-      if (!is.null(sel) && sel != "all" && sel %in% names(res)) {
-        res <- list(res[[sel]])
-      }
-
-      all_hourly <- data.frame()
-      for (r in res) {
-        if (!is.null(r$hourly)) {
-          h <- r$hourly
-          h$subject <- r$subject_id
-          all_hourly <- rbind(all_hourly, h)
-        }
-      }
-
-      validate(
-        need(nrow(all_hourly) > 0,
-             "Could not compute hourly patterns")
-      )
-
-      avg_hourly <- aggregate(counts ~ hour, all_hourly, mean, na.rm = TRUE)
-
-      ggplot2::ggplot(avg_hourly, ggplot2::aes(x = hour, y = counts)) +
-        ggplot2::geom_area(fill = "#3b82f6", alpha = 0.2) +
-        ggplot2::geom_line(color = "#3b82f6", linewidth = 1.5) +
-        ggplot2::geom_point(color = "#3b82f6", size = 2) +
-        ggplot2::scale_x_continuous(breaks = seq(0, 23, 2),
-          labels = sprintf("%02d:00", seq(0, 23, 2))) +
-        ggplot2::labs(x = "Hour of Day", y = "Mean Activity Counts") +
-        canhrActi::theme_canhrActi() +
-        ggplot2::theme(
-          plot.background = ggplot2::element_rect(fill = "white", color = NA),
-          panel.grid.minor = ggplot2::element_blank(),
-          axis.text = ggplot2::element_text(size = 13, color = "#64748b"),
-          axis.title = ggplot2::element_text(size = 14, color = "#64748b")
-        )
-    })
+      validate(need(length(res) > 0, "No hourly data"))
+      if (!is.null(sel) && sel != "all" && sel %in% names(res)) res <- list(res[[sel]])
+      
+      canhrActi::plot_hourly_pattern(lapply(res, function(r) r$hourly))
+      })
+    }, bg = "white")
 
     # Export handlers
     output$export_summary <- downloadHandler(
       filename = function() {
-        paste0("canhrActi_Summary_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
+        export_name("Summary")
       },
       content = function(file) {
         res <- results()
@@ -1196,323 +1855,14 @@ mod_activity_server <- function(id, shared) {
           return()
         }
 
-        all_rows <- list()
-        for (r in res) {
-          f <- shared$files[[r$file_id]]
-          data <- f$data
-          weight <- f$subject_info$weight_lbs %||% 0
-          age <- f$subject_info$age %||% 0
-          gender <- f$subject_info$sex %||% ""
-          epoch_sec <- f$epoch_length
-
-          # Get algorithm
-          algo <- r$parameters$cut_points %||% "freedson"
-
-          # Get wear time mask AND daily validation
-          wear_result <- shared$results$wear_time[[r$file_id]]
-          wear_mask <- if (!is.null(wear_result) && !is.null(wear_result$wear)) {
-            wear_result$wear
-          } else {
-            rep(TRUE, nrow(data))  # Default: assume all worn if no wear time analysis
-          }
-
-          # Get daily validation info and apply DAY-LEVEL validation
-          if (!is.null(wear_result) && !is.null(wear_result$daily) && "timestamp" %in% names(data)) {
-            daily_valid <- wear_result$daily
-            data_dates <- as.Date(data$timestamp)
-            for (d in seq_len(nrow(daily_valid))) {
-              if (!daily_valid$valid[d]) {
-                day_date <- as.Date(daily_valid$date[d])
-                wear_mask[data_dates == day_date] <- FALSE
-              }
-            }
-          }
-
-          # Get intensity and apply wear time mask
-          intensity <- r$intensity_valid
-          # Ensure non-wear epochs are NA (may already be, but double-check)
-          if (length(intensity) == length(wear_mask)) {
-            intensity[!wear_mask] <- NA
-          }
-
-          n_epochs <- length(intensity)
-          # Count WEAR TIME epochs for percentage calculations
-          n_wear_epochs <- sum(!is.na(intensity))
-
-          # Axis data
-          axis1 <- data$axis1
-          axis2 <- if ("axis2" %in% names(data)) data$axis2 else rep(0, nrow(data))
-          axis3 <- if ("axis3" %in% names(data)) data$axis3 else rep(0, nrow(data))
-          steps <- if ("steps" %in% names(data)) data$steps else rep(0, nrow(data))
-          lux <- if ("lux" %in% names(data)) data$lux else rep(0, nrow(data))
-          vm <- sqrt(axis1^2 + axis2^2 + axis3^2)
-
-          # Calendar days and hours (only count hours WITH wear time)
-          n_days <- r$n_days
-          n_hours <- if ("timestamp" %in% names(data) && sum(wear_mask) > 0) {
-            length(unique(paste(as.Date(data$timestamp[wear_mask]), format(data$timestamp[wear_mask], "%H"))))
-          } else if (n_wear_epochs > 0) {
-            n_wear_epochs * epoch_sec / 3600
-          } else 0
-
-          # Intensity counts (NA values excluded automatically with na.rm = TRUE)
-          sedentary <- sum(intensity == "sedentary", na.rm = TRUE)
-          light <- sum(intensity == "light", na.rm = TRUE)
-          moderate <- sum(intensity == "moderate", na.rm = TRUE)
-          vigorous <- sum(intensity == "vigorous", na.rm = TRUE)
-          very_vigorous <- sum(intensity == "very_vigorous", na.rm = TRUE)
-          total_mvpa <- moderate + vigorous + very_vigorous
-
-          # Percentages based on WEAR TIME epochs only
-          # If no wear time, all percentages are 0
-          pct_sed <- if (n_wear_epochs > 0) 100 * sedentary / n_wear_epochs else 0
-          pct_light <- if (n_wear_epochs > 0) 100 * light / n_wear_epochs else 0
-          pct_mod <- if (n_wear_epochs > 0) 100 * moderate / n_wear_epochs else 0
-          pct_vig <- if (n_wear_epochs > 0) 100 * vigorous / n_wear_epochs else 0
-          pct_vvig <- if (n_wear_epochs > 0) 100 * very_vigorous / n_wear_epochs else 0
-          pct_mvpa <- if (n_wear_epochs > 0) 100 * total_mvpa / n_wear_epochs else 0
-
-          # Average MVPA per day
-          avg_mvpa_per_day <- if (n_days > 0) total_mvpa / n_days else 0
-
-          # Energy calculations
-          kcals <- 0
-          mets_avg <- 1
-          if (!is.null(r$mets) && length(r$mets) > 0) {
-            mets_avg <- mean(r$mets, na.rm = TRUE)
-            weight_kg <- weight * 0.453592
-            time_hours <- n_epochs * epoch_sec / 3600
-            kcals <- mets_avg * weight_kg * time_hours
-          } else if (!is.na(r$total_ee)) {
-            kcals <- r$total_ee
-          }
-          avg_kcals_per_day <- if (n_days > 0) kcals / n_days else 0
-          avg_kcals_per_hour <- if (n_hours > 0) kcals / n_hours else 0
-
-          # MVPA Bout detection and statistics
-          is_mvpa <- intensity %in% c("moderate", "vigorous", "very_vigorous")
-          mvpa_bouts <- rle(is_mvpa)
-          bout_starts <- cumsum(c(1, head(mvpa_bouts$lengths, -1)))
-          bout_ends <- cumsum(mvpa_bouts$lengths)
-
-          bout_info <- data.frame(
-            start = bout_starts[mvpa_bouts$values],
-            end = bout_ends[mvpa_bouts$values],
-            length = mvpa_bouts$lengths[mvpa_bouts$values]
-          )
-          bout_min_epochs <- as.numeric(input$bout_min %||% 10) * (60 / epoch_sec)
-          bout_info <- bout_info[bout_info$length >= bout_min_epochs, ]
-
-          n_mvpa_bouts <- nrow(bout_info)
-          total_mvpa_bout_time <- if (n_mvpa_bouts > 0) sum(bout_info$length) else 0
-          avg_mvpa_bout_time <- if (n_mvpa_bouts > 0) mean(bout_info$length) else 0
-          max_mvpa_bout_time <- if (n_mvpa_bouts > 0) max(bout_info$length) else 0
-          min_mvpa_bout_time <- if (n_mvpa_bouts > 0) min(bout_info$length) else 0
-
-          # Total counts in MVPA bouts
-          total_mvpa_bout_counts <- 0
-          if (n_mvpa_bouts > 0) {
-            for (b in seq_len(nrow(bout_info))) {
-              total_mvpa_bout_counts <- total_mvpa_bout_counts + sum(axis1[bout_info$start[b]:bout_info$end[b]], na.rm = TRUE)
-            }
-          }
-
-          # Sedentary bout detection and statistics
-          # Handle NA values from non-wear epochs
-          is_sed <- !is.na(intensity) & intensity == "sedentary"
-          sed_bouts_rle <- rle(is_sed)
-          sed_bout_starts <- cumsum(c(1, head(sed_bouts_rle$lengths, -1)))
-          sed_bout_ends <- cumsum(sed_bouts_rle$lengths)
-          sed_valid <- which(sed_bouts_rle$values == TRUE)
-          sed_bout_info <- if (length(sed_valid) > 0) {
-            data.frame(
-              start = sed_bout_starts[sed_valid],
-              end = sed_bout_ends[sed_valid],
-              length = sed_bouts_rle$lengths[sed_valid]
-            )
-          } else {
-            data.frame(start = integer(0), end = integer(0), length = integer(0))
-          }
-
-          n_sed_bouts <- nrow(sed_bout_info)
-          total_sed_bout_time <- if (n_sed_bouts > 0) sum(sed_bout_info$length) else 0
-          avg_sed_bout_length <- if (n_sed_bouts > 0) mean(sed_bout_info$length) else 0
-          max_sed_bout_length <- if (n_sed_bouts > 0) max(sed_bout_info$length) else 0
-          min_sed_bout_length <- if (n_sed_bouts > 0) min(sed_bout_info$length) else 0
-          daily_avg_sed_bouts <- if (n_days > 0) n_sed_bouts / n_days else 0
-
-          # Sedentary break detection and statistics
-          # Only count breaks during valid wear time
-          is_break <- !is.na(intensity) & intensity != "sedentary"
-          break_bouts_rle <- rle(is_break)
-          break_bout_starts <- cumsum(c(1, head(break_bouts_rle$lengths, -1)))
-          break_bout_ends <- cumsum(break_bouts_rle$lengths)
-          break_valid <- which(break_bouts_rle$values == TRUE)
-          break_bout_info <- if (length(break_valid) > 0) {
-            data.frame(
-              start = break_bout_starts[break_valid],
-              end = break_bout_ends[break_valid],
-              length = break_bouts_rle$lengths[break_valid]
-            )
-          } else {
-            data.frame(start = integer(0), end = integer(0), length = integer(0))
-          }
-
-          n_breaks <- nrow(break_bout_info)
-          total_break_time <- if (n_breaks > 0) sum(break_bout_info$length) else 0
-          avg_break_length <- if (n_breaks > 0) mean(break_bout_info$length) else 0
-          max_break_length <- if (n_breaks > 0) max(break_bout_info$length) else 0
-          min_break_length <- if (n_breaks > 0) min(break_bout_info$length) else 0
-          daily_avg_breaks <- if (n_days > 0) n_breaks / n_days else 0
-
-          # Only use WEAR TIME epochs for count statistics
-          if (n_wear_epochs > 0) {
-            # Filter data by wear mask
-            w_axis1 <- axis1[wear_mask]
-            w_axis2 <- axis2[wear_mask]
-            w_axis3 <- axis3[wear_mask]
-            w_steps <- steps[wear_mask]
-            w_lux <- lux[wear_mask]
-            w_vm <- vm[wear_mask]
-
-            # Axis statistics - wear time only
-            axis1_counts <- sum(w_axis1, na.rm = TRUE)
-            axis2_counts <- sum(w_axis2, na.rm = TRUE)
-            axis3_counts <- sum(w_axis3, na.rm = TRUE)
-
-            axis1_avg <- mean(w_axis1, na.rm = TRUE)
-            axis2_avg <- mean(w_axis2, na.rm = TRUE)
-            axis3_avg <- mean(w_axis3, na.rm = TRUE)
-
-            axis1_max <- max(w_axis1, na.rm = TRUE)
-            axis2_max <- max(w_axis2, na.rm = TRUE)
-            axis3_max <- max(w_axis3, na.rm = TRUE)
-
-            axis1_cpm <- axis1_avg * (60 / epoch_sec)
-            axis2_cpm <- axis2_avg * (60 / epoch_sec)
-            axis3_cpm <- axis3_avg * (60 / epoch_sec)
-
-            # Vector magnitude statistics - wear time only
-            vm_counts <- sum(w_vm, na.rm = TRUE)
-            vm_avg <- mean(w_vm, na.rm = TRUE)
-            vm_max <- max(w_vm, na.rm = TRUE)
-            vm_cpm <- vm_avg * (60 / epoch_sec)
-
-            # Steps statistics - wear time only
-            steps_counts <- sum(w_steps, na.rm = TRUE)
-            steps_avg <- mean(w_steps, na.rm = TRUE)
-            steps_max <- max(w_steps, na.rm = TRUE)
-            steps_per_min <- steps_avg * (60 / epoch_sec)
-
-            # Lux statistics - wear time only
-            lux_avg <- mean(w_lux, na.rm = TRUE)
-            lux_max <- max(w_lux, na.rm = TRUE)
-
-            # Time in minutes - wear time only
-            time_min <- n_wear_epochs * epoch_sec / 60
-          } else {
-            # No wear time - all metrics are 0
-            axis1_counts <- axis2_counts <- axis3_counts <- 0
-            axis1_avg <- axis2_avg <- axis3_avg <- 0
-            axis1_max <- axis2_max <- axis3_max <- 0
-            axis1_cpm <- axis2_cpm <- axis3_cpm <- 0
-            vm_counts <- vm_avg <- vm_max <- vm_cpm <- 0
-            steps_counts <- steps_avg <- steps_max <- steps_per_min <- 0
-            lux_avg <- lux_max <- 0
-            time_min <- 0
-          }
-
-          row_data <- data.frame(
-            Subject = r$subject_id,
-            Filename = r$name,
-            Epoch = epoch_sec,
-            `Weight (lbs)` = weight,
-            Age = age,
-            Gender = gender,
-            kcals = round(kcals, 3),
-            `Average kcals per day` = round(avg_kcals_per_day, 3),
-            `Average kcals per hour` = round(avg_kcals_per_hour, 3),
-            METs = round(mets_avg, 3),
-            # MVPA Bout statistics
-            `MVPA Bouts` = n_mvpa_bouts,
-            `Total Time in MVPA Bouts` = total_mvpa_bout_time,
-            `Avg Time per MVPA Bout` = round(avg_mvpa_bout_time, 1),
-            `Max Time per MVPA Bout` = max_mvpa_bout_time,
-            `Min Time per MVPA Bout` = min_mvpa_bout_time,
-            `Total Counts in MVPA Bouts` = total_mvpa_bout_counts,
-            # Sedentary Bout statistics
-            `Total Sedentary Bouts` = n_sed_bouts,
-            `Total Time in Sedentary Bouts` = total_sed_bout_time,
-            `Average Length of Sedentary Bouts` = round(avg_sed_bout_length, 1),
-            `Maximum Length of Sedentary Bouts` = max_sed_bout_length,
-            `Minimum Length of Sedentary Bouts` = min_sed_bout_length,
-            `Daily Average of Sedentary Bouts` = round(daily_avg_sed_bouts, 1),
-            # Sedentary Break statistics
-            `Total Sedentary Breaks` = n_breaks,
-            `Total Time in Sedentary Breaks` = total_break_time,
-            `Average length of Sedentary Breaks` = round(avg_break_length, 1),
-            `Max Length of Sedentary Breaks` = max_break_length,
-            `Minimum Length of Sedentary Breaks` = min_break_length,
-            `Daily Average of Sedentary Breaks` = round(daily_avg_breaks, 1),
-            # Intensity counts
-            Sedentary = sedentary,
-            Light = light,
-            Moderate = moderate,
-            Vigorous = vigorous,
-            `Very Vigorous` = very_vigorous,
-            # Percentages
-            `% in Sedentary` = sprintf("%.2f%%", pct_sed),
-            `% in Light` = sprintf("%.2f%%", pct_light),
-            `% in Moderate` = sprintf("%.2f%%", pct_mod),
-            `% in Vigorous` = sprintf("%.2f%%", pct_vig),
-            `% in Very Vigorous` = sprintf("%.2f%%", pct_vvig),
-            `Total MVPA` = total_mvpa,
-            `% in MVPA` = sprintf("%.2f%%", pct_mvpa),
-            `Average MVPA Per day` = round(avg_mvpa_per_day, 1),
-            # Axis counts
-            `Axis 1 Counts` = axis1_counts,
-            `Axis 2 Counts` = axis2_counts,
-            `Axis 3 Counts` = axis3_counts,
-            `Axis 1 Average Counts` = round(axis1_avg, 1),
-            `Axis 2 Average Counts` = round(axis2_avg, 1),
-            `Axis 3 Average Counts` = round(axis3_avg, 1),
-            `Axis 1 Max Counts` = axis1_max,
-            `Axis 2 Max Counts` = axis2_max,
-            `Axis 3 Max Counts` = axis3_max,
-            `Axis 1 CPM` = round(axis1_cpm, 1),
-            `Axis 2 CPM` = round(axis2_cpm, 1),
-            `Axis 3 CPM` = round(axis3_cpm, 1),
-            # Vector Magnitude
-            `Vector Magnitude Counts` = round(vm_counts, 1),
-            `Vector Magnitude Average Counts` = round(vm_avg, 1),
-            `Vector Magnitude Max Counts` = round(vm_max, 1),
-            `Vector Magnitude CPM` = round(vm_cpm, 1),
-            # Steps
-            `Steps Counts` = steps_counts,
-            `Steps Average Counts` = round(steps_avg, 1),
-            `Steps Max Counts` = steps_max,
-            `Steps Per Minute` = round(steps_per_min, 1),
-            # Lux
-            `Lux Average Counts` = round(lux_avg, 1),
-            `Lux Max Counts` = lux_max,
-            # Metadata (using wear time epochs)
-            `Number of Epochs` = n_wear_epochs,
-            Time = round(time_min),
-            `Calendar Days` = n_days,
-            check.names = FALSE,
-            stringsAsFactors = FALSE
-          )
-          all_rows[[length(all_rows) + 1]] <- row_data
-        }
-
-        df <- do.call(rbind, all_rows)
+        df <- act_summary_df(res, shared, input$bout_min)
         write.csv(df, file, row.names = FALSE, na = "", quote = TRUE)
       }
     )
 
     output$export_daily <- downloadHandler(
       filename = function() {
-        paste0("canhrActi_Daily_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
+        export_name("Daily")
       },
       content = function(file) {
         res <- results()
@@ -1521,415 +1871,43 @@ mod_activity_server <- function(id, shared) {
           return()
         }
 
-        all_rows <- list()
-        for (r in res) {
-          f <- shared$files[[r$file_id]]
-          data <- f$data
-          epoch_sec <- f$epoch_length
-
-          # Subject info
-          weight <- f$subject_info$weight_lbs %||% 0
-          age <- f$subject_info$age %||% 0
-          gender <- f$subject_info$sex %||% ""
-
-          # Get algorithm name
-          algo <- r$parameters$cut_points %||% "freedson"
-
-          # Get wear time mask AND daily validation
-          wear_result <- shared$results$wear_time[[r$file_id]]
-          wear_mask <- if (!is.null(wear_result) && !is.null(wear_result$wear)) {
-            wear_result$wear
-          } else {
-            rep(TRUE, nrow(data))  # Default: assume all worn if no wear time analysis
-          }
-
-          # Get daily validation info (which days meet minimum wear time criteria)
-          daily_valid <- NULL
-          if (!is.null(wear_result) && !is.null(wear_result$daily)) {
-            daily_valid <- wear_result$daily
-          }
-
-          if ("timestamp" %in% names(data)) {
-            data$date <- as.Date(data$timestamp)
-
-            # Apply day-level validation - exclude invalid days entirely
-            if (!is.null(daily_valid)) {
-              for (d in seq_len(nrow(daily_valid))) {
-                if (!daily_valid$valid[d]) {
-                  # This day is INVALID - exclude all epochs
-                  day_date <- as.Date(daily_valid$date[d])
-                  wear_mask[data$date == day_date] <- FALSE
-                }
-              }
-            }
-
-            # Pre-calculate for all data
-            axis1 <- data$axis1
-            axis2 <- if ("axis2" %in% names(data)) data$axis2 else rep(0, nrow(data))
-            axis3 <- if ("axis3" %in% names(data)) data$axis3 else rep(0, nrow(data))
-            steps <- if ("steps" %in% names(data)) data$steps else rep(0, nrow(data))
-            lux <- if ("lux" %in% names(data)) data$lux else rep(0, nrow(data))
-
-            vm <- sqrt(axis1^2 + axis2^2 + axis3^2)
-
-            # Apply wear time mask BEFORE calculating intensity
-            # Non-wear epochs should be NA, not classified as sedentary
-            axis1_wear <- axis1
-            axis1_wear[!wear_mask] <- NA
-
-            all_cpm <- canhrActi::to_cpm(axis1_wear, epoch_sec)
-            all_intensity <- tryCatch({
-              canhrActi::apply_cutpoints(all_cpm, algo, epoch_sec)
-            }, error = function(e) rep(NA_character_, nrow(data)))
-            # Explicitly set non-wear to NA
-            all_intensity[!wear_mask] <- NA
-
-            # Detect MVPA bouts for the full dataset
-            is_mvpa <- all_intensity %in% c("moderate", "vigorous", "very_vigorous")
-            mvpa_bouts <- rle(is_mvpa)
-            bout_starts <- cumsum(c(1, head(mvpa_bouts$lengths, -1)))
-            bout_ends <- cumsum(mvpa_bouts$lengths)
-
-            bout_info <- data.frame(
-              start = bout_starts[mvpa_bouts$values],
-              end = bout_ends[mvpa_bouts$values],
-              length = mvpa_bouts$lengths[mvpa_bouts$values]
-            )
-            bout_min_epochs <- as.numeric(input$bout_min %||% 10) * (60 / epoch_sec)
-            bout_info <- bout_info[bout_info$length >= bout_min_epochs, ]
-
-            # Detect sedentary bouts
-            # Handle NA values from non-wear epochs
-            # NA == "sedentary" returns NA (not FALSE), which breaks rle()
-            is_sed <- !is.na(all_intensity) & all_intensity == "sedentary"
-            sed_bouts_rle <- rle(is_sed)
-            sed_bout_starts <- cumsum(c(1, head(sed_bouts_rle$lengths, -1)))
-            sed_bout_ends <- cumsum(sed_bouts_rle$lengths)
-            # Only include TRUE values (actual sedentary bouts)
-            sed_valid <- which(sed_bouts_rle$values == TRUE)
-            sed_bout_info <- if (length(sed_valid) > 0) {
-              data.frame(
-                start = sed_bout_starts[sed_valid],
-                end = sed_bout_ends[sed_valid],
-                length = sed_bouts_rle$lengths[sed_valid]
-              )
-            } else {
-              data.frame(start = integer(0), end = integer(0), length = integer(0))
-            }
-
-            # Detect sedentary breaks (non-sedentary WEAR TIME periods)
-            # Only count breaks during valid wear time
-            is_break <- !is.na(all_intensity) & all_intensity != "sedentary"
-            break_bouts_rle <- rle(is_break)
-            break_bout_starts <- cumsum(c(1, head(break_bouts_rle$lengths, -1)))
-            break_bout_ends <- cumsum(break_bouts_rle$lengths)
-            # Only include TRUE values (actual sedentary breaks)
-            break_valid <- which(break_bouts_rle$values == TRUE)
-            break_bout_info <- if (length(break_valid) > 0) {
-              data.frame(
-                start = break_bout_starts[break_valid],
-                end = break_bout_ends[break_valid],
-                length = break_bouts_rle$lengths[break_valid]
-              )
-            } else {
-              data.frame(start = integer(0), end = integer(0), length = integer(0))
-            }
-
-            dates <- unique(data$date)
-            n_calendar_days <- length(dates)
-
-            for (date_i in dates) {
-              day_indices <- which(data$date == date_i)
-              day_data <- data[day_indices, ]
-              n_epochs <- nrow(day_data)
-              if (n_epochs == 0) next
-
-              # Get wear time for this specific day
-              day_wear <- wear_mask[day_indices]
-              n_wear_epochs <- sum(day_wear, na.rm = TRUE)
-
-              # Get day data
-              d_axis1 <- day_data$axis1
-              d_axis2 <- if ("axis2" %in% names(day_data)) day_data$axis2 else rep(0, n_epochs)
-              d_axis3 <- if ("axis3" %in% names(day_data)) day_data$axis3 else rep(0, n_epochs)
-              d_steps <- if ("steps" %in% names(day_data)) day_data$steps else rep(0, n_epochs)
-              d_lux <- if ("lux" %in% names(day_data)) day_data$lux else rep(0, n_epochs)
-              d_vm <- sqrt(d_axis1^2 + d_axis2^2 + d_axis3^2)
-
-              # Get intensity for this day (NA for non-wear epochs)
-              day_intensity <- all_intensity[day_indices]
-
-              # Intensity counts - only count wear time epochs (NA excluded automatically)
-              sedentary <- sum(day_intensity == "sedentary", na.rm = TRUE)
-              light <- sum(day_intensity == "light", na.rm = TRUE)
-              moderate <- sum(day_intensity == "moderate", na.rm = TRUE)
-              vigorous <- sum(day_intensity == "vigorous", na.rm = TRUE)
-              very_vigorous <- sum(day_intensity == "very_vigorous", na.rm = TRUE)
-              total_mvpa <- moderate + vigorous + very_vigorous
-
-              # Percentages based on WEAR TIME epochs only
-              # Days with 0 wear time get 0% for all categories
-              pct_sed <- if (n_wear_epochs > 0) 100 * sedentary / n_wear_epochs else 0
-              pct_light <- if (n_wear_epochs > 0) 100 * light / n_wear_epochs else 0
-              pct_mod <- if (n_wear_epochs > 0) 100 * moderate / n_wear_epochs else 0
-              pct_vig <- if (n_wear_epochs > 0) 100 * vigorous / n_wear_epochs else 0
-              pct_vvig <- if (n_wear_epochs > 0) 100 * very_vigorous / n_wear_epochs else 0
-              pct_mvpa <- if (n_wear_epochs > 0) 100 * total_mvpa / n_wear_epochs else 0
-
-              # Hours in day (only hours with wear time)
-              wear_hours <- if (n_wear_epochs > 0) {
-                unique(as.numeric(format(day_data$timestamp[day_wear], "%H")))
-              } else numeric(0)
-              n_hours <- length(wear_hours)
-              avg_mvpa_per_hour <- if (n_hours > 0) total_mvpa / n_hours else 0
-
-              # MVPA Bout metrics for this day
-              day_start <- min(day_indices)
-              day_end <- max(day_indices)
-
-              bouts_occurring <- if (nrow(bout_info) > 0) {
-                bout_info[bout_info$start <= day_end & bout_info$end >= day_start, ]
-              } else data.frame()
-              n_bouts_occurring <- nrow(bouts_occurring)
-
-              bouts_starting <- if (nrow(bout_info) > 0) {
-                bout_info[bout_info$start >= day_start & bout_info$start <= day_end, ]
-              } else data.frame()
-              n_bouts_starting <- nrow(bouts_starting)
-
-              bouts_ending <- if (nrow(bout_info) > 0) {
-                bout_info[bout_info$end >= day_start & bout_info$end <= day_end, ]
-              } else data.frame()
-              n_bouts_ending <- nrow(bouts_ending)
-
-              total_bout_time <- 0
-              total_bout_counts <- 0
-              if (nrow(bouts_occurring) > 0) {
-                for (b in seq_len(nrow(bouts_occurring))) {
-                  b_start <- max(bouts_occurring$start[b], day_start)
-                  b_end <- min(bouts_occurring$end[b], day_end)
-                  total_bout_time <- total_bout_time + (b_end - b_start + 1)
-                  total_bout_counts <- total_bout_counts + sum(axis1[b_start:b_end], na.rm = TRUE)
-                }
-              }
-
-              # Sedentary bout metrics
-              sed_bouts_occurring <- if (nrow(sed_bout_info) > 0) {
-                sed_bout_info[sed_bout_info$start <= day_end & sed_bout_info$end >= day_start, ]
-              } else data.frame()
-              n_sed_bouts_occurring <- nrow(sed_bouts_occurring)
-
-              sed_bouts_starting <- if (nrow(sed_bout_info) > 0) {
-                sed_bout_info[sed_bout_info$start >= day_start & sed_bout_info$start <= day_end, ]
-              } else data.frame()
-              n_sed_bouts_starting <- nrow(sed_bouts_starting)
-
-              sed_bouts_ending <- if (nrow(sed_bout_info) > 0) {
-                sed_bout_info[sed_bout_info$end >= day_start & sed_bout_info$end <= day_end, ]
-              } else data.frame()
-              n_sed_bouts_ending <- nrow(sed_bouts_ending)
-
-              total_sed_bout_time <- 0
-              if (nrow(sed_bouts_occurring) > 0) {
-                for (b in seq_len(nrow(sed_bouts_occurring))) {
-                  b_start <- max(sed_bouts_occurring$start[b], day_start)
-                  b_end <- min(sed_bouts_occurring$end[b], day_end)
-                  total_sed_bout_time <- total_sed_bout_time + (b_end - b_start + 1)
-                }
-              }
-
-              # Sedentary break metrics
-              break_bouts_occurring <- if (nrow(break_bout_info) > 0) {
-                break_bout_info[break_bout_info$start <= day_end & break_bout_info$end >= day_start, ]
-              } else data.frame()
-              n_break_bouts_occurring <- nrow(break_bouts_occurring)
-
-              break_bouts_starting <- if (nrow(break_bout_info) > 0) {
-                break_bout_info[break_bout_info$start >= day_start & break_bout_info$start <= day_end, ]
-              } else data.frame()
-              n_break_bouts_starting <- nrow(break_bouts_starting)
-
-              break_bouts_ending <- if (nrow(break_bout_info) > 0) {
-                break_bout_info[break_bout_info$end >= day_start & break_bout_info$end <= day_end, ]
-              } else data.frame()
-              n_break_bouts_ending <- nrow(break_bouts_ending)
-
-              total_break_time <- 0
-              if (nrow(break_bouts_occurring) > 0) {
-                for (b in seq_len(nrow(break_bouts_occurring))) {
-                  b_start <- max(break_bouts_occurring$start[b], day_start)
-                  b_end <- min(break_bouts_occurring$end[b], day_end)
-                  total_break_time <- total_break_time + (b_end - b_start + 1)
-                }
-              }
-
-              # Only use WEAR TIME epochs for count metrics              # If no wear time, all metrics are 0
-              if (n_wear_epochs > 0) {
-                # Filter data by wear mask
-                w_axis1 <- d_axis1[day_wear]
-                w_axis2 <- d_axis2[day_wear]
-                w_axis3 <- d_axis3[day_wear]
-                w_steps <- d_steps[day_wear]
-                w_lux <- d_lux[day_wear]
-                w_vm <- d_vm[day_wear]
-
-                # Axis counts
-                axis1_counts <- sum(w_axis1, na.rm = TRUE)
-                axis2_counts <- sum(w_axis2, na.rm = TRUE)
-                axis3_counts <- sum(w_axis3, na.rm = TRUE)
-
-                axis1_avg <- mean(w_axis1, na.rm = TRUE)
-                axis2_avg <- mean(w_axis2, na.rm = TRUE)
-                axis3_avg <- mean(w_axis3, na.rm = TRUE)
-
-                axis1_max <- max(w_axis1, na.rm = TRUE)
-                axis2_max <- max(w_axis2, na.rm = TRUE)
-                axis3_max <- max(w_axis3, na.rm = TRUE)
-
-                axis1_cpm <- axis1_avg * (60 / epoch_sec)
-                axis2_cpm <- axis2_avg * (60 / epoch_sec)
-                axis3_cpm <- axis3_avg * (60 / epoch_sec)
-
-                # Vector magnitude
-                vm_counts <- sum(w_vm, na.rm = TRUE)
-                vm_avg <- mean(w_vm, na.rm = TRUE)
-                vm_max <- max(w_vm, na.rm = TRUE)
-                vm_cpm <- vm_avg * (60 / epoch_sec)
-
-                # Steps
-                steps_counts <- sum(w_steps, na.rm = TRUE)
-                steps_avg <- mean(w_steps, na.rm = TRUE)
-                steps_max <- max(w_steps, na.rm = TRUE)
-                steps_per_min <- steps_avg * (60 / epoch_sec)
-
-                # Lux
-                lux_avg <- mean(w_lux, na.rm = TRUE)
-                lux_max <- max(w_lux, na.rm = TRUE)
-              } else {
-                # No wear time - all metrics are 0
-                axis1_counts <- axis2_counts <- axis3_counts <- 0
-                axis1_avg <- axis2_avg <- axis3_avg <- 0
-                axis1_max <- axis2_max <- axis3_max <- 0
-                axis1_cpm <- axis2_cpm <- axis3_cpm <- 0
-                vm_counts <- vm_avg <- vm_max <- vm_cpm <- 0
-                steps_counts <- steps_avg <- steps_max <- steps_per_min <- 0
-                lux_avg <- lux_max <- 0
-              }
-
-              # Energy expenditure for this day
-              kcals <- 0
-              mets_avg <- 1
-              if (!is.null(r$mets) && length(r$mets) >= max(day_indices)) {
-                day_mets <- r$mets[day_indices]
-                mets_avg <- mean(day_mets, na.rm = TRUE)
-                weight_kg <- weight * 0.453592
-                time_hours <- n_epochs * epoch_sec / 3600
-                kcals <- mets_avg * weight_kg * time_hours
-              }
-              avg_hourly_kcals <- if (n_hours > 0) kcals / n_hours else 0
-
-              # Day of week
-              dow <- weekdays(as.Date(date_i))
-              dow_num <- as.numeric(format(as.Date(date_i), "%u"))
-
-              # Time in minutes (wear time only)
-              time_min <- n_wear_epochs * epoch_sec / 60
-
-              row_data <- data.frame(
-                Subject = r$subject_id,
-                Filename = r$name,
-                Epoch = epoch_sec,
-                `Weight (lbs)` = weight,
-                Age = age,
-                Gender = gender,
-                Date = format(as.Date(date_i), "%m/%d/%Y"),
-                `Day of Week` = dow,
-                `Day of Week Num` = dow_num,
-                kcals = round(kcals, 3),
-                `Average Hourly kcals` = round(avg_hourly_kcals, 3),
-                METs = round(mets_avg, 3),
-                # MVPA Bout columns
-                `Number of MVPA Bouts occurring in this day` = n_bouts_occurring,
-                `Number of MVPA Bouts starting in this day` = n_bouts_starting,
-                `Number of MVPA Bouts ending in this day` = n_bouts_ending,
-                `Total time of MVPA Bouts occurring in this day` = total_bout_time,
-                `Total activity counts of MVPA Bouts occurring in this day` = total_bout_counts,
-                # Sedentary Bout columns
-                `Number of Sedentary Bouts occurring in this day` = n_sed_bouts_occurring,
-                `Number of Sedentary Bouts starting in this day` = n_sed_bouts_starting,
-                `Number of Sedentary Bouts ending in this day` = n_sed_bouts_ending,
-                `Total time of Sedentary Bouts occurring in this day` = total_sed_bout_time,
-                # Sedentary Break columns
-                `Number of Sedentary Breaks occurring in this day` = n_break_bouts_occurring,
-                `Number of Sedentary Breaks starting in this day` = n_break_bouts_starting,
-                `Number of Sedentary Breaks ending in this day` = n_break_bouts_ending,
-                `Total time of Sedentary Breaks occurring in this day` = total_break_time,
-                # Intensity counts
-                Sedentary = sedentary,
-                Light = light,
-                Moderate = moderate,
-                Vigorous = vigorous,
-                `Very Vigorous` = very_vigorous,
-                # Percentages
-                `% in Sedentary` = sprintf("%.2f%%", pct_sed),
-                `% in Light` = sprintf("%.2f%%", pct_light),
-                `% in Moderate` = sprintf("%.2f%%", pct_mod),
-                `% in Vigorous` = sprintf("%.2f%%", pct_vig),
-                `% in Very Vigorous` = sprintf("%.2f%%", pct_vvig),
-                `Total MVPA` = total_mvpa,
-                `% in MVPA` = sprintf("%.2f%%", pct_mvpa),
-                `Average MVPA Per Hour` = round(avg_mvpa_per_hour, 1),
-                # Axis counts
-                `Axis 1 Counts` = axis1_counts,
-                `Axis 2 Counts` = axis2_counts,
-                `Axis 3 Counts` = axis3_counts,
-                `Axis 1 Average Counts` = round(axis1_avg, 1),
-                `Axis 2 Average Counts` = round(axis2_avg, 1),
-                `Axis 3 Average Counts` = round(axis3_avg, 1),
-                `Axis 1 Max Counts` = axis1_max,
-                `Axis 2 Max Counts` = axis2_max,
-                `Axis 3 Max Counts` = axis3_max,
-                `Axis 1 CPM` = round(axis1_cpm, 1),
-                `Axis 2 CPM` = round(axis2_cpm, 1),
-                `Axis 3 CPM` = round(axis3_cpm, 1),
-                # Vector Magnitude
-                `Vector Magnitude Counts` = round(vm_counts, 1),
-                `Vector Magnitude Average Counts` = round(vm_avg, 1),
-                `Vector Magnitude Max Counts` = round(vm_max, 1),
-                `Vector Magnitude CPM` = round(vm_cpm, 1),
-                # Steps
-                `Steps Counts` = steps_counts,
-                `Steps Average Counts` = round(steps_avg, 1),
-                `Steps Max Counts` = steps_max,
-                `Steps Per Minute` = round(steps_per_min, 1),
-                # Lux
-                `Lux Average Counts` = round(lux_avg, 1),
-                `Lux Max Counts` = lux_max,
-                # Metadata (using wear time epochs)
-                `Number of Epochs` = n_wear_epochs,
-                Time = round(time_min),
-                `Calendar Days` = if (n_wear_epochs > 0) 1 else 0,
-                check.names = FALSE,
-                stringsAsFactors = FALSE
-              )
-              all_rows[[length(all_rows) + 1]] <- row_data
-            }
-          }
-        }
-
-        if (length(all_rows) == 0) {
+        df <- act_daily_df(res, shared, input$bout_min, sched_c())
+        if (is.null(df)) {
           write.csv(data.frame(Message = "No daily data to export"), file, row.names = FALSE)
           return()
         }
+        write.csv(df, file, row.names = FALSE, na = "", quote = TRUE)
+      }
+    )
 
-        df <- do.call(rbind, all_rows)
+    # Schedule exports: one row per recording, day and window, and one row per
+    # recording and kind of day; only when the run had a schedule
+    output$export_windows <- downloadHandler(
+      filename = function() export_name("Windows"),
+      content = function(file) {
+        df <- window_daily_df()
+        if (is.null(df)) {
+          write.csv(data.frame(Message = "No window rows to export"), file, row.names = FALSE)
+          return()
+        }
+        write.csv(df, file, row.names = FALSE, na = "", quote = TRUE)
+      }
+    )
+    output$export_daytypes <- downloadHandler(
+      filename = function() export_name("DayTypes"),
+      content = function(file) {
+        df <- daytype_df()
+        if (is.null(df)) {
+          write.csv(data.frame(Message = "No day type rows to export"), file, row.names = FALSE)
+          return()
+        }
         write.csv(df, file, row.names = FALSE, na = "", quote = TRUE)
       }
     )
 
     output$export_hourly <- downloadHandler(
       filename = function() {
-        paste0("canhrActi_Hourly_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
+        export_name("Hourly")
       },
       content = function(file) {
         res <- results()
@@ -1957,8 +1935,8 @@ mod_activity_server <- function(id, shared) {
             "evenson" = "Evenson (2008)",
             "matthews" = "Matthews (2005)",
             "copeland_older" = "Copeland (2009)",
-            "sasaki_vm3" = "Sasaki VM3 (2011)",
-            "freedson_vm3" = "Freedson VM3 (2011)",
+            "sasaki_vm3" = "Freedson VM3 (Sasaki 2011)",
+            "freedson_vm3" = "Freedson VM3 (Sasaki 2011)",
             "Freedson (1998)"
           )
 
@@ -2000,13 +1978,13 @@ mod_activity_server <- function(id, shared) {
 
             vm <- sqrt(axis1^2 + axis2^2 + axis3^2)
 
-            # Apply wear time mask BEFORE calculating intensity
-            axis1_wear <- axis1
-            axis1_wear[!wear_mask] <- NA
-
-            all_cpm <- canhrActi::to_cpm(axis1_wear, epoch_sec)
+            # The per-minute series the run classified, axis 1 or vector
+            # magnitude, with non-wear set to NA before classification
+            all_cpm <- r$activity_data
+            if (length(all_cpm) != nrow(data)) all_cpm <- canhrActi::to_cpm(axis1, epoch_sec)
+            all_cpm[!wear_mask] <- NA
             all_intensity <- tryCatch({
-              canhrActi::apply_cutpoints(all_cpm, algo, epoch_sec)
+              act_light_lifestyle(canhrActi::apply_cutpoints(all_cpm, algo))
             }, error = function(e) rep(NA_character_, nrow(data)))
             # Explicitly set non-wear to NA
             all_intensity[!wear_mask] <- NA
@@ -2266,7 +2244,7 @@ mod_activity_server <- function(id, shared) {
                 }
 
                 # Day of week
-                dow <- weekdays(as.Date(date_i))
+                dow <- fmt_date(as.Date(date_i), "%A")
                 dow_num <- as.numeric(format(as.Date(date_i), "%u"))  # 1=Monday, 7=Sunday
 
                 # Time in minutes for this hour - based on wear time epochs                # For non-wear hours, time is 0
@@ -2292,31 +2270,31 @@ mod_activity_server <- function(id, shared) {
                   `Number of MVPA Bouts occurring in this hour` = n_bouts_occurring,
                   `Number of MVPA Bouts starting in this hour` = n_bouts_starting,
                   `Number of MVPA Bouts ending in this hour` = n_bouts_ending,
-                  `Total time of MVPA Bouts occurring in this hour` = total_bout_time,
+                  `Total time of MVPA Bouts occurring in this hour` = act_min(total_bout_time, epoch_sec),
                   `Total activity counts of MVPA Bouts occurring in this hour` = total_bout_counts,
                   # Sedentary Bout columns
                   `Number of Sedentary Bouts occurring in this hour` = n_sed_bouts_occurring,
                   `Number of Sedentary Bouts starting in this hour` = n_sed_bouts_starting,
                   `Number of Sedentary Bouts ending in this hour` = n_sed_bouts_ending,
-                  `Total time of Sedentary Bouts occurring in this hour` = total_sed_bout_time,
+                  `Total time of Sedentary Bouts occurring in this hour` = act_min(total_sed_bout_time, epoch_sec),
                   # Sedentary Break columns
                   `Number of Sedentary Breaks occurring in this hour` = n_break_bouts_occurring,
                   `Number of Sedentary Breaks starting in this hour` = n_break_bouts_starting,
                   `Number of Sedentary Breaks ending in this hour` = n_break_bouts_ending,
-                  `Total time of Sedentary Breaks occurring in this hour` = total_break_time,
-                  # Intensity counts
-                  Sedentary = sedentary,
-                  Light = light,
-                  Moderate = moderate,
-                  Vigorous = vigorous,
-                  `Very Vigorous` = very_vigorous,
+                  `Total time of Sedentary Breaks occurring in this hour` = act_min(total_break_time, epoch_sec),
+                  # Intensity minutes
+                  Sedentary = act_min(sedentary, epoch_sec),
+                  Light = act_min(light, epoch_sec),
+                  Moderate = act_min(moderate, epoch_sec),
+                  Vigorous = act_min(vigorous, epoch_sec),
+                  `Very Vigorous` = act_min(very_vigorous, epoch_sec),
                   # Percentages
                   `% in Sedentary` = sprintf("%.2f%%", pct_sed),
                   `% in Light` = sprintf("%.2f%%", pct_light),
                   `% in Moderate` = sprintf("%.2f%%", pct_mod),
                   `% in Vigorous` = sprintf("%.2f%%", pct_vig),
                   `% in Very Vigorous` = sprintf("%.2f%%", pct_vvig),
-                  `Total MVPA` = total_mvpa,
+                  `Total MVPA` = act_min(total_mvpa, epoch_sec),
                   `% in MVPA` = sprintf("%.2f%%", pct_mvpa),
                   # Axis counts
                   `Axis 1 Counts` = axis1_counts,
@@ -2346,7 +2324,7 @@ mod_activity_server <- function(id, shared) {
                   `Lux Max Counts` = lux_max,
                   # Metadata
                   `Number of Epochs` = n_epochs_output,
-                  Time = round(time_min),
+                  Time = act_min(n_epochs_output, epoch_sec),
                   `Calendar Days` = n_calendar_days,
                   check.names = FALSE,
                   stringsAsFactors = FALSE
@@ -2370,7 +2348,7 @@ mod_activity_server <- function(id, shared) {
     # Sedentary Bout Export
     output$export_sedentary <- downloadHandler(
       filename = function() {
-        paste0("canhrActi_SedentaryAnalysis_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
+        export_name("SedentaryAnalysis")
       },
       content = function(file) {
         res <- results()
@@ -2523,7 +2501,7 @@ mod_activity_server <- function(id, shared) {
             if (i == 1) {
               time_since_last <- 0
             } else {
-              prev_end_time <- data$timestamp[bout_ends[i - 1]]
+              prev_end_time <- data$timestamp[bout_ends[i - 1]] + epoch_sec
               time_since_last <- as.numeric(difftime(bout_start_time, prev_end_time, units = "mins"))
             }
 
@@ -2587,10 +2565,10 @@ mod_activity_server <- function(id, shared) {
               `Weight (lbs)` = weight_lbs,
               Age = age,
               Gender = gender,
-              `Sedentary Bout Start` = format(bout_start_time, "%m/%d/%Y %I:%M:%S %p"),
-              `Sedentary Bout End` = format(bout_end_time, "%m/%d/%Y %I:%M:%S %p"),
-              `Time in Sedentary Bout` = round(duration_min[i], 0),
-              `Time since last Sedentary Bout` = round(time_since_last, 0),
+              `Sedentary Bout Start` = fmt_date(bout_start_time, "%m/%d/%Y %I:%M:%S %p"),
+              `Sedentary Bout End` = fmt_date(bout_end_time, "%m/%d/%Y %I:%M:%S %p"),
+              `Time in Sedentary Bout` = round(duration_min[i], 2),
+              `Time since last Sedentary Bout` = round(time_since_last, 2),
               `Axis 1 Counts` = round(axis1_counts, 0),
               `Axis 2 Counts` = round(axis2_counts, 0),
               `Axis 3 Counts` = round(axis3_counts, 0),
@@ -2614,7 +2592,7 @@ mod_activity_server <- function(id, shared) {
               `Lux Average Counts` = round(lux_avg, 1),
               `Lux Max Counts` = lux_max,
               `Number of Epochs` = n_epochs,
-              Time = round(duration_min[i], 0),
+              Time = round(duration_min[i], 2),
               `Calendar Days` = calendar_days,
               stringsAsFactors = FALSE,
               check.names = FALSE
@@ -2634,12 +2612,13 @@ mod_activity_server <- function(id, shared) {
 
     # VM Heatmap Plot
     output$vm_heatmap_plot <- renderPlot({
+      gg_app(isTRUE(shared$dark), {
       res <- results()
       sel <- input$selected_participant
 
       if (length(res) == 0) {
         ggplot2::ggplot() +
-          ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Run Analysis to see VM heatmap",
+          ggplot2::annotate("text", x = 0.5, y = 0.5, label = "Run the analysis to see VM heatmap",
                            size = 5, hjust = 0.5, color = "#64748b") +
           ggplot2::theme_void()
       } else {
@@ -2674,6 +2653,14 @@ mod_activity_server <- function(id, shared) {
           })
         }
       }
-    })
+      })
+    }, bg = "white")
+
+    # The links sit in a closed menu, and a suspended downloadHandler never
+    # receives its href, so the links would stay disabled
+    for (out in c("export_summary", "export_daily", "export_hourly", "export_sedentary",
+                  "export_windows", "export_daytypes")) {
+      outputOptions(output, out, suspendWhenHidden = FALSE)
+    }
   })
 }

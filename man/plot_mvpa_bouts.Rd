@@ -9,9 +9,11 @@ plot_mvpa_bouts(x, min_bout_length = 10, drop_time_allowance = 2)
 \arguments{
 \item{x}{A \code{canhrActi_analysis} object from \code{canhrActi()}}
 
-\item{min_bout_length}{Integer. Minimum bout duration in minutes (default: 10)}
+\item{min_bout_length}{Minimum bout duration in minutes (default: 10), rounded
+to whole epochs}
 
-\item{drop_time_allowance}{Integer. Drop time allowance in minutes (default: 2)}
+\item{drop_time_allowance}{Drop time allowance in minutes (default: 2), rounded
+to whole epochs}
 }
 \value{
 A ggplot2 object

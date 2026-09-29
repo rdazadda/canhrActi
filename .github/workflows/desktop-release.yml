@@ -374,6 +374,20 @@ jobs:
       - name: Install canhrActi and pinned packages
         run: npm run setup:packages
 
+      # data.table's manylinux binary uses OpenMP, which not every distro installs;
+      # R puts R_HOME/lib on the library path, so the runtime ships there.
+      - name: Bundle the OpenMP runtime (Linux)
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          src=$(ldconfig -p | awk '/libgomp\.so\.1 .*x86-64/ {print $NF; exit}')
+          [ -n "$src" ] || { echo "::error::libgomp.so.1 not found on the runner"; exit 1; }
+          dest=$(dirname "$(find resources/R -name 'libR.so' -print -quit)")
+          [ -d "$dest" ] || { echo "::error::no libR.so in resources/R"; exit 1; }
+          cp -L "$src" "$dest/libgomp.so.1"
+          echo "Bundled $src as $dest/libgomp.so.1"
+
       - name: Strip R bundle
         id: strip
         run: npm run setup:strip

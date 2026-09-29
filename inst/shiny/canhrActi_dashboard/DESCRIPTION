@@ -1,6 +1,6 @@
 Type: ShinyApp
 Title: canhrActi Dashboard
-Version: 0.4.0
+Version: 0.4.1
 Imports:
     shiny,
     shinydashboard,

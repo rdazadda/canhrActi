@@ -6,8 +6,7 @@ Analysis of accelerometer data for physical activity, sleep, sedentary behavior 
 **[Windows](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-Setup.exe)** &nbsp;·&nbsp;
 **[macOS (Apple silicon)](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-mac-arm64.dmg)** &nbsp;·&nbsp;
 **[macOS (Intel)](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi-mac-x64.dmg)** &nbsp;·&nbsp;
-**[Linux](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi.AppImage)** &nbsp;·&nbsp;
-**[R package](#r-package)**
+**[Linux](https://github.com/rdazadda/canhrActi/releases/latest/download/CANHRActi.AppImage)**
 
 ## Getting started
 
@@ -27,21 +26,6 @@ The desktop app includes R, so nothing else is needed.
   chmod +x CANHRActi.AppImage
   ./CANHRActi.AppImage
   ```
-
-### R package
-
-For scripting canhrActi from your own R session (R 4.1 or later):
-
-```r
-# install.packages("remotes")
-remotes::install_github("rdazadda/canhrActi")
-```
-
-The dashboard also runs from R:
-
-```r
-canhrActi::run_dashboard()
-```
 
 ## Citation
 

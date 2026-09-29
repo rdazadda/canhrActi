@@ -56,5 +56,29 @@ for (const pkg of fs.readdirSync(libDir)) {
 }
 console.log(`  removed per-package help/html/doc (${mb(perPkg)})`);
 
+// macOS R ships fontconfig's conf.d entries as absolute links into
+// /Library/Frameworks, which break once R is copied into the app and stop
+// electron-builder. Each broken link is pointed at the bundle's own copy in a
+// sibling conf.avail, or removed when there is none.
+function fixBrokenLinks(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, entry.name);
+    if (entry.isSymbolicLink()) {
+      if (fs.existsSync(p)) continue;
+      const local = path.join(dir, '..', 'conf.avail', entry.name);
+      fs.unlinkSync(p);
+      if (fs.existsSync(local)) {
+        fs.symlinkSync(path.relative(dir, local), p);
+        console.log(`  relinked ${path.relative(R_DIR, p)}`);
+      } else {
+        console.log(`  removed broken link ${path.relative(R_DIR, p)}`);
+      }
+    } else if (entry.isDirectory()) {
+      fixBrokenLinks(p);
+    }
+  }
+}
+fixBrokenLinks(R_DIR);
+
 const end = treeSize(R_DIR);
 console.log(`R bundle: ${mb(start)} -> ${mb(end)} (saved ${mb(start - end)})`);

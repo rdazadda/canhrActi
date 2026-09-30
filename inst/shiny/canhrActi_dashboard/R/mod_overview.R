@@ -2187,11 +2187,17 @@ mod_overview_server <- function(id, shared, parent_session = NULL) {
               tags$img(src = "logo.png", alt = "", class = "ov-mark-img"),
               tags$span(class = "ov-mark-name", "CANHRActi")
             ),
-            tags$div(class = "ov-lead", paste(
-              "Analysis of accelerometer data for physical activity, sleep, sedentary behavior and",
-              "circadian rhythm research. It works with ActiGraph count files (.agd) and raw recordings",
-              "(ActiGraph .gt3x, Axivity .cwa, GENEActiv .bin), and its raw pipeline gives the same",
-              "results as GGIR. Developed by the Center for Alaska Native Health Research.")),
+            # Short description of the dashboard
+            tags$div(class = "ov-lead",
+              tags$div(class = "ov-lead-main", paste(
+                "Analysis of accelerometer data for physical activity, sleep, sedentary behavior and",
+                "circadian rhythm research.")),
+              # Supported file types, in bold
+              tags$div(class = "ov-lead-sub", HTML(paste0(
+                "It works with ActiGraph count files (<span class=\"ov-ftype\">.agd</span>) and raw recordings ",
+                "(ActiGraph <span class=\"ov-ftype\">.gt3x</span>, Axivity <span class=\"ov-ftype\">.cwa</span>, ",
+                "GENEActiv <span class=\"ov-ftype\">.bin</span>),<br>",
+                "and its raw pipeline gives the same results as GGIR.")))),
 
             tags$div(
               class = "ov-card",
@@ -2223,7 +2229,8 @@ mod_overview_server <- function(id, shared, parent_session = NULL) {
             # Folder, sample and conversion notices; status_line() is otherwise
             # only read by the loaded layout
             uiOutput(ns("empty_status"), class = "ov-first-status")
-          )
+          ),
+          tags$div(class = "ov-lead-credit", "Developed by the Center for Alaska Native Health Research.")
         ))
       }
 

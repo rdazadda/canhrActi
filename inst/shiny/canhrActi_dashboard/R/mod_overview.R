@@ -2187,8 +2187,11 @@ mod_overview_server <- function(id, shared, parent_session = NULL) {
               tags$img(src = "logo.png", alt = "", class = "ov-mark-img"),
               tags$span(class = "ov-mark-name", "CANHRActi")
             ),
-            tags$div(class = "ov-lead",
-              "Physical activity, sleep and circadian rhythm analysis from ActiGraph accelerometry."),
+            tags$div(class = "ov-lead", paste(
+              "Analysis of accelerometer data for physical activity, sleep, sedentary behavior and",
+              "circadian rhythm research. It works with ActiGraph count files (.agd) and raw recordings",
+              "(ActiGraph .gt3x, Axivity .cwa, GENEActiv .bin), and its raw pipeline gives the same",
+              "results as GGIR. Developed by the Center for Alaska Native Health Research.")),
 
             tags$div(
               class = "ov-card",

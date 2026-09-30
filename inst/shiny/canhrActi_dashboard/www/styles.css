@@ -3055,12 +3055,12 @@ body.sidebar-collapse .main-sidebar { transform: translateX(calc(var(--sidebar-w
 .content-wrapper .ov-page .ov-first .ov-mark {
   display: flex; align-items: center; justify-content: center; gap: 16px;
 }
-.content-wrapper .ov-page .ov-first .ov-mark-img { height: 56px; width: 56px; }
+.content-wrapper .ov-page .ov-first .ov-mark-img { height: 80px; width: 80px; }
 .content-wrapper .ov-page .ov-first .ov-mark-name {
   font-size: 44px; font-weight: 400; letter-spacing: 0; line-height: 1; color: #333;
 }
 .content-wrapper .ov-page .ov-first .ov-lead {
-  margin: 16px auto 0; max-width: 470px; text-align: center;
+  margin: 16px auto 0; max-width: 640px; text-align: center;
   font-size: 14px; line-height: 20px; color: #75797c;
 }
 

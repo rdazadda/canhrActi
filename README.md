@@ -1,4 +1,4 @@
-# canhrActi
+# canhrActi <img src="man/figures/logo.png" align="right" height="139" alt="canhrActi logo" />
 
 Analysis of accelerometer data for physical activity, sleep, sedentary behavior and circadian rhythm research. It works with ActiGraph count files (.agd) and raw recordings (ActiGraph .gt3x, Axivity .cwa, GENEActiv .bin), and its raw pipeline gives the same results as GGIR. Developed by the Center for Alaska Native Health Research.
 

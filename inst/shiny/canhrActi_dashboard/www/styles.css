@@ -3050,12 +3050,12 @@ body.sidebar-collapse .main-sidebar { transform: translateX(calc(var(--sidebar-w
 
 /* ---- first run: the mark, one line, and the two ways in ------------------ */
 
-.content-wrapper .ov-page .ov-first-group { padding-top: 68px; }
+.content-wrapper .ov-page .ov-first-group { padding-top: 32px; }
 
 .content-wrapper .ov-page .ov-first .ov-mark {
   display: flex; align-items: center; justify-content: center; gap: 18px;
 }
-.content-wrapper .ov-page .ov-first .ov-mark-img { height: 96px; width: 96px; }
+.content-wrapper .ov-page .ov-first .ov-mark-img { height: 132px; width: 132px; }
 .content-wrapper .ov-page .ov-first .ov-mark-name {
   font-size: 46px; font-weight: 400; letter-spacing: 0; line-height: 1; color: #333;
 }

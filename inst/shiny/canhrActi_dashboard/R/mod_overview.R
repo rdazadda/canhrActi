@@ -2184,7 +2184,8 @@ mod_overview_server <- function(id, shared, parent_session = NULL) {
             class = "ov-first-group",
             tags$div(
               class = "ov-mark",
-              tags$img(src = "logo.png", alt = "", class = "ov-mark-img"),
+              tags$img(src = paste0("logo.png?v=", as.integer(file.info(file.path("www", "logo.png"))$mtime)),
+                       alt = "", class = "ov-mark-img"),
               tags$span(class = "ov-mark-name", "CANHRActi")
             ),
             # Short description of the dashboard

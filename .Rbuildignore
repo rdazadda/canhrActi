@@ -6,3 +6,4 @@
 ^\.github$
 ^temp_run\.R$
 ^canhrActi-desktop$
+^tools$

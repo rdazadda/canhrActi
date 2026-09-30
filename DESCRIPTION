@@ -1,6 +1,6 @@
 Package: canhrActi
 Title: Activity, Sleep and Circadian Analysis of Accelerometer Data
-Version: 0.4.1
+Version: 0.4.2
 Date: 2026-09-28
 Authors@R: c(
     person("Raymond Dacosta", "Azadda",

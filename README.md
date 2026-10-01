@@ -31,15 +31,14 @@ The desktop app includes R, so nothing else is needed.
 
 If you use canhrActi in your research, please cite it:
 
-> Azadda, R. D., AK CEAL Team, & Rasmus, S. (2026). *canhrActi: Activity, sleep and circadian analysis of accelerometer data* (Version 0.4.3) [R package]. Center for Alaska Native Health Research, University of Alaska Fairbanks. https://github.com/rdazadda/canhrActi
+> Azadda, R. D., AK CEAL Team, & Rasmus, S. (2026). *canhrActi: Activity, sedentary behavior, sleep and circadian analysis of accelerometer data*. Center for Alaska Native Health Research, University of Alaska Fairbanks. https://github.com/rdazadda/canhrActi
 
 ```bibtex
 @Manual{canhrActi,
-  title        = {canhrActi: Activity, Sleep and Circadian Analysis of Accelerometer Data},
+  title        = {canhrActi: Activity, Sedentary Behavior, Sleep and Circadian Analysis of Accelerometer Data},
   author       = {Raymond Dacosta Azadda and {AK CEAL Team} and Stacy Rasmus},
   organization = {Center for Alaska Native Health Research, University of Alaska Fairbanks},
   year         = {2026},
-  note         = {R package version 0.4.3},
   url          = {https://github.com/rdazadda/canhrActi},
 }
 ```

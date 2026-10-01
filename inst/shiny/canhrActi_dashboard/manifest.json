@@ -862,7 +862,7 @@
       "Repository": null,
       "description": {
         "Package": "canhrActi",
-        "Title": "Activity, Sleep and Circadian Analysis of Accelerometer Data",
+        "Title": "Activity, Sedentary Behavior, Sleep and Circadian Analysis of Accelerometer Data",
         "Version": "0.4.2",
         "Authors@R": "c(\n    person(\"Raymond Dacosta\", \"Azadda\",\n           email = \"rdazadda@alaska.edu\",\n           role = c(\"aut\", \"cre\")),\n    person(\"Andrew\", \"Grogan-Kaylor\",\n           email = \"agrogan@umich.edu\",\n           role = \"aut\"),\n    person(\"KyungSook\", \"Lee\",\n           email = \"klee98@alaska.edu\",\n           role = \"aut\"))",
         "Author": "Raymond Dacosta Azadda [aut, cre], Andrew Grogan-Kaylor [aut], KyungSook Lee [aut]",

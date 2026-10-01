@@ -3,7 +3,7 @@
 \docType{package}
 \name{canhrActi-package}
 \alias{canhrActi-package}
-\title{canhrActi: Activity, Sleep and Circadian Analysis of Accelerometer Data}
+\title{canhrActi: Activity, Sedentary Behavior, Sleep and Circadian Analysis of Accelerometer Data}
 \description{
 Accelerometer analysis for physical activity, sleep, sedentary behavior and circadian rhythm research, from the Center for Alaska Native Health Research (CANHR). Reads 'ActiGraph' count files (.agd) and raw recordings ('ActiGraph' .gt3x, 'Axivity' .cwa, 'GENEActiv' .bin). Count results are compatible with 'ActiLife', the raw pipeline gives the same results as 'GGIR', and an interactive dashboard runs the full analysis without writing code.
 }

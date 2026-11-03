@@ -102,9 +102,15 @@ mod_graphing_server <- function(id, shared) {
       raw_choices <- if (length(raws) == 0) character(0) else setNames(
         names(raws), vapply(seq_along(raws), function(i) ovr_name(raws[[i]], names(raws)[i]),
                             character(1)))
-      # Add "All participants" at the beginning
-      choices <- c("All recordings" = "all", file_choices, raw_choices)
-      updateSelectInput(session, "selected_file", choices = choices)
+      # Add "All participants" at the beginning; "all_raw" is listed so the
+      # chooser can hold it, and only the charts that draw it offer it
+      choices <- c("All recordings" = "all", file_choices,
+                   if (length(raws) > 0) c("All raw recordings" = "all_raw"), raw_choices)
+      # A refresh keeps the current choice while it is still on the list;
+      # without selected the browser falls to the first option, "all"
+      cur <- isolate(input$selected_file)
+      updateSelectInput(session, "selected_file", choices = choices,
+                        selected = if (!is.null(cur) && cur %in% choices) cur else NULL)
     })
 
     # Chart-specific options (no title or color palette)
@@ -302,24 +308,46 @@ mod_graphing_server <- function(id, shared) {
         return(invisible(NULL))
       }
 
+      raw_ids <- names(shared$raw %||% list())
+      # With no count files, All recordings on a chart that can pool raw means all raw
+      if (identical(sel, "all") && length(shared$files) == 0 &&
+          chart %in% gr_all_raw_charts() && length(raw_ids) > 0) {
+        sel <- "all_raw"
+      }
+
       # Handle "All participants" selection
       if (sel == "all") {
         # Check if chart supports "All participants"
-        if (!(chart %in% all_supported_charts)) {
+        if (!(chart %in% all_supported_charts) || length(shared$files) == 0) {
+          # Fall back to first participant, or the first raw recording when
+          # no count file is loaded
+          no_counts <- length(shared$files) == 0
+          sel <- names(shared$files)[1] %||% raw_ids[1]
+          if (is.null(sel) || is.na(sel)) return(invisible(NULL))
           showNotification(
-            paste0("'", chart_names[chart], "' doesn't support All Participants view. Using first participant."),
+            if (no_counts) "All recordings pools the count files, and none is loaded. Using the first raw recording."
+            else paste0("'", chart_names[chart], "' doesn't support All Participants view. Using first participant."),
             type = "warning", duration = 4
           )
-          # Fall back to first participant
-          sel <- names(shared$files)[1]
         }
       }
+      # "all_raw" pools shared$raw, for the charts that can draw it; anything
+      # else takes what the chooser would move to, as the observer below does
+      if (identical(sel, "all_raw") && !(chart %in% gr_all_raw_charts())) {
+        sel <- if (gr_is_dual(chart) || gr_is_raw(chart)) raw_ids[1] else names(shared$files)[1]
+        if (is.null(sel) || is.na(sel)) return(invisible(NULL))
+        showNotification(
+          paste0("'", chart_names[chart] %||% chart, "' can't draw all raw recordings together. Using ",
+                 if (sel %in% raw_ids) "the first raw recording." else "the first recording."),
+          type = "warning", duration = 4)
+      }
+      is_all <- sel %in% c("all", "all_raw")
 
       # A Circadian or Sedentary chart drawn from a .gt3x: circ_series_for()
       # builds the frame the handler below reads. bundle stays NULL for
       # counts, which is what the Sedentary arm tests.
       bundle <- NULL
-      if (sel != "all" && sel %in% names(shared$raw %||% list())) {
+      if (!is_all && sel %in% names(shared$raw %||% list())) {
         if (!gr_is_dual(chart)) {
           showNotification(
             paste0("'", chart_names[chart] %||% chart,
@@ -349,7 +377,7 @@ mod_graphing_server <- function(id, shared) {
         subject_id <- tools::file_path_sans_ext(ovr_name(shared$raw[[sel]], sel))
         chart_title <- paste(chart_names[chart] %||% "Chart", "-", subject_id)
 
-      } else if (sel != "all") {
+      } else if (!is_all) {
         # For individual participant or fallback
         req(shared$files[[sel]])
         f <- shared$files[[sel]]
@@ -390,7 +418,7 @@ mod_graphing_server <- function(id, shared) {
       p <- withProgress(message = paste("Drawing", chart_names[chart] %||% "chart"),
                         value = 0.4, tryCatch({
         # Handle "All participants" for supported charts
-        if (sel == "all") {
+        if (is_all) {
           switch(chart,
             "intensity_pie" = {
               # Aggregate intensity data across all participants
@@ -589,6 +617,15 @@ mod_graphing_server <- function(id, shared) {
                 "hourly_bouts" = canhrActi::plot_hourly_bout_frequency(pooled, title = chart_title),
                 "hourly_duration" = canhrActi::plot_hourly_bout_duration(pooled, title = chart_title)
               )
+            },
+
+            # Every recording's line from the Circadian tab's results, counts
+            # or raw as the choice says, never both on one axis
+            "circ_profile" = {
+              ids <- if (identical(sel, "all_raw")) names(shared$raw %||% list()) else names(shared$files)
+              pa <- gr_circ_profiles(shared, ids, chart_title)
+              if (is.null(pa)) showNotification("Run the Circadian analysis first.", type = "warning")
+              pa
             },
 
             {
@@ -1015,7 +1052,7 @@ mod_graphing_server <- function(id, shared) {
 
       # A chart drawn one row per day starts tall enough for its days
       if (!is.null(p)) {
-        dh <- if (identical(sel, "all")) NULL else gr_day_height(chart, data$timestamp)
+        dh <- if (is_all) NULL else gr_day_height(chart, data$timestamp)
         set_height(dh %||% GR_DEFAULT_H)
       }
 
@@ -1056,6 +1093,8 @@ mod_graphing_server <- function(id, shared) {
       sel <- cur_file()
       if (identical(sel, "all")) {
         paste("All", pluralize(shared$file_count, "recording"))
+      } else if (identical(sel, "all_raw")) {
+        paste("All", pluralize(length(shared$raw %||% list()), "raw recording"))
       } else if (!is.null(shared$files[[sel]])) {
         shared$files[[sel]]$subject_info$id %||% shared$files[[sel]]$name
       } else if (!is.null(shared$raw[[sel]])) {
@@ -1090,7 +1129,8 @@ mod_graphing_server <- function(id, shared) {
       if (shared$file_count == 0 && length(raws) == 0) {
         return(tags$div(class = "gr-pm-note", "No recordings loaded."))
       }
-      gr_who_menu(shared$files, raws, cur_file(), cur_chart() %in% gr_all_charts())
+      gr_who_menu(shared$files, raws, cur_file(), cur_chart() %in% gr_all_charts(),
+                  cur_chart() %in% gr_all_raw_charts())
     })
     output$pop_options_note <- renderUI({
       if (gr_has_options(cur_chart())) return(NULL)
@@ -1120,14 +1160,26 @@ mod_graphing_server <- function(id, shared) {
       chart <- cur_chart()
       sel <- cur_file()
       ids <- draw_ids(chart)
+      raw_ids <- names(shared$raw %||% list())
       ok <- if (identical(sel, "all")) {
-        # "all" pools shared$files, which no raw chart can use.
-        !gr_is_raw(chart) && chart %in% gr_all_charts()
+        # "all" pools shared$files, which no raw chart can use, and needs one
+        !gr_is_raw(chart) && chart %in% gr_all_charts() && length(shared$files) > 0
+      } else if (identical(sel, "all_raw")) {
+        chart %in% gr_all_raw_charts() && length(raw_ids) > 0
       } else {
         sel %in% ids
       }
       if (ok) return()
-      if (length(ids)) updateSelectInput(session, "selected_file", selected = ids[[1]])
+      # All recordings with no count files loaded: all raw, where the chart pools raw
+      if (identical(sel, "all") && chart %in% gr_all_raw_charts() && length(raw_ids) > 0) {
+        updateSelectInput(session, "selected_file", selected = "all_raw")
+        return()
+      }
+      # Leaving all raw stays on a raw recording where the chart draws one.
+      # raw_ids is NULL once the last raw recording is removed.
+      pick <- if (identical(sel, "all_raw")) intersect(ids, raw_ids) else character(0)
+      pick <- if (length(pick)) pick[[1]] else ids[1]
+      if (length(ids)) updateSelectInput(session, "selected_file", selected = pick)
     })
 
     observeEvent(input$who_pick, {
@@ -1328,6 +1380,8 @@ mod_graphing_server <- function(id, shared) {
       who <- drawn_who() %||% "all"
       who <- if (identical(who, "all")) {
         "AllRecordings"
+      } else if (identical(who, "all_raw")) {
+        "AllRawRecordings"
       } else if (!is.null(shared$raw[[who]])) {
         # the recording's name, not its internal id
         gsub("[^A-Za-z0-9]+", "",

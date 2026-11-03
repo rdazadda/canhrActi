@@ -67,8 +67,44 @@ gr_all_charts <- function() {
     "intensity_hours", "hourly_pattern",
     "bout_histogram", "bout_lorenz", "bout_survival", "transition_matrix",
     "sed_timeline", "sed_heatmap", "sed_occurrence", "bout_categories",
-    "hourly_bouts", "hourly_duration"
+    "hourly_bouts", "hourly_duration", "circ_profile"
   )
+}
+
+# Charts that can also draw every raw recording at once ("all_raw"). The raw
+# set is its own choice, since mg and counts/min never share an axis.
+gr_all_raw_charts <- function() "circ_profile"
+
+# The 24-hour profile of every recording in `ids` that the Circadian page
+# scored. One metric per figure: results left over from a run on another
+# metric are set aside. The caption counts every loaded recording the figure
+# leaves out, so an exported figure never drops one silently. NULL when none.
+gr_circ_profiles <- function(shared, ids, title) {
+  res <- shared$results$circadian %||% list()
+  res <- res[intersect(ids, names(res))]
+  res <- Filter(function(r) is.data.frame(r$hourly_profile), res)
+  if (length(res) == 0) return(NULL)
+  metric <- vapply(res, function(r) as.character(r$parameters$metric %||% "axis1")[1],
+                   character(1))
+  tally <- table(metric)
+  main <- names(tally)[which.max(tally)]
+  p <- canhrActi::plot_circadian_profiles(circ_profile_set(res[metric == main]),
+                                          title = title,
+                                          value_label = circ_axis_label(main))
+  unscored <- length(setdiff(ids, names(res)))
+  other <- sum(metric != main)
+  count <- function(k) if (k == 1) "1 recording" else paste(k, "recordings")
+  notes <- c(
+    if (unscored > 0) paste(count(unscored), if (unscored == 1) "has" else "have",
+                            "no Circadian result"),
+    if (other > 0) paste(count(other), if (other == 1) "was" else "were",
+                         "scored on another metric"))
+  if (length(notes) > 0) {
+    p <- p + ggplot2::labs(caption = paste0(
+      paste(notes, collapse = " and "),
+      if (unscored + other == 1) ", so it is not shown." else ", so they are not shown."))
+  }
+  p
 }
 
 # The raw family's keys, read off the table above
@@ -285,8 +321,9 @@ gr_raw_days <- function(r) {
 
 # The recording list. Both stores are in one menu, since this page has no
 # Counts/Raw switch; it is sectioned when both kinds are loaded. "All
-# recordings" is counts-only: every cohort chart pools shared$files.
-gr_who_menu <- function(files, raws, sel, supports_all) {
+# recordings" pools shared$files; the charts in gr_all_raw_charts() also get
+# an all-raw row, so the two kinds are never pooled together.
+gr_who_menu <- function(files, raws, sel, supports_all, supports_all_raw = FALSE) {
   files <- files %||% list()
   raws <- raws %||% list()
   ids <- names(files)
@@ -317,6 +354,13 @@ gr_who_menu <- function(files, raws, sel, supports_all) {
     if (sectioned) tags$div(class = "gr-pm-head", "Counts"),
     lapply(seq_along(ids), function(i) gr_who_row(ids[i], labs[i], days[i], sel)),
     if (sectioned) tags$div(class = "gr-pm-head", "Raw"),
+    if (length(rids) > 0 && supports_all_raw) tagList(
+      tags$div(class = paste("gr-pm-i", if (identical(sel, "all_raw")) "is-on" else ""),
+               `data-who` = "all_raw",
+               tags$span(class = "gr-tick", if (identical(sel, "all_raw")) HTML("&#10003;") else ""),
+               if (sectioned) "All raw recordings" else "All recordings",
+               tags$span(class = "gr-pm-s", length(rids))),
+      tags$div(class = "gr-pm-rule")),
     lapply(seq_along(rids), function(i) gr_who_row(rids[i], rlabs[i], rdays[i], sel))
   )
 }

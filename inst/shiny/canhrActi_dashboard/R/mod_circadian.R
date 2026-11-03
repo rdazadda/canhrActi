@@ -434,10 +434,7 @@ mod_circadian_server <- function(id, shared) {
         cr_fig(v, label, sub, unit = if (!identical(v, "–")) unit)
       }
 
-      who <- if (is.null(sel)) fmt_int(n) else {
-        r <- results()[[sel]]
-        as.character(r$subject_id %||% r$name %||% sel)
-      }
+      who <- if (is.null(sel)) fmt_int(n) else circ_label(results()[[sel]], sel)
 
       tags$div(
         class = "cr-panel cr-figs",
@@ -471,7 +468,7 @@ mod_circadian_server <- function(id, shared) {
       sel <- sel_fid()
       label_of <- function(fid) {
         r <- res[[fid]]
-        if (is.null(r)) fid else as.character(r$subject_id %||% r$name %||% fid)
+        if (is.null(r)) fid else circ_label(r, fid)
       }
       first_label <- label_of(names(res)[1])
       who_label <- if (!is.null(sel)) label_of(sel)
@@ -917,43 +914,11 @@ mod_circadian_server <- function(id, shared) {
             M10_start = cd$M10_start_hour %||% cd$M10_start,
             value_label = circ_axis_label(run_params()$metric %||% input$metric))
         } else {
-          # Multi-file average
-          all_hourly <- data.frame()
-          for (r in cd$results) {
-            if (!is.null(r$hourly_profile)) {
-              h <- r$hourly_profile
-              h$subject <- r$subject_id
-              all_hourly <- rbind(all_hourly, h)
-            }
-          }
-          req(nrow(all_hourly) > 0)
-
-          avg_hourly <- aggregate(mean_counts ~ hour, all_hourly, mean, na.rm = TRUE)
-
-          ggplot() +
-            geom_line(data = all_hourly, aes(x = hour, y = mean_counts, group = subject),
-                      color = "#94a3b8", alpha = 0.4, linewidth = 0.4) +
-            geom_line(data = avg_hourly, aes(x = hour, y = mean_counts),
-                      color = "#236192", linewidth = 1.5) +
-            geom_point(data = avg_hourly, aes(x = hour, y = mean_counts),
-                       color = "#236192", size = 2.5) +
-            scale_x_continuous(breaks = seq(0, 23, 3),
-                              labels = sprintf("%02d:00", seq(0, 23, 3)),
-                              expand = c(0.02, 0)) +
-            scale_y_continuous(labels = scales::comma, expand = c(0.02, 0)) +
-            labs(x = NULL, y = circ_axis_label(run_params()$metric %||% input$metric),
-                 subtitle = sprintf("Average of %d %s", length(cd$results),
-                                  if (length(cd$results) == 1) "subject" else "subjects")) +
-            canhrActi::theme_canhrActi() +
-            theme(
-              plot.background = element_rect(fill = "white", color = NA),
-              panel.background = element_rect(fill = "white", color = NA),
-              panel.grid.major = element_line(color = "#e2e8f0", linewidth = 0.4),
-              panel.grid.minor = element_blank(),
-              axis.text = element_text(color = "#64748b"),
-              axis.title = element_text(color = "#1a202c"),
-              plot.subtitle = element_text(color = "#64748b", size = 11)
-            )
+          # Every recording as its own line, named by its subject; the same
+          # figure the Visualization page draws for All recordings
+          canhrActi::plot_circadian_profiles(
+            circ_profile_set(cd$results),
+            value_label = circ_axis_label(run_params()$metric %||% input$metric))
         }
 
       } else if (tab == "actogram") {
@@ -1023,13 +988,13 @@ mod_circadian_server <- function(id, shared) {
             need(!is.na(cd$acrophase), "Cosinor analysis failed - acrophase could not be calculated.")
           )
 
-          # Collect hourly profiles from all results
+          # Collect hourly profiles from all results; only the two columns the
+          # average reads, so a recording without a subject cannot break the rbind
           all_hourly <- data.frame()
           for (r in cd$results) {
-            if (!is.null(r$hourly_profile)) {
-              h <- r$hourly_profile
-              h$subject <- r$subject_id
-              all_hourly <- rbind(all_hourly, h)
+            if (is.data.frame(r$hourly_profile) &&
+                all(c("hour", "mean_counts") %in% names(r$hourly_profile))) {
+              all_hourly <- rbind(all_hourly, r$hourly_profile[, c("hour", "mean_counts")])
             }
           }
 

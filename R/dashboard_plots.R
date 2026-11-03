@@ -360,6 +360,148 @@ plot_circadian_profile <- function(hourly, L5_start = NULL, M10_start = NULL,
 }
 
 
+#' Plot the 24-Hour Profiles of Many Recordings Together
+#'
+#' Draws the averaged 24-hour activity profile of every recording as its own
+#' solid line on one chart. Up to eight recordings each take their own colour
+#' and are named in the legend. Past eight, colours would repeat and a legend
+#' could not name everyone, so every line is drawn in the same solid blue,
+#' slightly thinner as their number grows so the lines stay apart. To see one
+#' recording on its own, with its L5 and M10 windows, use
+#' \code{\link{plot_circadian_profile}}.
+#'
+#' @param profiles A list of hourly profile data frames, one per recording,
+#'   each with \code{hour} (0-23) and \code{mean_counts} columns, such as the
+#'   \code{hourly_profile} elements of \code{\link{circadian.rhythm}} results.
+#'   The list names are the legend labels. A single data frame is taken as one
+#'   recording. Elements that are not data frames, lack the two columns or hold
+#'   no finite values are skipped.
+#' @param title Optional plot title. \code{NULL} (default) draws no title.
+#' @param value_label Y axis label.
+#'
+#' @return A \code{ggplot} object: hour of day (x) against mean activity (y),
+#'   one line per recording. On an empty or unusable input an annotated empty
+#'   \code{ggplot} is returned; the function never errors.
+#'
+#' @details
+#' The profiles are not recomputed, so the figure reports the same numbers as
+#' the tab and the workbook. Recordings without names are labelled
+#' "Recording 1", "Recording 2" and so on, and a repeated name gets a number
+#' after it.
+#'
+#' @seealso \code{\link{plot_circadian_profile}}, \code{\link{circadian.rhythm}}
+#'
+#' @examples
+#' set.seed(1)
+#' profiles <- lapply(1:5, function(i) data.frame(
+#'   hour = 0:23,
+#'   mean_counts = pmax(0, 150 + 120 * cos((0:23 - 14 + stats::rnorm(1)) * pi / 12) +
+#'                        stats::rnorm(24, 0, 25))
+#' ))
+#' names(profiles) <- paste("Participant", 1:5)
+#' plot_circadian_profiles(profiles)
+#'
+#' @export
+plot_circadian_profiles <- function(profiles, title = NULL,
+                                    value_label = "Activity (counts/min)") {
+
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("Package 'ggplot2' is required for plot_circadian_profiles().")
+  }
+
+  insufficient <- function() {
+    .circ_empty_plot(
+      "Insufficient data for the 24-hour profile",
+      title = if (is.null(title)) "24-Hour Activity Profile" else title
+    )
+  }
+
+  if (missing(profiles) || is.null(profiles)) return(insufficient())
+  if (is.data.frame(profiles)) profiles <- list(profiles)
+  if (!is.list(profiles)) return(insufficient())
+
+  labels <- names(profiles)
+  if (is.null(labels)) labels <- rep("", length(profiles))
+  labels <- ifelse(is.na(labels) | !nzchar(trimws(labels)),
+                   paste("Recording", seq_along(profiles)), as.character(labels))
+
+  # one long frame with a group per recording; unusable elements are skipped
+  rows <- lapply(seq_along(profiles), function(i) {
+    h <- profiles[[i]]
+    if (!is.data.frame(h) || nrow(h) == 0 || !all(c("hour", "mean_counts") %in% names(h))) {
+      return(NULL)
+    }
+    d <- data.frame(recording = labels[i],
+                    hour = suppressWarnings(as.numeric(h$hour)),
+                    mean_counts = suppressWarnings(as.numeric(h$mean_counts)),
+                    stringsAsFactors = FALSE)
+    d <- d[is.finite(d$hour) & is.finite(d$mean_counts), , drop = FALSE]
+    if (nrow(d) == 0) NULL else d
+  })
+  keep <- !vapply(rows, is.null, logical(1))
+  if (!any(keep)) return(insufficient())
+  rows <- rows[keep]
+  n <- length(rows)
+
+  # a repeated name gets a number, so two recordings never share a line
+  shown <- vapply(rows, function(d) d$recording[1], character(1))
+  dup <- shown %in% shown[duplicated(shown)]
+  shown[dup] <- paste0(shown[dup], " (", stats::ave(seq_along(shown), shown, FUN = seq_along)[dup], ")")
+  # a real name can already read like "P01 (1)"
+  shown <- make.unique(shown, sep = " ")
+  for (i in seq_len(n)) rows[[i]]$recording <- shown[i]
+  long <- do.call(rbind, rows)
+  # legend and colours follow the order the recordings came in
+  long$recording <- factor(long$recording, levels = shown)
+  long <- long[order(long$recording, long$hour), , drop = FALSE]
+
+  blue <- .circ_color("blue")
+  # eight hues checked for colour-blind and normal-vision separation on white
+  hues <- c("#2a78d6", "#eb6834", "#1baf7a", "#eda100",
+            "#e87ba4", "#008300", "#6250d6", "#e34948")
+
+  p <- ggplot2::ggplot(long, ggplot2::aes(x = .data$hour, y = .data$mean_counts,
+                                          group = .data$recording))
+  # long names go under the chart in two columns, so they never squeeze it
+  long_names <- max(nchar(shown)) > 18
+  if (n == 1) {
+    p <- p +
+      ggplot2::geom_line(color = blue, linewidth = 1.2) +
+      ggplot2::geom_point(color = blue, size = 2)
+  } else if (n <= length(hues)) {
+    p <- p +
+      ggplot2::geom_line(ggplot2::aes(color = .data$recording), linewidth = 1.1) +
+      ggplot2::scale_color_manual(values = stats::setNames(hues[seq_len(n)], shown),
+                                  name = NULL,
+                                  guide = ggplot2::guide_legend(ncol = if (long_names) 2 else 1))
+  } else {
+    # past eight the lines share one colour and thin a little as they multiply
+    p <- p + ggplot2::geom_line(color = blue,
+                                linewidth = if (n <= 30) 0.8 else 0.55)
+  }
+
+  p +
+    ggplot2::scale_x_continuous(breaks = seq(0, 23, 3),
+                                labels = sprintf("%02d:00", seq(0, 23, 3)),
+                                expand = c(0.02, 0)) +
+    ggplot2::scale_y_continuous(labels = scales::comma, expand = c(0.02, 0)) +
+    ggplot2::labs(title = title,
+                  subtitle = if (n == 1) "1 recording"
+                             else paste(format(n, big.mark = ","), "recordings"),
+                  x = NULL, y = value_label) +
+    .circ_theme() +
+    ggplot2::theme(
+      panel.background = ggplot2::element_rect(fill = "white", color = NA),
+      panel.grid.major = ggplot2::element_line(color = "#e2e8f0", linewidth = 0.4),
+      panel.grid.minor = ggplot2::element_blank(),
+      axis.text = ggplot2::element_text(color = "#64748b"),
+      axis.title = ggplot2::element_text(color = "#1a202c"),
+      plot.subtitle = ggplot2::element_text(color = "#64748b"),
+      legend.position = if (long_names) "bottom" else "right"
+    )
+}
+
+
 #' Plot the Fitted Cosinor Curve on the 24-Hour Activity Profile
 #'
 #' Overlays a fitted single-component cosinor curve on the averaged 24-hour

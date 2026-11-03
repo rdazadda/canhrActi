@@ -136,6 +136,105 @@ test_that("an unusable profile gives the empty plot titled 24-Hour Activity Prof
   expect_identical(plot_circadian_profile(NULL, title = "Mine")$labels$title, "Mine")
 })
 
+# n recordings, each a shifted day curve at its own level
+.profiles <- function(n) {
+  out <- lapply(seq_len(n), function(i) {
+    data.frame(hour = 0:23, mean_counts = 50 * i + 40 * cos(2 * pi * (0:23 - 12 - i %% 5) / 24))
+  })
+  names(out) <- paste0("P", seq_len(n))
+  out
+}
+
+test_that("plot_circadian_profiles draws every recording's own values, one line each", {
+  x <- .profiles(5)
+  p <- plot_circadian_profiles(x, title = "All", value_label = "Counts")
+  expect_identical(.geoms(p), "GeomLine")
+  d <- .layer(p, "GeomLine")
+  expect_identical(length(unique(d$group)), 5L)
+  # each group carries one recording's values, unchanged and in hour order
+  got <- split(d$y, d$group)
+  want <- lapply(x, function(h) h$mean_counts)
+  expect_equal(unname(got[order(vapply(got, `[`, numeric(1), 1))]),
+               unname(want[order(vapply(want, `[`, numeric(1), 1))]))
+  expect_identical(p$labels$title, "All")
+  expect_identical(p$labels$y, "Counts")
+  expect_identical(p$labels$subtitle, "5 recordings")
+})
+
+test_that("up to eight recordings take their own colour in input order and are named in the legend", {
+  p <- plot_circadian_profiles(.profiles(8))
+  d <- .layer(p, "GeomLine")
+  expect_identical(length(unique(d$colour)), 8L)
+  sc <- p$scales$get_scales("colour")
+  expect_identical(unname(sc$palette(8)[1:3]), c("#2a78d6", "#eb6834", "#1baf7a"))
+  expect_identical(levels(p$data$recording), paste0("P", 1:8))
+  # the first recording keeps the first colour whatever the count
+  first <- function(n) unique(.layer(plot_circadian_profiles(.profiles(n)), "GeomLine")$colour[1])
+  expect_identical(first(2), "#2a78d6")
+  expect_identical(first(7), "#2a78d6")
+})
+
+test_that("past eight recordings every line is the same solid blue, thinning as they multiply", {
+  for (n in c(9, 30, 31, 150)) {
+    d <- .layer(plot_circadian_profiles(.profiles(n)), "GeomLine")
+    expect_identical(length(unique(d$group)), as.integer(n))
+    expect_identical(unique(d$colour), "#236192")
+    expect_true(all(is.na(d$alpha) | d$alpha == 1))
+    expect_equal(unique(d$linewidth), if (n <= 30) 0.8 else 0.55)
+  }
+  expect_identical(plot_circadian_profiles(.profiles(150))$labels$subtitle, "150 recordings")
+})
+
+test_that("one recording is drawn once, with points and no legend", {
+  p <- plot_circadian_profiles(.profiles(1))
+  expect_identical(.geoms(p), c("GeomLine", "GeomPoint"))
+  expect_identical(p$labels$subtitle, "1 recording")
+  expect_identical(.geoms(plot_circadian_profiles(.profiles(1)[[1]])), c("GeomLine", "GeomPoint"))
+})
+
+test_that("unnamed, blank and repeated names are made into distinct labels", {
+  x <- .profiles(4)
+  names(x) <- c("Same", "Same", "", NA)
+  lv <- levels(plot_circadian_profiles(x)$data$recording)
+  expect_identical(lv, c("Same (1)", "Same (2)", "Recording 3", "Recording 4"))
+  y <- .profiles(2); names(y) <- NULL
+  expect_identical(levels(plot_circadian_profiles(y)$data$recording), c("Recording 1", "Recording 2"))
+  # a real name that already reads like a numbered repeat still gets its own line
+  z <- .profiles(3); names(z) <- c("A", "A", "A (1)")
+  pz <- plot_circadian_profiles(z)
+  expect_identical(anyDuplicated(levels(pz$data$recording)), 0L)
+  expect_identical(length(unique(.layer(pz, "GeomLine")$group)), 3L)
+})
+
+test_that("short names sit at the right and long names under the chart", {
+  expect_identical(plot_circadian_profiles(.profiles(3))$theme$legend.position, "right")
+  x <- .profiles(3)
+  names(x)[1] <- "CANHR_Study2024_Participant_0001_Week1_Visit2"
+  expect_identical(plot_circadian_profiles(x)$theme$legend.position, "bottom")
+})
+
+test_that("unusable elements are skipped and an unusable set gives the empty plot", {
+  x <- c(.profiles(3), list(bad = NULL, junk = data.frame(a = 1),
+                            na = data.frame(hour = 0:23, mean_counts = NA)))
+  p <- plot_circadian_profiles(x)
+  expect_identical(length(unique(.layer(p, "GeomLine")$group)), 3L)
+  expect_identical(p$labels$subtitle, "3 recordings")
+  # a recording that covers half a day draws the hours it has
+  half <- .profiles(2); half[[2]] <- half[[2]][half[[2]]$hour < 12, ]
+  d <- .layer(plot_circadian_profiles(half), "GeomLine")
+  expect_identical(as.vector(table(d$group)), c(24L, 12L))
+  # a profile with no rows is skipped, not an error
+  empty <- .profiles(2); empty[[2]] <- empty[[2]][0, ]
+  expect_identical(plot_circadian_profiles(empty)$labels$subtitle, "1 recording")
+  expect_identical(.empty_message(plot_circadian_profiles(.profiles(1)[[1]][0, ])),
+                   "Insufficient data for the 24-hour profile")
+  for (bad in list(NULL, list(), list(NULL), 42, list(data.frame(hour = "a", mean_counts = "b")))) {
+    e <- plot_circadian_profiles(bad)
+    expect_identical(.empty_message(e), "Insufficient data for the 24-hour profile")
+  }
+  expect_identical(plot_circadian_profiles(NULL, title = "Mine")$labels$title, "Mine")
+})
+
 test_that("plot_cosinor_fit draws M + A cos(2 pi t / 24 - phi) on a 0.1 h grid, peaking at the acrophase", {
   prof <- data.frame(hour = 0:23, mean_counts = 200 + 150 * cos(2 * pi * (0:23 - 14) / 24))
   p <- plot_cosinor_fit(prof, mesor = 200, amplitude = 150, acrophase = 14, r_squared = 0.82,

@@ -1,11 +1,32 @@
 # Circadian: the loaded page. The result frame is built here for both the
 # table and the CSV export.
 
+# What a recording is called on this page: its subject, else its file name,
+# else its id. A blank or missing subject falls through.
+circ_label <- function(r, fid) {
+  for (v in list(r$subject_id, r$name)) {
+    v <- as.character(v %||% "")[1]
+    if (!is.na(v) && nzchar(trimws(v))) return(v)
+  }
+  as.character(fid %||% "")[1]
+}
+
+# Each recording's 24-hour profile, named as circ_label() names it, for the
+# all-recordings figure on this page and on Visualization
+circ_profile_set <- function(res) {
+  profiles <- lapply(res, function(r) r$hourly_profile)
+  ids <- names(res) %||% paste("Recording", seq_along(res))
+  names(profiles) <- vapply(seq_along(res), function(i) circ_label(res[[i]], ids[i]),
+                            character(1))
+  profiles
+}
+
 # Every column of the CSV export, one row per recording.
 circadian_results_df <- function(res) {
   df <- data.frame(
-    subject_id = sapply(res, function(r) r$subject_id),
-    file_name = sapply(res, function(r) r$name),
+    # one value each, NA when missing: a raw recording whose sleep step failed has no subject
+    subject_id = vapply(res, function(r) as.character(r$subject_id %||% NA)[1], character(1)),
+    file_name = vapply(res, function(r) as.character(r$name %||% NA)[1], character(1)),
     L5 = sapply(res, function(r) r$L5),
     L5_start = sapply(res, function(r) r$L5_start),
     M10 = sapply(res, function(r) r$M10),
